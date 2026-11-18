@@ -19,7 +19,8 @@ import { cleanup, Clipboard, effect, Keyboard, keyboardFrame, safeArea, signal, 
 import type { Terminal as TerminalRow } from "@real-bot/protocol";
 import { arrowBytes, controlByte, pasteBytes } from "../../m/overlays/terminal-keys.ts";
 import { orderTerminals, pageTerminal, statusLabel, TERMINAL_KEY_ROWS, terminalNames, tildePath, type PhoneKey } from "../../m/overlays/terminals.ts";
-import { NshTerminal, type TerminalHandle } from "../../NshTerminal";
+import type { TerminalHandle } from "../../NshTerminal";
+import { NshTerminal } from "../lazy-views";
 import { copy, runtime } from "../../runtime";
 import { BottomSheet } from "../BottomSheet";
 import { Button } from "../Button";

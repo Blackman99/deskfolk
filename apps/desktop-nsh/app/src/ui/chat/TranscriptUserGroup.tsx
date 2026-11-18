@@ -18,7 +18,7 @@ import { transcriptItemKey, type TranscriptItem } from "../../m/chat/transcript.
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";

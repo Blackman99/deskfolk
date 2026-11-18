@@ -79,7 +79,7 @@ bun apps/desktop-nsh/scripts/dev.ts            # 起开发运行时（没起的�
 bun apps/desktop-nsh/scripts/dev.ts --seed-from-stable   # 空数据目录时从稳定版的库拷一份快照（只读拷贝；Bot 仍指向你真实的工作区）
 bun apps/desktop-nsh/scripts/dev.ts --stable-instance    # 当日常用的版本：顶替稳定版，用你自己的对话、设置和远程控制（见上面）
 bun apps/desktop-nsh/scripts/web-dev.ts        # 编 web 包（app/native 编成 wasm）并在 http://127.0.0.1:17991/ 提供，连开发运行时
-bun apps/desktop-nsh/scripts/phone-package.ts --build   # 手机页面：以正式名字 nsh package Hosted.tsx --target web，再加 `assets/phone/` 里的 /sw.js（推送、点通知、远程媒体）和主屏幕图标，清单沿用页面最初安装时的身份（id "./"），去掉只有本机窗口要的块，写进版本号（页面参数 + _app/version.json），加一条页面自己的样式（嵌在会话里的滚动区把自己滚不动的滑动交给会话），放进代码配色的语法和主题（giallo 的 builtin.zst，按内容命名为 nsh-giallo.<摘要>.bin）；中继提供的就是 build/phone/Deskfolk
+bun apps/desktop-nsh/scripts/phone-package.ts --build   # 手机页面：以正式名字 nsh package Hosted.tsx --target web，再加 `assets/phone/` 里的 /sw.js（推送、点通知、远程媒体）和主屏幕图标，清单沿用页面最初安装时的身份（id "./"），去掉只有本机窗口要的块，写进版本号（页面参数 + _app/version.json），加一条页面自己的样式（嵌在会话里的滚动区把自己滚不动的滑动交给会话），放进代码配色的语法和主题（giallo 的 builtin.zst，按内容命名为 nsh-giallo.<摘要>.bin）；打包后先核对首屏要下什么（`checkFirstScreen`：`Main.js` 只带 core、菜单、浮层、Select、Combobox，应用自己的 Rust 是单独的副模块，重的视图从 `src/ui/lazy-views.ts` 引）；中继提供的就是 build/phone/Deskfolk
 bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--edge caddy] [--browser webkit]   # 手机页面端到端，带生产的头和 CSP；--edge caddy 走生产 Caddyfile
 bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]   # 开发版的 .app（Deskfolk Dev）
 bun apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env [--smoke]          # 正式版，见上面「正式版」

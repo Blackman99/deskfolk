@@ -20,7 +20,7 @@ import { SpendCap } from "./SpendCap";
 import { SpendCategories } from "./SpendCategories";
 import { SpendDetailTable } from "./SpendDetailTable";
 import { SpendGroupTable } from "./SpendGroupTable";
-import { SpendHeader } from "./SpendHeader";
+import { SpendHeader } from "../lazy-views";
 import { SpendIcon } from "./SpendIcon";
 import { SpendSummary } from "./SpendSummary";
 import { settled } from "../workbench/drag-settle";

@@ -18,7 +18,7 @@ import { holdBack } from "../../m/chat/message-text-pages.ts";
 import { runningCall, trailBlocks, type TrailBlock } from "../../m/chat/project-tasks.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import type { FileOnDisk } from "../file-on-disk";
 import { Modal, narrowWindow } from "../Modal";
 import { pulseMotion } from "./labels";

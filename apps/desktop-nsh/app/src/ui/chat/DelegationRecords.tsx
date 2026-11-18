@@ -6,7 +6,7 @@ import { Text, View } from "nsh";
 import type { Bot, DelegationView } from "@real-bot/protocol";
 import { formatFullTimestamp, formatMessageTime } from "../../m/chat/chat-view.ts";
 import { copy } from "../../runtime";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";

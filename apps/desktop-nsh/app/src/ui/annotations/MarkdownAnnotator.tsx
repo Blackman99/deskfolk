@@ -18,7 +18,7 @@ import { normalizeSource } from "../../m/annotations/markdown-lines.ts";
 import { anchorFromSelection } from "../../m/annotations/text-range.ts";
 import type { EncodedCrop } from "../../m/annotations/region-box.ts";
 import type { PressedPicture } from "../chat/image-origin";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { tip } from "../tip";
 import { markdownBlocksOffThread, type MarkdownBlock } from "./markdown-blocks";
 

@@ -22,7 +22,7 @@ import { AnnotationCards } from "../annotations/AnnotationCards";
 import { CommandActivity } from "./CommandActivity";
 import { SEAM_LINE } from "../glass";
 import { AskCard } from "./AskCard";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { lineOf, type ProjectState } from "./project-chat-state";

@@ -8,7 +8,7 @@ import { View } from "nsh";
 import { rememberedSignIn } from "../../m/remote/screen-sign-in.ts";
 import type { StoredEnrollment } from "../../m/remote/idb.ts";
 import type { ScreenViewApi } from "./remote-screen-controller.ts";
-import { RemoteScreenView } from "./RemoteScreenView.tsx";
+import { RemoteScreenView } from "../lazy-views";
 
 export function RemoteScreenPane(props: {
   /** The remote link's API: `kind` is "remote" for a paired phone, which is the only one with a screen. */

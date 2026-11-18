@@ -15,7 +15,7 @@ import type { Terminal as TerminalRow } from "@real-bot/protocol";
 import { nativeTerminal } from "../../launch";
 import { statusLabel } from "../../m/overlays/terminals.ts";
 import { Terminal } from "../../native";
-import { NshTerminal } from "../../NshTerminal";
+import { NshTerminal } from "../lazy-views";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
 import { tip } from "../tip";

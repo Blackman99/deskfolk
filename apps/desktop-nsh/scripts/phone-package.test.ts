@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { addPhoneStatic as addWith, CODE_COLOURS_DATA, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
+import { addPhoneStatic as addWith, APP_NATIVE_GATE, checkFirstScreen, CODE_COLOURS_DATA, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
 
 const CONFIG = { id: "com.real-bot.desktop", code: "app.0123456789.js", chunks: { "Main.js": "Main.0123456789.js", "local-api.js": "local-api.1111111111.js", "local-discovery.js": "local-discovery.2222222222.js" } };
 
@@ -181,5 +181,33 @@ describe("the phone's package", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("what the phone's first screen downloads", () => {
+  const page = (config: object) => `<script type="application/json" id="nsh-app">${JSON.stringify(config)}</script>`;
+  const sides = { [APP_NATIVE_GATE]: { url: "nsh-app-deskfolk-native.0123456789.wasm", gate: APP_NATIVE_GATE }, nsh_part_rich_editor: { url: "nsh-rich-editor.0123456789.wasm", gate: "nsh_part_rich_editor" } };
+  const chunks = { "Main.js": "Main.0123456789.js", "ComposerEditor.js": "ComposerEditor.0123456789.js" };
+
+  test("passes the small parts beside the engine, with the heavy ones and the app's Rust left to later chunks", () => {
+    expect(() =>
+      checkFirstScreen(page({ chunks, sides, chunkSides: { "Main.js": ["nsh_part_core", "nsh_part_menu", "nsh_part_overlays", "nsh_part_select", "nsh_part_combobox"], "ComposerEditor.js": ["nsh_part_core", "nsh_part_rich_editor"] } })),
+    ).not.toThrow();
+  });
+
+  test("fails on a heavy part the first chunk loads, naming it", () => {
+    expect(() => checkFirstScreen(page({ chunks, sides, chunkSides: { "Main.js": ["nsh_part_core", "nsh_part_rich_editor"] } }))).toThrow(/would load nsh_part_rich_editor.*lazy-views/);
+  });
+
+  test("fails when the first chunk loads the app's own Rust", () => {
+    expect(() => checkFirstScreen(page({ chunks, sides, chunkSides: { "Main.js": ["nsh_part_core", APP_NATIVE_GATE] } }))).toThrow(new RegExp(`would load ${APP_NATIVE_GATE}`));
+  });
+
+  test("fails when the app's own Rust is linked into the engine, with no side module of its own", () => {
+    expect(() => checkFirstScreen(page({ chunks, sides: { nsh_part_rich_editor: sides.nsh_part_rich_editor }, chunkSides: { "Main.js": ["nsh_part_core"] } }))).toThrow(/linked into the engine/);
+  });
+
+  test("fails when there is no first chunk to check", () => {
+    expect(() => checkFirstScreen(page({ chunks: {}, sides, chunkSides: {} }))).toThrow(/no Main\.js chunk/);
   });
 });

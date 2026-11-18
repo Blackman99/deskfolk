@@ -11,7 +11,7 @@ import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { formatMessageTime, isAppLine } from "../../m/chat/chat-view.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
 import { MessageContextMenu } from "./MessageContextMenu";
 import { MessageFileOverlay } from "./MessageFileOverlay";

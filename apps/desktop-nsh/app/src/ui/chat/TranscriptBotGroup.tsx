@@ -22,7 +22,7 @@ import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
 import { Icon } from "../Icon";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
 import { tip } from "../tip";
 import { BotDmEntry } from "./BotDmEntry";

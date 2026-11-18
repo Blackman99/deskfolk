@@ -26,7 +26,8 @@ import { pageRoute } from "./platform/page-route-install";
 import { linuxWheelProps } from "./platform/wheel";
 import { installWindowLife } from "./platform/window-life";
 import { runtime } from "./runtime";
-import { PdfPane, TerminalPane } from "./Tools";
+import { preloadLazyViews } from "./ui/lazy-view";
+import { PdfPane, TerminalPane } from "./ui/lazy-views";
 import { BuildUpdateNotice } from "./ui/BuildUpdateNotice";
 import { PairingScreen } from "./ui/remote/PairingScreen";
 import { ConnectionScreen, OfflineBanner, TabStandbyScreen } from "./ui/shell/ConnectionScreen";
@@ -89,6 +90,15 @@ export function Main() {
   const shellShown = signal(false);
   effect(() => {
     if (runtime.connection === "connected") shellShown.set(true);
+  });
+  // The views that load on first use (`ui/lazy-view.tsx`: the composer, a message's text, the code
+  // editor…) are fetched once the shell is up, behind it, so the first conversation opened does not
+  // wait for them; the phone's page shows its first screen without them.
+  let preloading = false;
+  effect(() => {
+    if (!shellShown() || preloading) return;
+    preloading = true;
+    setTimeout(() => void preloadLazyViews(), 1000);
   });
   const shown = (
     <If when={shellShown()} else={<ConnectionScreen />}>

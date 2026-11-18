@@ -15,7 +15,7 @@ import { copy } from "../../runtime";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import type { FileOnDisk } from "../file-on-disk";
 import { shadow } from "../styles";
 import { WheelLayer } from "../../platform/wheel-layer";

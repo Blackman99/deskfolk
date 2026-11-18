@@ -11,7 +11,7 @@ import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import { copy } from "../../runtime";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";

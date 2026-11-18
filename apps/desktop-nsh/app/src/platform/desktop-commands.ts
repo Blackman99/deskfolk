@@ -7,9 +7,11 @@
  * - `open_workspace_path({ path, reveal })`: opens a file with its app or shows it in the file
  *   manager (`Files.openPath`); a file that would run is shown, as in 0.4.0.
  * - `hide_main_window`: puts the window away (⌘W / Ctrl+W once no tab is left to close).
+ *
+ * `Files` comes from `desktop-files.ts` when a command needs it, not with this module: the shell's
+ * bridge imports this one into the app's entry.
  */
 import type { WindowRef } from "nsh/desktop";
-import { Files } from "deskfolk/native";
 
 /**
  * The window `hide_main_window` puts away. NSH reads `currentWindow()` only while a component
@@ -26,10 +28,12 @@ export const DESKTOP_COMMANDS: Record<string, (args: Record<string, unknown>) =>
   pick_workspace_folder: async (args) => {
     const title = typeof args.title === "string" ? args.title : "";
     const current = typeof args.current === "string" ? args.current : "";
+    const { Files } = await import("./desktop-files");
     return (await Files.pickFolder(title, current)) ?? null;
   },
   open_workspace_path: async (args) => {
     const path = String(args.path ?? "");
+    const { Files } = await import("./desktop-files");
     await Files.openPath(path, args.reveal === true);
     return null;
   },

@@ -22,6 +22,8 @@
  * - The code colours' grammars and themes (`addCodeColours`): giallo's dump, which the desktop app
  *   carries in its binary and the web build leaves out. The page fetches it as the runtime's data
  *   `giallo` (`app/native/src/highlight.rs`), named by its content as NSH names its own files.
+ * - Before any of that, `--build` checks what the first screen downloads (`checkFirstScreen`): only
+ *   the small parts of `nsh/base` beside the engine, and the app's own Rust a module of its own.
  *
  * NSH writes a `.br` / `.gz` beside each file for a server that sends them precompressed (Caddy's
  * `precompressed`, nginx's `gzip_static`), so the files changed here get theirs again.
@@ -134,6 +136,38 @@ export function addCodeColours(site: string, dump: string = gialloDump()): void 
   rewrite(indexPath, index.replace(config[0], `<script type="application/json" id="nsh-app">${JSON.stringify(app)}</script>`));
 }
 
+/** The chunk the entry imports, which the first screen waits for (`App.tsx`: `import("./src/Main")`). */
+export const FIRST_CHUNK = "Main.js";
+
+/**
+ * The parts of `nsh/base` the first screen may load beside the engine: small, and on most screens.
+ * Every other part, and the app's own Rust, is a side module a later chunk loads (`src/ui/lazy-views.ts`).
+ */
+export const FIRST_SCREEN_SIDES = ["nsh_part_core", "nsh_part_menu", "nsh_part_overlays", "nsh_part_select", "nsh_part_combobox"] as const;
+
+/** The app's own Rust (`app/native`), which must stay a side module, out of the engine every page downloads first. */
+export const APP_NATIVE_GATE = "nsh_ui_set_deskfolk_native";
+
+/**
+ * Fails when the first screen would download more than it should: a side module the first chunk
+ * loads beyond `FIRST_SCREEN_SIDES`, or the app's own Rust linked into the engine (no side module of
+ * its own) because something the entry imports took it. Either comes from a static import of a heavy
+ * view or of `deskfolk/native` in what the app loads at start (ADR 0107 addendum 62).
+ */
+export function checkFirstScreen(index: string): void {
+  const config = APP_CONFIG.exec(index);
+  if (!config) throw new Error("no nsh-app config: nsh package wrote another page than this expects");
+  const app = JSON.parse(config[1]!) as { chunks?: Record<string, string>; chunkSides?: Record<string, string[]>; sides?: Record<string, { gate?: string }> };
+  if (!app.chunks?.[FIRST_CHUNK]) throw new Error(`no ${FIRST_CHUNK} chunk: the entry no longer imports the app the way this expects`);
+  const extra = (app.chunkSides?.[FIRST_CHUNK] ?? []).filter((gate) => !(FIRST_SCREEN_SIDES as readonly string[]).includes(gate));
+  if (extra.length) {
+    throw new Error(`the first screen would load ${extra.join(", ")}: something ${FIRST_CHUNK} imports statically draws with it; import its view from src/ui/lazy-views.ts`);
+  }
+  if (!Object.values(app.sides ?? {}).some((side) => side.gate === APP_NATIVE_GATE)) {
+    throw new Error(`the app's own Rust (${APP_NATIVE_GATE}) is linked into the engine: something the entry imports takes deskfolk/native`);
+  }
+}
+
 /** Takes the local-only chunks out of the package and out of the page's map of chunks. */
 function dropLocalOnly(site: string, index: string): string {
   const config = APP_CONFIG.exec(index);
@@ -221,6 +255,7 @@ export function buildPhoneSite(out: string = PHONE_OUT): string {
     },
   });
   if (done.status !== 0) throw new Error(`nsh package Hosted.tsx --target web failed (${done.status})`);
+  checkFirstScreen(readFileSync(join(site, "index.html"), "utf8"));
   addPhoneStatic(site);
   return site;
 }

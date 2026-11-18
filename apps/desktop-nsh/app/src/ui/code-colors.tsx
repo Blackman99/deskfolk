@@ -10,11 +10,16 @@
  *
  * Text views colour their code blocks themselves, under a `CodeColors` (MarkdownBody); this file is
  * for the editor's decorations and a command's output, which take the colours as data.
+ *
+ * `Highlight` comes from `code-colors-native.ts` when first wanted, not with this module: on the
+ * phone's page `deskfolk/native` is a module of its own, downloaded when code first shows. On the
+ * desktops `warmCodeColors` loads it at start; until it is in, code is plain, as on the web.
  */
-import { colorScheme, signal, Text, type JSX } from "nsh";
+import { colorScheme, platform, signal, Text, type JSX } from "nsh";
 import type { EditorDecoration } from "nsh/base";
-import { Highlight } from "deskfolk/native";
 import { interfaceBehaviour } from "../m/interface/behaviour.svelte.ts";
+
+type HighlightApi = NonNullable<typeof import("./code-colors-native").Highlight>;
 
 /** The app's own code colours, by where the code is (`SHIKI_THEMES`, `MONACO_SHIKI_THEMES`). */
 const OWN = {
@@ -28,12 +33,39 @@ export type CodePlace = keyof typeof OWN;
  * Whether code can be coloured: at once on the desktops, on the web once the page's grammars and
  * themes are read. `failed`: they never will be (no native side, or the page has none).
  */
-const ready = signal(Boolean(Highlight?.available()));
-const failed = signal(!Highlight);
+const ready = signal(false);
+const failed = signal(false);
 
-/** Reads the grammars and themes on a thread of the native side's own, so the first code shown does not wait (the desktops). */
+/** The native side once it is in; null before, and where there is none. */
+let Highlight: HighlightApi | null = null;
+let loading: Promise<HighlightApi | null> | null = null;
+
+function loadHighlight(): Promise<HighlightApi | null> {
+  loading ??= import("./code-colors-native").then(
+    (module) => {
+      Highlight = module.Highlight ?? null;
+      if (!Highlight) failed.set(true);
+      else if (Highlight.available()) ready.set(true);
+      return Highlight;
+    },
+    (error: unknown) => {
+      // Asked again by the next code shown (a phone between networks).
+      loading = null;
+      console.warn(`[deskfolk] code colours could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    },
+  );
+  return loading;
+}
+
+/**
+ * Reads the grammars and themes on a thread of the native side's own, so the first code shown does
+ * not wait (the desktops). Nothing on the web, where `warm` does nothing and the native side is
+ * downloaded only once code shows.
+ */
 export function warmCodeColors(): void {
-  Highlight?.warm();
+  if (platform.os === "web") return;
+  void loadHighlight().then((highlight) => highlight?.warm());
 }
 
 let asked = false;
@@ -44,15 +76,22 @@ let asked = false;
  * they are always there. What shows code calls it, then reads `codeColorsAvailable`.
  */
 export function wantCodeColors(): void {
-  if (asked || !Highlight || ready()) return;
+  if (asked || ready()) return;
   asked = true;
-  void Highlight.ready().then(
-    () => ready.set(true),
-    (error: unknown) => {
-      failed.set(true);
-      console.warn(`[deskfolk] code keeps NSH's colours: ${error instanceof Error ? error.message : String(error)}`);
-    },
-  );
+  void loadHighlight().then((highlight) => {
+    if (!highlight) {
+      asked = false;
+      return;
+    }
+    if (ready()) return;
+    return highlight.ready().then(
+      () => ready.set(true),
+      (error: unknown) => {
+        failed.set(true);
+        console.warn(`[deskfolk] code keeps NSH's colours: ${error instanceof Error ? error.message : String(error)}`);
+      },
+    );
+  });
 }
 
 /** Whether code can be coloured now (a signal: it turns true on the web once the colours are read). */

@@ -39,13 +39,13 @@ import { MessageImageLightbox, type ImageOrigin } from "../chat/MessageImageLigh
 import { ArtifactAnnotBar } from "./ArtifactAnnotBar";
 import { ArtifactBody, type ArtifactEditorHandle, type ArtifactPdfHandle } from "./ArtifactBody";
 import { ArtifactDirtyDialog } from "./ArtifactDirtyDialog";
-import { ArtifactTree } from "./ArtifactTree";
+import { ArtifactTree } from "../lazy-views";
 import { ArtifactTreeMenu } from "./ArtifactTreeMenu";
 import { DangerDialog } from "./DangerDialog";
 import { FileDownload } from "./FileDownload";
 import { mediaFilePath } from "./media-source";
-import { officeSourceOf } from "./office-model";
-import { pdfSourceOf } from "./pdf-pages";
+import { officeSourceOf } from "./office-source";
+import { pdfSourceOf } from "./pdf-source";
 import type { ArtifactPane } from "./ShellPreview";
 import { onGlassCard } from "../glass";
 

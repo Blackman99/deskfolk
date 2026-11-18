@@ -17,7 +17,7 @@ import { pushPermission } from "../../m/remote/push.ts";
 import { copy, runtime } from "../../runtime";
 import { NotificationCategories } from "./notification-categories";
 import { NotificationDeviceCard } from "./notification-device";
-import { NotificationQuietHours } from "./notification-quiet-hours";
+import { NotificationQuietHours } from "../lazy-views";
 import { closeFeedback, testErrorText, type CategoryKey } from "./notification-view";
 
 export function NotificationSettings() {

@@ -16,7 +16,7 @@ import { describeStep, stepRow, type StepLine, type StepRow } from "../../m/chat
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
 import { tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";

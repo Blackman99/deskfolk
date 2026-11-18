@@ -20,9 +20,8 @@ import { holdFullscreenPreview } from "../../m/overlays/fullscreen-preview.ts";
 import { slideForKey } from "../../m/overlays/office/slides.ts";
 import { Button } from "../Button";
 import { IconButton } from "../IconButton";
-import { SheetView } from "./office-sheet";
+import { SheetView, WordView } from "../lazy-views";
 import { SlideView } from "./office-slides";
-import { WordView } from "./office-document";
 import {
   closeOffice,
   failureOf,
