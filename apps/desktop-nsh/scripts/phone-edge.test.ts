@@ -33,6 +33,19 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("the page's policy runs no inline script and no eval; WebAssembly compiles from the origin", () => {
+  // Moved here from the messenger's xss test with the rest of the phone page.
+  const csp = productionCsp(PAGE);
+  expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+  // `'wasm-unsafe-eval'` compiles WebAssembly only (the NSH page's engine); no eval of script.
+  expect(csp).not.toContain("'unsafe-eval'");
+  expect(csp).toContain("'wasm-unsafe-eval'");
+  expect(csp).toContain("script-src-attr 'none'");
+  expect(csp).toContain("frame-src blob:");
+  expect(csp).toContain("manifest-src 'self'");
+  expect(csp).toContain("connect-src 'self' wss: https:");
+});
+
 test("the edge passes on exactly the routes the deployed Caddy does", () => {
   const caddy = readFileSync(join(repo, "deploy", "remote", "Caddyfile"), "utf8");
   const line = /@relay path ([^\n]+)/.exec(caddy)?.[1] ?? "";

@@ -27,7 +27,7 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
   ".webmanifest": "application/manifest+json",
   ".png": "image/png",
-  // The Svelte page's (`--from-svelte`): its badge and fonts.
+  // Pictures and fonts, as the production edge types them.
   ".svg": "image/svg+xml",
   ".woff2": "font/woff2",
   ".txt": "text/plain; charset=utf-8",
