@@ -1306,24 +1306,32 @@ The user said that on a phone, settings should have no head and keep the main bo
   - 每行消息的 `arriveMotion` 一直绑着，历史消息也绑。200 行时，带绑定的视图从 53 个变成 147 个，四分之一速下每帧的回调从 1.2 ms 变成 7 ms，面板滑入只画出 18 步里的 11 到 14 步。
   - `FolkAvatar` 空闲时也绑着约 10 个部件，眨眼又是无限循环，所以动画图一直在动，页面空闲时也每帧走一遍。打开 reduce motion 后，空闲帧变成零。
   - 手机上，会话列表一直挂在对话页下面。
+  - `ChatHeader` 的脉冲（`pulseMotion(() => true)`）从挂载起就一直在播，`ChatTabLabel`、`PaneChatBar`、`BotDmEntry`、`ProjectSubagentEntry` 的也一样。空闲时没有视图绑定它，屏幕上什么都不动，动画图却每帧都在走：对话页开着时，空闲的页面 2 秒跑满 120 帧。这一条是落地后在 main 的构建上补测才发现的：把包里的 `iterations: "infinite"` 逐个改掉二分，才定位到它；强制 GC 停不下它，reduce motion 能。
   - Bot 回复时，中继消息的处理让主线程忙。四分之一速下一条要 88 到 343 ms，大部分在 NSH 的 JS↔wasm 桥里，这些帧也跟着丢。
 - **改了什么。**
   - `arriveMotion` 只在刚到的行播放时给出动画值，播完就不给了，历史行一直不给。
   - `FolkAvatar` 的部件只在各自的动作播放时绑定。眨眼改成计时器触发的一次 208 ms 动画，两次之间什么都不动。
   - `LoopsHeld`（`ui/interface/motion.ts`）在手机会话列表被页面盖住时为真，头像的循环和 `SessionAvatar`、`AgentAvatar` 的工作脉冲都在它下面停。
   - 在网页上，对话列表带一个 `perspective` 变换，单独成一层。NSH 不认 `will-change`，恒等的变换又会被丢掉，所以用它。
+  - `ChatHeader` 的脉冲只在会呼吸的小点显示时播；其余几处的脉冲做进小点自己，小点在时才播。所有循环（`pulseMotion`、头像的动作、工作脉冲、回复中的点、流式光标、历史的闪烁）都在 effect 的 cleanup 里停，组件没了它就停。
 - **为什么要那一层。** 原先每行的 motion 变换里都有 `rotateX(0deg) rotateY(0deg)`，浏览器给每行一个合成层（229 个）。去掉行上的绑定以后，WebKit 每一步都重画整段对话，面板滑入从 20 步掉到 13 步。只给面板和背景加 `will-change` 没有用，给对话列表一层就好了。
-- **结果。** 测的是 200 行的对话、热状态打开，基于 dcf37282 的手机包：
+- **结果。** 200 行的对话，热状态打开，五次里后四次。「改前」是 dcf37282 的手机包，「改后」是 30a08ffe 加上一节那条脉冲的修复；都在 Chromium 四分之一速和 WebKit 不降速下量：
 
-| | 改前 | 改后 | 改后加 #2390 |
-| --- | --- | --- | --- |
-| Chromium 四分之一速：滑入步数，满分 18 | 11–14 | 14–15 | 15–18 |
-| Chromium 四分之一速：每帧回调 | 7 ms | 1.7 ms | 1.7 ms |
-| WebKit：滑入步数 | 20 | 21–22 | — |
-| WebKit：最大一步 | 40–48 px | 18–27 px | — |
+| | 改前 | 改后 |
+| --- | --- | --- |
+| Chromium：滑入步数，满分 18 | 10–12 | 14–15 |
+| Chromium：每帧回调 | 6.8–7.4 ms | 1.2–1.4 ms |
+| Chromium：首次打开 | 6 步，最大一步 148 px | 4 步，197 px |
+| WebKit：滑入步数 | 20 | 21–22 |
+| WebKit：最大一步 | 38–43 px | 17–26 px |
+| 空闲、对话页开着：2 秒里的帧 | 120 | 0–14，只有眨眼 |
+
+  - Chromium 的首次打开没有变好：那是动画起点的问题，要等 #2390 进了 pin。#2390 打进 f199fe7a 时期的包里量过，热状态 15–18 步。
+  - Bot 回复时（Mac 每 120 ms 推一行）也没有变好，改前 7–17 步，改后 10–15 步，忽好忽坏，看消息落在哪一帧。那段停顿主要在 NSH 的 JS↔wasm 桥里处理消息，这次没碰。
+  - 会话列表被盖住时，列表里的样式写入从 544 次（12 秒）变成 0；按返回后恢复眨眼。
 
 - **没验证的。** 真机。用户的安卓手机还没看过，线上页面也没换。
-- **检查。** `.ui` 的 kit-identity、chat-transcript、chat-stage、sidebar、shell、phone-web、chat-header 都过了。`nsh check App.tsx` 只报 `page-route.test.ts` 两处既有的错误。`sidebar-rail` 的提示测试改成能看到 200 ms 的等待：之前头像无尽的眨眼让页面一直忙，无头驱动 hover 时顺带把手动时钟走过了这段等待。这个文件从 64 s 变成 11 s。
+- **检查。** 每一步落地前 `.ui` 全部 89 个文件都过了（最后一次 729 个），单测 1476 个也过了。`nsh check App.tsx` 只报 `page-route.test.ts` 的既有错误，那是另一处改动带进来的。`sidebar-rail` 的提示测试改成能看到 200 ms 的等待：之前头像无尽的眨眼让页面一直忙，无头驱动 hover 时顺带把手动时钟走过了这段等待。这个文件从 64 s 变成 11 s。脉冲那条修复是在 main 的构建上用 `MutationObserver` 和 rAF 计数核对的：眨眼照常，没有残留的行内 opacity，会话列表盖住时不写、返回后恢复。
 
 The user said animations on the remote phone page (Chrome on Android, installed as a PWA) stuttered where the old Svelte page hadn't, opening a sheet of options for one.
 
@@ -1340,24 +1348,32 @@ The user said animations on the remote phone page (Chrome on Android, installed 
   - Every message row kept its `arriveMotion` bound, history included. With 200 lines, views with bindings went from 53 to 147, the frame callback at 4× from 1.2 to 7 ms, and the sheet's entrance drew 11 to 14 of its 18 steps.
   - `FolkAvatar` bound about ten parts while idle and blinked from an endless loop, so the graph never rested and an idle page stepped it every frame. With reduce motion the idle frames went to zero.
   - On the phone the roster stays mounted under the conversation page.
+  - `ChatHeader`'s pulse (`pulseMotion(() => true)`) played from mount, and so did `ChatTabLabel`'s, `PaneChatBar`'s, `BotDmEntry`'s and `ProjectSubagentEntry`'s. At rest no view bound it, so nothing on screen moved, yet the animation graph stepped every frame: an idle page with a conversation open ran all 120 frames in 2 s. This was found only by measuring main's build after landing. Changing the bundle's `iterations: "infinite"` sites one group at a time pinned it; a forced GC didn't stop it, and reduce motion did.
   - While Bots reply, handling relay messages keeps the main thread busy. One message took 88 to 343 ms at 4×, most of it in NSH's JS↔wasm bridge, and those frames drop too.
 - **What changed.**
   - `arriveMotion` gives its values only while a row that just arrived rises, then none. History rows never get them.
   - `FolkAvatar`'s parts bind their motions only while those play. A blink is one 208 ms animation started from a timer, with nothing moving in between.
   - `LoopsHeld` (`ui/interface/motion.ts`) is true in the phone's roster while a page covers it. The avatars' loops and `SessionAvatar`'s and `AgentAvatar`'s working pulses stop under it.
   - On the web the transcript list carries a `perspective` transform, which gives it a layer of its own. NSH takes no `will-change` and drops identity transforms, so this is the way to get one.
+  - `ChatHeader`'s pulse plays only while a dot that breathes shows. The other pulses are made inside their dot, so each plays while it is there. Every loop (`pulseMotion`, a folk's work, the working pulses, the replying dots, the stream's cursor, the history shimmer) stops in its effect's cleanup, so it ends with its component.
 - **Why the layer.** Each row's motion transform had included `rotateX(0deg) rotateY(0deg)`, which gave every row a compositing layer (229 of them). Once the rows lost their bindings, WebKit repainted the whole transcript on every step, and the sheet's entrance fell from 20 steps to 13. `will-change` on the panel and backdrop didn't help; a layer for the transcript did.
-- **Results.** A 200-line conversation, warm opens, phone package built on dcf37282:
+- **Results.** A 200-line conversation, the last four of five warm opens. "Before" is the phone package of dcf37282; "after" is 30a08ffe plus the pulse fix above. Measured in Chromium at 4× and in WebKit unthrottled:
 
-| | Before | After | After, with #2390 |
-| --- | --- | --- | --- |
-| Chromium at 4×: entrance steps, of 18 | 11–14 | 14–15 | 15–18 |
-| Chromium at 4×: frame callback | 7 ms | 1.7 ms | 1.7 ms |
-| WebKit: entrance steps | 20 | 21–22 | — |
-| WebKit: largest step | 40–48 px | 18–27 px | — |
+| | Before | After |
+| --- | --- | --- |
+| Chromium: entrance steps, of 18 | 10–12 | 14–15 |
+| Chromium: frame callback | 6.8–7.4 ms | 1.2–1.4 ms |
+| Chromium: first open | 6 steps, largest 148 px | 4 steps, 197 px |
+| WebKit: entrance steps | 20 | 21–22 |
+| WebKit: largest step | 38–43 px | 17–26 px |
+| Idle, a conversation open: frames in 2 s | 120 | 0–14, a blink's |
+
+  - Chromium's first open is no better. That is the animation's start, which needs #2390 in the pin. Patched into a package of the f199fe7a days, #2390 gave 15–18 steps on warm opens.
+  - Neither is a sheet opened while a Bot replies (the Mac posting a line every 120 ms): 7–17 steps before, 10–15 after, varying with where the messages land. That pause is mostly NSH's JS↔wasm bridge handling the messages, which this doesn't touch.
+  - With the roster covered, style writes inside it went from 544 in 12 s to none, and its blinks came back after Back.
 
 - **Not verified.** Real phones. The user's Android phone hasn't been checked, and the live page hasn't been replaced.
-- **Checks.** `.ui`'s kit-identity, chat-transcript, chat-stage, sidebar, shell, phone-web and chat-header pass. `nsh check App.tsx` reports only the two existing errors in `page-route.test.ts`. `sidebar-rail`'s tip test now sees the tip's 200 ms wait. The folks' endless blinks had kept the page busy, so a headless hover ran the manual clock past that wait before it resolved. That file went from 64 s to 11 s.
+- **Checks.** Before each landing all 89 `.ui` files passed (729 tests the last time), and so did the 1476 unit tests. `nsh check App.tsx` reports only existing errors in `page-route.test.ts`, which another change brought in. `sidebar-rail`'s tip test now sees the tip's 200 ms wait. The folks' endless blinks had kept the page busy, so a headless hover ran the manual clock past that wait before it resolved, and that file went from 64 s to 11 s. The pulse fix was checked on main's build with a `MutationObserver` and rAF counts. Blinks still happen, no inline opacity is left behind, and the covered roster writes nothing until Back, after which it blinks again.
 
 ## 补记 2026-11-18（四十八）：在代码块和表格上上下滑，滚的是会话 / Addendum 2026-11-18 (48): a vertical swipe on a code block or a table scrolls the conversation
 
