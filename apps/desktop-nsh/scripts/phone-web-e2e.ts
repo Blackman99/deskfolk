@@ -621,7 +621,10 @@ try {
   mkdirSync(join(workspace, "out"), { recursive: true });
   writeFileSync(join(workspace, "out", "report.md"), "# 报告\n\n正文一行。\n");
   writeFileSync(join(workspace, "notes.md"), "# 笔记\n\n顶层文件。\n");
-  await mac.api("POST", `/v1/sessions/${mac.writerDirect}/messages`, { body: "看这个文件 [report.md](out/report.md)" });
+  // A folder longer than the phone, for the workspace's list to scroll once it is opened.
+  mkdirSync(join(workspace, "many"), { recursive: true });
+  for (let i = 1; i <= 60; i += 1) writeFileSync(join(workspace, "many", `item-${String(i).padStart(2, "0")}.md`), `# ${i}\n`);
+  await mac.api("POST",`/v1/sessions/${mac.writerDirect}/messages`, { body: "看这个文件 [report.md](out/report.md)" });
   await until("the file's link on the phone", 20_000, () => shownIn(page, "conversation", "看这个文件"));
   await page.getByText("report.md", { exact: true }).last().tap();
   await until("the file over the conversation", 15_000, () => onTop(page, "preview-sheet"));
@@ -684,6 +687,67 @@ try {
   await mac.api("PATCH", `/v1/bots/${editorBot.id}`, { name: "Editor" });
   await until("the name back on the phone", 20_000, async () => (await page.getByText(renamed, { exact: true }).count()) === 0);
   await page.screenshot({ path: shot("3c-workspace") });
+  // The workspace's list again, over the file, with a folder longer than the phone opened in it: the
+  // list is the sheet's one scroll view (it sat in the sheet's own, two bars side by side), and a
+  // finger swiping up and down a row scrolls it (the row took the swipe for a drag onto a composer).
+  await testid(page, "artifact-picker").first().tap();
+  await testid(page, "bottom-sheet-panel").waitFor({ timeout: 10_000 });
+  await page.locator('[data-testid="bottom-sheet-panel"] [data-testid="artifact-tree-row:many"]').tap();
+  await testid(page, "artifact-tree-row:many/item-01.md").waitFor({ timeout: 15_000 });
+  const sheetScrolls = () =>
+    page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="bottom-sheet-panel"]');
+      return [...(panel?.querySelectorAll(".nsh-scroll") ?? [])].map((el) => ({
+        tree: !!el.closest('[data-testid="workspace-tree"]'),
+        nested: !!el.parentElement?.closest(".nsh-scroll"),
+        top: el.scrollTop,
+        size: `${el.scrollHeight}/${el.clientHeight}`,
+      }));
+    });
+  const inSheet = await until("the opened folder longer than the list", 10_000, async () => {
+    const views = await sheetScrolls();
+    const tree = views.find((v) => v.tree);
+    return tree && Number(tree.size.split("/")[0]) > Number(tree.size.split("/")[1]) + 100 ? views : undefined;
+  });
+  const faults: string[] = [];
+  if (inSheet.length !== 1 || inSheet[0]!.nested) faults.push(`the workspace's sheet has scroll views other than its list: ${JSON.stringify(inSheet)}`);
+  if (engine === "chromium") {
+    const cdp = await context.newCDPSession(page);
+    const box = (await testid(page, "artifact-tree-row:many/item-10.md").boundingBox())!;
+    const listTop = async () => (await sheetScrolls()).find((v) => v.tree)!.top;
+    // A drag shows its ghost only while the finger is down: note whether one came.
+    await page.evaluate(() => {
+      const w = window as unknown as { dragSeen: boolean };
+      w.dragSeen = false;
+      new MutationObserver((_, watcher) => {
+        if (!document.querySelector('[data-testid="workspace-drag-ghost"]')) return;
+        w.dragSeen = true;
+        watcher.disconnect();
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    const before = await listTop();
+    // A finger's few points a frame, not DevTools' gesture: its long first step let the browser take
+    // the swipe before the row's 6 pt drag threshold could, so the list scrolled anyway.
+    const x = Math.round(box.x + box.width / 2);
+    const y0 = Math.round(box.y + box.height / 2);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y0 }] });
+    for (let dy = 3; dy <= 300; dy += 3) {
+      await Bun.sleep(16);
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y0 - dy }] });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await Bun.sleep(400);
+    const moved = (await listTop()) - before;
+    await cdp.detach();
+    const dragged = await page.evaluate(() => (window as unknown as { dragSeen: boolean }).dragSeen);
+    if (moved < 100) faults.push(`a swipe up a row of the workspace's list moved it ${Math.round(moved)} px${dragged ? " (the row took it for a drag)" : ""}`);
+    else if (dragged) faults.push("a swipe up a row of the workspace's list scrolled it and started a drag as well");
+  }
+  if (faults.length) throw new Error(faults.join("; "));
+  await page.screenshot({ path: shot("3c-workspace-list") });
+  await testid(page, "bottom-sheet-close").tap();
+  await until("the workspace's list put away", 10_000, async () => (await testid(page, "bottom-sheet-panel").count()) === 0);
+  step(`the workspace's list over the file is the sheet's one scroll view${engine === "chromium" ? "; a swipe up a row scrolls it (touch)" : " (no touch swipes in WebKit here)"}`);
   await back();
   await until("the workspace put away", 10_000, async () => (await testid(page, "workspace-pane").count()) === 0);
   step("the workspace from the tools: a file picked in it stays while the Mac renames a Bot; Back puts it away");
