@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The workspace's file list scrolls on the phone again
+
+- On the phone, the list a file preview's workspace or folder picker opens could not be scrolled with a finger: swiping up or down a row was taken for dragging that file towards a conversation's message box, which is never on screen beside the list there, so the list stood still. A finger now scrolls the list on the phone's page (phone or tablet) and leaves the rows alone, as the earlier phone page did; on the desktop the mouse still drags rows onto a message box.
+- The same list sat inside a scrolling box of the sheet's own, so two scroll bars showed side by side and the outer one moved a few points. It is now the sheet's only scrolling view, with one bar.
+
 ### Closing a terminal tab on the desktop ends it; the phone's terminal reattaches to the one already running
 
 - On the desktop a terminal tab is its shell: closing the tab ends it, as closing a Terminal.app window does, without asking, and the tab's head no longer has End session. Closing a whole pane, or Close Others and the like, does the same; dragging a tab to another pane or floating it is not closing. Reset Layout ends nothing: those terminals keep running under Reattach in + and the empty pane. On Windows and Linux, with a terminal in front, Ctrl+W is the shell's delete-a-word (it used to close the tab), and Ctrl+Shift+W closes the tab from anywhere.
