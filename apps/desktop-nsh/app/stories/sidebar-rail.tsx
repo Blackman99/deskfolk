@@ -69,6 +69,12 @@ const HOLDS = [
 const log = signal<string[]>([]);
 const say = (line: string) => log.set([...log(), line]);
 
+/** Running terminals no tab shows: the tools list them under the new terminal, on the workbench only. */
+const reattach = signal([
+  { id: "term-a", name: "workspace" },
+  { id: "term-b", name: "real-bot · 已结束" },
+]);
+
 export default function SidebarRailStory() {
   const pinned = signal<string[]>([]);
   const railTools = signal(false);
@@ -109,6 +115,8 @@ export default function SidebarRailStory() {
       onOpenUsage={() => say("usage")}
       onOpenRoles={() => say("roles")}
       onOpenTerminal={() => say("terminal")}
+      reattachTerminals={reattach()}
+      onReattachTerminal={(id) => say(`reattach:${id}`)}
       onOpenScreen={isPhone ? () => say("screen") : null}
       onOpenWorkspace={isPhone ? () => say("workspace") : null}
       onOpenArchived={() => say("archived")}
@@ -137,6 +145,12 @@ export default function SidebarRailStory() {
           onOpenSpend={() => say("rail-spend")}
           workbench={workbench()}
           onNewTerminal={() => say("rail-terminal")}
+          reattachTerminals={reattach()}
+          onReattachTerminal={(id) => {
+            // Reattached, it has a tab: the tools no longer list it.
+            reattach.set(reattach().filter((row) => row.id !== id));
+            say(`rail-reattach:${id}`);
+          }}
           onOpenArchived={() => say("rail-archived")}
           onOpenSettings={() => {
             runtime.settingsOpen = !runtime.settingsOpen;

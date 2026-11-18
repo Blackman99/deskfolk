@@ -135,6 +135,8 @@ test("a phone's tools are a sheet whose pages include the workspace and the scre
   expect(app.shows("id:tools-workspace")).toBe(true);
   expect(app.shows("id:tools-screen")).toBe(true);
   expect(app.shows(`id:tools-routines >> text:${t.calendar.open}`)).toBe(true);
+  // The terminal page reattaches by itself, so the sheet lists no 接回 rows.
+  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
   await app.press("id:tools-screen");
   await app.waitUntil(() => log(app).includes("screen"));
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });

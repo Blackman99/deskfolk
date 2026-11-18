@@ -48,7 +48,7 @@ import { PinnedRoster } from "./PinnedRoster";
 import { ProjectAddMenu } from "./ProjectAddMenu";
 import type { MenuAt } from "./SessionRow";
 import { SidebarFoot } from "./SidebarFoot";
-import { ToolsMenu } from "./ToolsMenu";
+import { ToolsMenu, type TerminalToReattach } from "./ToolsMenu";
 import { ToolsToggle } from "./ToolsToggle";
 import { WorkingFilter } from "./WorkingFilter";
 import { SidebarList, type SidebarListEnv } from "./sidebar-list";
@@ -92,6 +92,9 @@ export function Sidebar(props: {
   /** Whether the workbench is on screen, so the tools open as its tabs (a tablet on a remote connection has none). */
   workbench: boolean;
   onNewTerminal: () => void;
+  /** The running terminals no tab shows, for the tools' 接回 rows (`ToolsMenu`). */
+  reattachTerminals?: TerminalToReattach[];
+  onReattachTerminal?: (id: string) => void;
   onOpenSettings: () => void;
   onCreateBot: () => void;
   onCreateGroup: () => void;
@@ -592,6 +595,8 @@ export function Sidebar(props: {
           }}
           onOpenRoles={() => runtime.openRoles()}
           onOpenTerminal={() => (props.workbench ? props.onNewTerminal() : runtime.openTerminal())}
+          reattachTerminals={props.reattachTerminals}
+          onReattachTerminal={props.onReattachTerminal}
           onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}
           onOpenWorkspace={phone() ? props.onToggleWorkspace : null}
           screenHost={runtime.screenHost}

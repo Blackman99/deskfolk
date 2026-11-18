@@ -1,5 +1,6 @@
 /**
- * The 工具 popover (`ToolsMenu.svelte`): routines, spend, usage, a terminal, the Mac's screen on a
+ * The 工具 popover (`ToolsMenu.svelte`): routines, spend, usage, a terminal (on the desktop's
+ * workbench a new one, then 接回 for each running session no tab shows), the Mac's screen on a
  * phone that can reach it, and — after a line — the archived sessions. One menu for every button
  * that opens it: the list's footer, the phone's search row, and the rail the list folds into. The
  * button stays with its owner (`anchor` is its ref); this hangs off it, walks with the arrow keys,
@@ -18,6 +19,8 @@ import { shadow } from "../styles";
 import { rovingMenu } from "./menu-roving";
 
 export type ToolsCurrent = { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; workspace?: boolean; archived?: boolean };
+/** A running terminal session to reattach to: its id, and its name as its tab would have it. */
+export type TerminalToReattach = { id: string; name: string };
 
 export function ToolsMenu(props: {
   locale: "zh" | "en";
@@ -47,6 +50,13 @@ export function ToolsMenu(props: {
   /** Roles (ADR 0083): the app's own calls, their models and prompts, as a page of its own. */
   onOpenRoles?: (() => void) | null;
   onOpenTerminal: () => void;
+  /**
+   * The sessions no workbench tab shows — one the phone started, one Reset Layout left — listed
+   * under the new terminal as 接回 rows; a tab's own shell is never one of them. Only on the
+   * desktop's workbench (`pages` false): a page reattaches by itself.
+   */
+  reattachTerminals?: TerminalToReattach[];
+  onReattachTerminal?: ((id: string) => void) | null;
   /** The remote screen; null where this is not a phone on a Mac that offers it. */
   onOpenScreen?: (() => void) | null;
   /** The workspace, as a page among the tools on a phone, whose bottom bar no longer has it; null elsewhere. */
@@ -56,12 +66,15 @@ export function ToolsMenu(props: {
   onOpenArchived: () => void;
 }) {
   const current = (): ToolsCurrent => props.current ?? {};
+  /** The 接回 rows: the desktop's workbench only, and read only while the menu is open. */
+  const reattachable = (): TerminalToReattach[] => (props.open && !props.pages && props.onReattachTerminal ? props.reattachTerminals ?? [] : []);
   const keys = () => [
     ...(props.onOpenWorkspace ? ["workspace"] : []),
     "routines",
     "spend",
     ...(props.onOpenUsage ? ["usage"] : []),
     "terminal",
+    ...reattachable().map((row) => `reattach-${row.id}`),
     ...(props.onOpenScreen ? ["screen"] : []),
     ...(props.onOpenRoles ? ["roles"] : []),
     "archived",
@@ -124,6 +137,14 @@ export function ToolsMenu(props: {
         {(open) => entry("usage", "gauge", () => copy().usage.open, () => current().usage, () => open()())}
       </If>
       {entry("terminal", "terminal", () => (props.pages ? copy().terminal.title : copy().terminal.newTab), () => current().terminal, props.onOpenTerminal)}
+      <Each of={reattachable()} key={(row) => row.id}>
+        {(row) => {
+          // The row's key: it stays the same for the row's life, and the press runs after the
+          // menu has closed and taken the row away.
+          const id = row().id;
+          return entry(`reattach-${id}`, "terminal", () => copy().terminal.reattach(row().name), () => false, () => props.onReattachTerminal?.(id));
+        }}
+      </Each>
       <If when={props.onOpenScreen}>
         {(open) => entry("screen", "monitor", () => screenCopy(copy(), props.screenHost ?? "mac").title, () => current().screen, () => open()())}
       </If>

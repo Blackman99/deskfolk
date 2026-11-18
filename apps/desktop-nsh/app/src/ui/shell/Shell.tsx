@@ -103,6 +103,11 @@ function ShellBody(props: { s: ShellState }) {
   provideMenuCommands(workbench.runMenuCommand);
   /** A conversation pulled out of the roster onto the workbench: only where the workbench is. */
   const sessionDrag = createSessionDrag({ source: workbench.sessionDragSource, titleOf: s.titleOf });
+  /**
+   * The tools' 接回 rows: the running terminals no tab shows, named as their tabs would be. Read
+   * by the menu only while it is open; the list changes with every layout commit.
+   */
+  const reattachTerminals = () => workbench.untabbedTerminals.map((row) => ({ id: row.id, name: workbench.terminalName(row) }));
   /** A page covers the roster on a phone while one is open. */
   const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || s.selected());
   /** A phone's page covers the roster: its avatars' loops hold still under it (`LoopsHeld`). */
@@ -192,6 +197,8 @@ function ShellBody(props: { s: ShellState }) {
                     onOpenSpend={artifact.openSpendFromUi}
                     workbench={s.wide()}
                     onNewTerminal={() => void workbench.openNewTerminal(null)}
+                    reattachTerminals={reattachTerminals()}
+                    onReattachTerminal={workbench.reattachTerminal}
                     onOpenSettings={() => runtime.openSettings()}
                     onCreateBot={s.openCreateBot}
                     onCreateGroup={s.openCreateGroup}
@@ -222,6 +229,8 @@ function ShellBody(props: { s: ShellState }) {
                   onOpenSpend={artifact.openSpendFromUi}
                   workbench={s.wide()}
                   onNewTerminal={() => void workbench.openNewTerminal(null)}
+                  reattachTerminals={reattachTerminals()}
+                  onReattachTerminal={workbench.reattachTerminal}
                   onOpenArchived={s.openArchivedFromRail}
                   onOpenSettings={() => runtime.openSettings()}
                   onDragSession={s.wide() ? sessionDrag.drag : undefined}

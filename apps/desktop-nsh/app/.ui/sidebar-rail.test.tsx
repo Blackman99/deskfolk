@@ -186,6 +186,29 @@ test("the rail's tools open a menu out to the side that closes on Escape, a pres
   await app.waitUntil(() => log(app).includes("rail-archived"));
 });
 
+test("on the workbench the tools offer the terminals no tab shows under a new one; one picked leaves the list", async () => {
+  const app = await open();
+  await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
+  expect(app.shows(`id:tools-terminal >> text:${t.terminal.newTab}`)).toBe(true);
+  expect(app.shows(`id:tools-reattach-term-a >> text:${t.terminal.reattach("workspace")}`)).toBe(true);
+  expect(app.shows(`id:tools-reattach-term-b >> text:${t.terminal.reattach("real-bot · 已结束")}`)).toBe(true);
+  await app.press("id:tools-reattach-term-a");
+  await app.waitUntil(() => log(app).includes("rail-reattach:term-a"));
+  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+  // Reattached, it has a tab, so the tools no longer offer it; the other one is still there.
+  await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
+  expect(app.shows("id:tools-reattach-term-a")).toBe(false);
+  expect(app.shows("id:tools-reattach-term-b")).toBe(true);
+  await app.press("id:tools-reattach-term-b");
+  await app.waitUntil(() => log(app).includes("rail-reattach:term-b"));
+  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+  await app.press("id:rail-tools");
+  await app.waitFor("id:sidebar-tools-menu");
+  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
+});
+
 test("without a workbench the tools name pages and a new terminal is the runtime's own", async () => {
   const app = await open();
   await app.press("id:story-no-workbench");
@@ -194,6 +217,8 @@ test("without a workbench the tools name pages and a new terminal is the runtime
   await app.waitFor("id:sidebar-tools-menu");
   expect(app.shows(`id:tools-terminal >> text:${t.terminal.title}`)).toBe(true);
   expect(app.shows(`id:tools-routines >> text:${t.calendar.open}`)).toBe(true);
+  // A page reattaches by itself: no 接回 rows here.
+  expect(app.texts().some((text) => text.startsWith("接回 · "))).toBe(false);
   await app.press("id:tools-terminal");
   await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
   expect(log(app)).not.toContain("rail-terminal");

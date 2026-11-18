@@ -1,7 +1,7 @@
 /**
  * A terminal tab on a real runtime and a real shell: its head and Stop, no 结束会话, closing the tab
- * ending the session, and a shell that exits. Skipped when the runtime has no pty helper to start
- * one (`seeded.pty`).
+ * ending the session, a shell that exits, and the tools reattaching to one no tab shows. Skipped
+ * when the runtime has no pty helper to start one (`seeded.pty`).
  *
  * The runtime's list is read where the app shows it: an empty pane lists every session no tab
  * shows under 可接回, so "没有可接回的终端" there means the runtime has forgotten the ones closed.
@@ -72,6 +72,45 @@ shellTest("a shell that exits keeps its tab and says how it ended; closing the t
   await app.waitFor("text:已结束 · 退出码 3", { timeout: 15_000 });
   expect(app.shows("id:terminal-stop")).toBe(false);
   expect(app.count("id:pane-tab-icon-terminal")).toBe(1);
+  await app.press(CLOSE_TAB);
+  await forgotten(app);
+});
+
+shellTest("the tools offer a shell no tab shows, never a tab's own, and reattach to it in a tab", async () => {
+  // A shell the phone's terminal page started: no desktop tab shows it.
+  const phone = await openApp({ width: 390, height: 844 });
+  await phone.waitFor(`id:session-${seeded.writerDirect}`, { timeout: 15_000 });
+  await phone.press("id:tools-toggle");
+  await phone.press("id:tools-terminal");
+  await phone.waitFor("id:terminal", { timeout: 15_000 });
+  await phone.press("id:terminal");
+  await phone.type("label:Terminal", "echo phone-$((6*7))");
+  await phone.keyboard.press("enter");
+  await phone.waitFor("text:phone-42", { timeout: 10_000 });
+
+  // The desktop's own tab is a second shell; only the phone's is offered.
+  const app = await newTerminal();
+  const offered = () => app.texts().filter((text) => text.startsWith("接回 · "));
+  await app.press("id:tools-toggle");
+  await app.waitFor("id:sidebar-tools-menu");
+  await app.waitUntil(() => offered().length === 1, { timeout: 10_000 });
+  await app.press(`id:sidebar-tools-menu >> text:${offered()[0]}`);
+  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+  // A tab of its own, with the phone's screen read back; no shell was started for it.
+  await app.waitUntil(() => app.count("id:pane-tab-icon-terminal") === 2, { timeout: 10_000 });
+  await app.waitFor("text:phone-42", { timeout: 10_000 });
+
+  // Both have tabs now, so the tools offer neither.
+  await app.press("id:tools-toggle");
+  await app.waitFor("id:sidebar-tools-menu");
+  expect(app.shows(`id:tools-terminal >> text:新建终端`)).toBe(true);
+  expect(offered()).toEqual([]);
+  await app.keyboard.press("escape");
+  await app.waitFor("id:sidebar-tools-menu", { state: "gone" });
+
+  // Closing both tabs ends both shells, the phone's too.
+  await app.press(`${CLOSE_TAB} >> nth=1`);
+  await app.waitUntil(() => app.count("id:pane-tab-icon-terminal") === 1, { timeout: 10_000 });
   await app.press(CLOSE_TAB);
   await forgotten(app);
 });

@@ -450,6 +450,16 @@ export class ShellWorkbench {
     else this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
   };
 
+  /**
+   * A session no tab shows (`untabbedTerminals`), in a tab where a new terminal would open: the
+   * tools' 接回, which has no pane of its own to open into.
+   */
+  reattachTerminal = (terminalId: string): void => {
+    const cwd = this.getRuntime().terminals.find((row) => row.id === terminalId)?.cwd || null;
+    const content: PaneContent = { kind: "terminal", terminalId, cwd };
+    this.commitLayout(openContent(this.layout, content, this.openOptions(content)));
+  };
+
   /** Whether the tab in front of the focused pane, the one the keyboard is in, is a terminal. */
   terminalInFront = (): boolean => {
     const leaf = leafById(this.layout, this.layout.focus.leafId);

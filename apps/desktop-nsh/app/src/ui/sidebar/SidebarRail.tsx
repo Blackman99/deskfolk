@@ -30,7 +30,7 @@ import { AgentLogo } from "../settings/AgentLogo";
 import { floor } from "../interface/floor";
 import { dismissRailTips, RailTooltip } from "./RailTooltip";
 import { settingsEntryColours } from "./foot-action";
-import { ToolsMenu } from "./ToolsMenu";
+import { ToolsMenu, type TerminalToReattach } from "./ToolsMenu";
 import { previewIndex, statusMessages } from "./sidebar-previews";
 import { SIDE_MUTED_TINT } from "../glass";
 import { foldMotion } from "./fold-motion";
@@ -52,6 +52,9 @@ export function SidebarRail(props: {
   /** Whether the workbench is on screen; a tablet on a remote connection folds its list without one. */
   workbench: boolean;
   onNewTerminal: () => void;
+  /** The running terminals no tab shows, for the tools' 接回 rows (`ToolsMenu`). */
+  reattachTerminals?: TerminalToReattach[];
+  onReattachTerminal?: (id: string) => void;
   /** The archived list is a view of the full list; this opens the list already on it. */
   onOpenArchived: () => void;
   onOpenSettings: () => void;
@@ -419,6 +422,8 @@ export function SidebarRail(props: {
         onOpenUsage={() => runtime.openUsage()}
         onOpenRoles={() => runtime.openRoles()}
         onOpenTerminal={() => (props.workbench ? props.onNewTerminal() : runtime.openTerminal())}
+        reattachTerminals={props.reattachTerminals}
+        onReattachTerminal={props.onReattachTerminal}
         onOpenArchived={props.onOpenArchived}
       />
     </>
