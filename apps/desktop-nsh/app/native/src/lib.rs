@@ -1,7 +1,7 @@
 //! The app's own Rust, built for every target NSH builds the app for — the desktops' hosts and the
 //! web's wasm alike — so what NSH lacks is filled once, on NSH, rather than per platform.
 //!
-//! TSX imports it as `deskfolk/native`.
+//! TSX imports it as `deskfolk/native`. PDF pages are a crate of their own, `app/pdf` (`deskfolk/pdf`).
 
 use nsh_core::prelude::*;
 
@@ -29,7 +29,6 @@ mod highlight;
 mod markdown;
 mod nsh_terminal;
 mod palette;
-mod pdf;
 mod rfb;
 
 pub use files::Files;
@@ -37,11 +36,10 @@ pub use highlight::{CodeColors, CodeColorsElement, CodeColorsProps, Highlight, c
 pub use markdown::Markdown;
 pub use nsh_terminal::{RuntimeEmulator, RuntimeTerminals, RuntimeTerminalsElement, RuntimeTerminalsProps, runtime_terminals};
 pub use office::Office;
-pub use pdf::Documents;
 pub use rfb::Screens;
 
 /// What TSX may import from `deskfolk/native`.
 #[native_module("deskfolk/native")]
 fn native(registry: &mut Registry) {
-    registry.register::<RuntimeTerminals>().register::<CodeColors>().module::<Documents>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>().module::<Files>();
+    registry.register::<RuntimeTerminals>().register::<CodeColors>().module::<Markdown>().module::<Highlight>().module::<Office>().module::<Screens>().module::<Files>();
 }

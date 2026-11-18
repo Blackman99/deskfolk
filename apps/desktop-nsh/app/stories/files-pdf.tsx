@@ -23,7 +23,7 @@ import { WorkspaceView } from "../src/ui/overlays/WorkspaceView";
 /** The password of `LOCKED_PDF`. */
 export const LOCKED_PASSWORD = "open sesame";
 
-/** A one-page PDF with "Secret page words", encrypted (40-bit RC4) with `LOCKED_PASSWORD`, in base64 (`cargo test print_locked_fixture -- --ignored --nocapture` in `app/native` makes it). */
+/** A one-page PDF with "Secret page words", encrypted (40-bit RC4) with `LOCKED_PASSWORD`, in base64 (`cargo test print_locked_fixture -- --ignored --nocapture` in `app/pdf` makes it). */
 const LOCKED_PDF =
   "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvQ29udGVudHMgNCAwIFIgL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNSAwIFIgPj4gPj4gID4+CmVuZG9iago0IDAgb2JqCjw8ICAvTGVuZ3RoIDQ4ID4+CnN0cmVhbQqagLGrH0Rrwrp5vU2gOnk+4jKTmgqXxl2AMvBIfouyHa0eeOc1rBbnA8h5bPJCEFgKZW5kc3RyZWFtCmVuZG9iago1IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKNiAwIG9iago8PCAvRmlsdGVyIC9TdGFuZGFyZCAvViAxIC9SIDIgL08gPDA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDcwNzA3MDc+IC9VIDxlMDQ1NDg2NDRkOWFkNjBiNDQ3YmE0N2M5YjQ0NmMwMDljMGU4ZWU4YjJmMTg4NmU5NzgwOGUwM2NkMGYzNGE3PiAvUCAtNCA+PgplbmRvYmoKeHJlZgowIDcKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNTggMDAwMDAgbiAKMDAwMDAwMDExNSAwMDAwMCBuIAowMDAwMDAwMjQyIDAwMDAwIG4gCjAwMDAwMDAzNDEgMDAwMDAgbiAKMDAwMDAwMDQxMSAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDcgL1Jvb3QgMSAwIFIgL0VuY3J5cHQgNiAwIFIgL0lEIFs8MzAzMTMyMzMzNDM1MzYzNzM4Mzk2MTYyNjM2NDY1NjY+IDwzMDMxMzIzMzM0MzUzNjM3MzgzOTYxNjI2MzY0NjU2Nj5dICA+PgpzdGFydHhyZWYKNjA2CiUlRU9GCg==";
 

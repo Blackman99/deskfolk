@@ -1,0 +1,20 @@
+[package]
+name = "deskfolk-app-pdf"
+description = "The Deskfolk app's PDF pages (hayro) for every NSH target (macOS, Windows, Linux, web), imported as `deskfolk/pdf`: a crate apart from `app/native` so the phone's page downloads it only when a PDF opens."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+nsh-core.workspace = true
+base64 = "0.23"
+# `embed-fonts`: the standard 14 fonts for a file that does not embed its own. With `hayro-cmap`'s
+# `brotli` it is most of this crate's weight on the web (about 4.5 MB of wasm, 1.3 MB as brotli).
+hayro = { version = "0.9", features = ["embed-fonts"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The encrypted fixture's key (`src/pdf/tests.rs`): RC4's MD5 key schedule, worked out in the test.
+md-5 = { version = "0.11.0", default-features = false }

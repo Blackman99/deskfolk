@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { addPhoneStatic as addWith, APP_NATIVE_GATE, checkFirstScreen, CODE_COLOURS_DATA, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
+import { addPhoneStatic as addWith, APP_NATIVE_GATE, APP_PDF_GATE, checkFirstScreen, CODE_COLOURS_DATA, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
 
 const CONFIG = { id: "com.real-bot.desktop", code: "app.0123456789.js", chunks: { "Main.js": "Main.0123456789.js", "local-api.js": "local-api.1111111111.js", "local-discovery.js": "local-discovery.2222222222.js" } };
 
@@ -186,7 +186,7 @@ describe("the phone's package", () => {
 
 describe("what the phone's first screen downloads", () => {
   const page = (config: object) => `<script type="application/json" id="nsh-app">${JSON.stringify(config)}</script>`;
-  const sides = { [APP_NATIVE_GATE]: { url: "nsh-app-deskfolk-native.0123456789.wasm", gate: APP_NATIVE_GATE }, nsh_part_rich_editor: { url: "nsh-rich-editor.0123456789.wasm", gate: "nsh_part_rich_editor" } };
+  const sides = { [APP_NATIVE_GATE]: { url: "nsh-app-deskfolk-native.0123456789.wasm", gate: APP_NATIVE_GATE }, [APP_PDF_GATE]: { url: "nsh-app-deskfolk-pdf.0123456789.wasm", gate: APP_PDF_GATE }, nsh_part_rich_editor: { url: "nsh-rich-editor.0123456789.wasm", gate: "nsh_part_rich_editor" } };
   const chunks = { "Main.js": "Main.0123456789.js", "ComposerEditor.js": "ComposerEditor.0123456789.js" };
 
   test("passes the small parts beside the engine, with the heavy ones and the app's Rust left to later chunks", () => {
@@ -204,7 +204,12 @@ describe("what the phone's first screen downloads", () => {
   });
 
   test("fails when the app's own Rust is linked into the engine, with no side module of its own", () => {
-    expect(() => checkFirstScreen(page({ chunks, sides: { nsh_part_rich_editor: sides.nsh_part_rich_editor }, chunkSides: { "Main.js": ["nsh_part_core"] } }))).toThrow(/linked into the engine/);
+    expect(() => checkFirstScreen(page({ chunks, sides: { nsh_part_rich_editor: sides.nsh_part_rich_editor, [APP_PDF_GATE]: sides[APP_PDF_GATE] }, chunkSides: { "Main.js": ["nsh_part_core"] } }))).toThrow(/takes deskfolk\/native/);
+    expect(() => checkFirstScreen(page({ chunks, sides: { nsh_part_rich_editor: sides.nsh_part_rich_editor, [APP_NATIVE_GATE]: sides[APP_NATIVE_GATE] }, chunkSides: { "Main.js": ["nsh_part_core"] } }))).toThrow(/takes deskfolk\/pdf/);
+  });
+
+  test("fails when the first chunk loads the PDF pages", () => {
+    expect(() => checkFirstScreen(page({ chunks, sides, chunkSides: { "Main.js": ["nsh_part_core", APP_PDF_GATE] } }))).toThrow(new RegExp(`would load ${APP_PDF_GATE}`));
   });
 
   test("fails when there is no first chunk to check", () => {

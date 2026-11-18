@@ -1190,7 +1190,6 @@ dependencies = [
  "chrono",
  "des",
  "giallo",
- "hayro",
  "image",
  "jpeg-decoder",
  "libghostty-vt",
@@ -1206,6 +1205,18 @@ dependencies = [
  "serde_json",
  "windows",
  "zip",
+]
+
+[[package]]
+name = "deskfolk-app-pdf"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "hayro",
+ "md-5",
+ "nsh-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1249,6 +1260,7 @@ dependencies = [
  "block2",
  "cpal",
  "deskfolk-app-native",
+ "deskfolk-app-pdf",
  "deskfolk-native-pdf",
  "deskfolk-native-terminal",
  "dispatch2",

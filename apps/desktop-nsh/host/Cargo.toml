@@ -25,6 +25,7 @@ semver = "1"
 deskfolk-native-terminal = { path = "../native/terminal" }
 deskfolk-native-pdf = { path = "../native/pdf" }
 deskfolk-app-native = { path = "../app/native" }
+deskfolk-app-pdf = { path = "../app/pdf" }
 nsh-engine.workspace = true
 nsh-core.workspace = true
 nsh-base.workspace = true

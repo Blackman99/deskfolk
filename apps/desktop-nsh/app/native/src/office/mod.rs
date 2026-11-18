@@ -1,6 +1,6 @@
 //! Office files on every target, in pure Rust, without a web view: Excel through `calamine`
 //! (`sheet`), Word (`word`) and PowerPoint (`slides`) through `zip` and `quick-xml`. The file comes
-//! from the runtime (`/v1/workspace/file`), fetched here as `Documents::open_pdf` fetches a PDF,
+//! from the runtime (`/v1/workspace/file`), fetched here as `deskfolk/pdf`'s `Documents::open_pdf` fetches a PDF,
 //! its package checked as the messenger checks it (`archive`), and the model handed back as JSON
 //! for TSX to draw. Pictures stay in the package: the model names them (`office-image:<part>`) and
 //! `office_image` turns one into a data URL when the view needs it.

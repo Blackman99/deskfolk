@@ -3,7 +3,7 @@
   "id": "com.real-bot.desktop.nsh-dev",
   "version": "0.0.0",
   "build": 1,
-  "rust": "native",
+  "rust": ["native", "pdf"],
   "theme": "theme.json",
   "appearance": "system",
   "locales": ["zh"],

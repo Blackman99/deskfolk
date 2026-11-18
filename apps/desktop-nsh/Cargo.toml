@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["host", "native/terminal", "native/pdf", "app/native"]
+members = ["host", "native/terminal", "native/pdf", "app/native", "app/pdf"]
 
 [workspace.package]
 version = "0.0.0"
@@ -52,6 +52,11 @@ opt-level = 3
 # Except the app's native crate: it prepares every chat bubble's Markdown (`app/native/src/markdown`),
 # on every render and every streamed token, and unoptimised that is a third of its speed.
 [profile.dev.package.deskfolk-app-native]
+opt-level = 3
+
+# And its PDF pages (`app/pdf`), which were part of it until 2026-11-18: a page's text and links
+# are read back here on every page scrolled into view.
+[profile.dev.package.deskfolk-app-pdf]
 opt-level = 3
 
 # And Ghostty's terminal (the `ghostty` feature; `libghostty-vt-sys` builds it with Zig): its build

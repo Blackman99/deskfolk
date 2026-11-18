@@ -4,7 +4,7 @@
  * find sees it, a page's links, and the crop an annotation carries. Parsed once per page and kept
  * until the document is let go of.
  */
-import { Documents } from "deskfolk/native";
+import { Documents } from "deskfolk/pdf";
 import {
   matchSegments,
   pageTextIndex,

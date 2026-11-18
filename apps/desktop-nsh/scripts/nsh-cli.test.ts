@@ -20,7 +20,7 @@ describe("the NSH the shell and the CLI come from", () => {
   });
 
   test("the crates' manifests ask for nsh through the workspace, never a version of their own", () => {
-    for (const crate of ["host", "app/native", "native/terminal", "native/pdf"]) {
+    for (const crate of ["host", "app/native", "app/pdf", "native/terminal", "native/pdf"]) {
       const manifest = readFileSync(join(root, crate, "Cargo.toml"), "utf8");
       for (const line of manifest.split("\n").filter((l) => /^nsh-[a-z-]+\s*[=.]/.test(l.trim()))) {
         // Features of their own are theirs to ask for (app/native: `term`); the source never is.

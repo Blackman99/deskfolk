@@ -1,6 +1,6 @@
 /** The spike's panes: a terminal on the runtime's pty, and a PDF from this Mac. */
 import { colorScheme, computed, effect, Image, List, signal, Text, View } from "nsh";
-import { Documents } from "deskfolk/native";
+import { Documents } from "deskfolk/pdf";
 import { Input } from "nsh/base";
 import type { Terminal as TerminalInfo } from "@real-bot/protocol";
 import { initialPdf, nativeTerminal } from "./launch";
@@ -52,7 +52,7 @@ export function TerminalPane() {
 }
 
 /**
- * A PDF from the runtime's files, on every target: hayro (`deskfolk/native`) parses it and renders
+ * A PDF from the runtime's files, on every target: hayro (`deskfolk/pdf`) parses it and renders
  * each page as it scrolls into view.
  */
 export function PdfPane() {

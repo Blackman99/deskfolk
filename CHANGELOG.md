@@ -14,6 +14,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - **History (Git Graph)**: virtualised commit graph with per-row Canvas lane rendering, branch/tag/HEAD/worktree badges, pagination, search, and a commit detail + per-file diff inspector.
 - **GitHub**: read-only via your local `gh` CLI (no tokens stored by Deskfolk), showing the current branch's PR (with CI checks, review decision, and closing issues), issues/PRs referenced in branch commits or conversation links, repository PR/Issue filters, Markdown detail view, "Quote to composer", and graceful degradation when offline, signed out, or non-GitHub.
 
+### On the phone, the PDF viewer is downloaded only when a PDF opens
+
+- The app's own code for PDFs is a module of its own now, downloaded the first time a PDF opens: opening a conversation downloads 1.3 MB less than it would have. Before the first screen the page now downloads about 2.8 MB as the relay sends it (5.4 MB before), the first conversation about 1.1 MB more, the first PDF about 1.3 MB.
+- On the desktop nothing changes that you can see. A window running from source needs restarting once for PDFs to open again.
+
 ### Saying "stop" no longer pauses a Bot's routines
 
 - After you said "stop" in a direct (or stopped one Bot in a group), that Bot's routines stopped too until you spoke to it again, and then the missed run fired ahead of what you had just asked: one "stop for now" could keep a daily routine from running for days. A stop now ends only the work running at the time; the routine still fires when next due, including after you stop one of its runs. "Stop every Bot" and stopping the routine's own job still pause it.

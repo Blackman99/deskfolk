@@ -10,7 +10,7 @@
  * bytes); `sendPassword` tries one and either opens it or says it is wrong. The text, links and crops
  * the module reads back are in `pdf-text.ts`, reached through `text`.
  */
-import { Documents } from "deskfolk/native";
+import { Documents } from "deskfolk/pdf";
 import { cleanup, computed, effect, pixelRatio, signal, untracked, type ListRef } from "nsh";
 import {
   PAGE_GAP,
@@ -33,7 +33,7 @@ import { runtime } from "../../runtime";
 import { createPdfText } from "./pdf-text";
 
 /**
- * Draws a page on a blocking thread (`renderPdfPageAsync` in `app/native/src/pdf`), when this
+ * Draws a page on a blocking thread (`renderPdfPageAsync` in `app/pdf/src/pdf`), when this
  * build's host has it; an older host draws on the engine thread, as before.
  */
 const renderAsync = (Documents as unknown as { renderPdfPageAsync?: (id: string, index: number, width: number) => Promise<string> }).renderPdfPageAsync;

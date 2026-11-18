@@ -148,6 +148,9 @@ export const FIRST_SCREEN_SIDES = ["nsh_part_core", "nsh_part_menu", "nsh_part_o
 /** The app's own Rust (`app/native`), which must stay a side module, out of the engine every page downloads first. */
 export const APP_NATIVE_GATE = "nsh_ui_set_deskfolk_native";
 
+/** Its PDF pages (`app/pdf`): a side module of their own, which only the PDF viewer's chunk loads. */
+export const APP_PDF_GATE = "nsh_ui_set_deskfolk_pdf";
+
 /**
  * Fails when the first screen would download more than it should: a side module the first chunk
  * loads beyond `FIRST_SCREEN_SIDES`, or the app's own Rust linked into the engine (no side module of
@@ -163,8 +166,10 @@ export function checkFirstScreen(index: string): void {
   if (extra.length) {
     throw new Error(`the first screen would load ${extra.join(", ")}: something ${FIRST_CHUNK} imports statically draws with it; import its view from src/ui/lazy-views.ts`);
   }
-  if (!Object.values(app.sides ?? {}).some((side) => side.gate === APP_NATIVE_GATE)) {
-    throw new Error(`the app's own Rust (${APP_NATIVE_GATE}) is linked into the engine: something the entry imports takes deskfolk/native`);
+  for (const [gate, specifier] of [[APP_NATIVE_GATE, "deskfolk/native"], [APP_PDF_GATE, "deskfolk/pdf"]] as const) {
+    if (!Object.values(app.sides ?? {}).some((side) => side.gate === gate)) {
+      throw new Error(`the app's own Rust (${gate}) is linked into the engine: something the entry imports takes ${specifier}`);
+    }
   }
 }
 
