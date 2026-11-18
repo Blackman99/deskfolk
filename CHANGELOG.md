@@ -9,6 +9,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### Characters on the task map get where they go
 
 - Played back, a character going back and forth between two places seemed to sway on the spot. The town is drawn anew every frame, and each time a character's hop started over from where it had got to, so a 480 ms hop dragged on for over a second; and at every speed but 1× the next step came before a hop could end, so the character was sent on halfway and never got anywhere. A hop now takes 0.3 s at most and, while playing, no more than seven tenths of the shortest step at that speed: the character gets there before it goes on.
+- Live, paused or scrubbed, a character that had got there went on walking at the door, its plate saying Walking, until its next call. It now stops and works once it is there.
 
 ### An open preview follows its file
 

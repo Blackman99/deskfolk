@@ -104,6 +104,17 @@ test("played, a character gets where it goes within the shortest step, though th
   expect(there - since).toBeLessThan(450);
 });
 
+test("a character stops walking once it gets there, with nothing else changing on the map", async () => {
+  const app = await opened();
+  // At the newest step the agent is at the check; the first step puts it back in the store, and
+  // nothing moves after that (paused), so no frame of the town would be built again on its own.
+  await app.press("id:taskmap-quest-0");
+  await app.waitUntil(() => !app.texts().includes(t.controls.step(25, 25)));
+  await app.wait(1200);
+  expect(has(app, t.status.walk)).toBe(false);
+  expect(has(app, `主线 ${t.verbs.edit}`)).toBe(true);
+});
+
 test("the controls turn and zoom the town, and following a character shows its chip until you stop", async () => {
   const app = await opened();
   expect(app.texts()).toContain("0°");

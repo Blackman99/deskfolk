@@ -8,7 +8,7 @@
 	import { characterLooks, conversationLabel } from './characters.ts';
 	import { projectAgentOf } from '../sidebar/project-groups.ts';
 	import { buildDistricts, type DistrictKind, type DistrictMap } from './districts.ts';
-	import { buildFrame, placeName, timeAt, verbOf, walkMsAt, type WalkState } from './frame.ts';
+	import { buildFrame, placeName, timeAt, verbOf, walkEnds, walkMsAt, type WalkState } from './frame.ts';
 	import { placeDetail, tripsByPlace } from './inspect.ts';
 	import { fromAgentReplay, fromPlanReplay, fromSessionReplay, mergeLive, type LiveCall, type MapCall, type MapData } from './map-data.ts';
 	import { MOMENT_COLOR, momentText } from './moment-text.ts';
@@ -383,11 +383,23 @@
 	const rest = $derived(atLive && !liveRun ? wall : undefined);
 	const at = $derived(data && tl ? Math.max(timeAt(data, tl, shown), rest ?? 0) : Date.now());
 	const light = $derived.by(() => { const d = new Date(at); return lightAt(d.getHours() + d.getMinutes() / 60); });
-	const frame = $derived(
-		data && tl && districts
+	// Whether a character walks is read as a frame is built: one is built again as the next walk ends,
+	// or a character that got there walks on the spot while nothing else changes (live, paused).
+	let arrived = $state(0);
+	const frame = $derived.by(() => {
+		void arrived;
+		return data && tl && districts
 			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, playing, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined, tops: figures.map((f) => f.top) })
-			: null
-	);
+			: null;
+	});
+	$effect(() => {
+		if (!frame) return;
+		const now = performance.now();
+		const end = walkEnds(walk, now);
+		if (end === null) return;
+		const id = setTimeout(() => (arrived += 1), Math.ceil(end - now) + 1);
+		return () => clearTimeout(id);
+	});
 	const walkMs = $derived(turning ? 0 : walkMsAt(speed, playing));
 
 	// A followed character keeps the camera on it, gliding as long as its own hop.

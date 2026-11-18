@@ -260,6 +260,18 @@ export function walkMsAt(speed: number, playing: boolean): number {
   return playing && speed > 0 ? Math.min(WALK_MS, Math.round((STEP * 1000 * 0.7) / speed)) : WALK_MS;
 }
 
+/**
+ * When the first character still walking gets where it is going (on the clock of `FrameInput.now`),
+ * or null with nobody walking. Whether a character walks is read as a frame is built, so the map
+ * builds one then: with nothing else changing (live between two calls, paused, scrubbed), a
+ * character that had got there went on walking on the spot until the next call.
+ */
+export function walkEnds(walk: WalkState, now: number): number | null {
+  let end = Infinity;
+  for (const until of walk.until) if (until !== undefined && until > now && until < end) end = until;
+  return end === Infinity ? null : end;
+}
+
 const MOTION: Readonly<Record<CharacterStatus, FolkMotion>> = {
   work: "running", walk: "running", idle: "idle", fail: "failed", back: "idle", none: "idle",
 };

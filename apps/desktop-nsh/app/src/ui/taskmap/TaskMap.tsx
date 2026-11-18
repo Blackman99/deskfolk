@@ -12,7 +12,7 @@ import type { MessengerApi } from "../../m/messenger-api";
 import { defaultJob, planTitle } from "../../m/overlays/plan-board";
 import { characterLooks, conversationLabel } from "../../m/taskmap/characters";
 import { buildDistricts, type DistrictKind, type DistrictMap } from "../../m/taskmap/districts";
-import { buildFrame, placeName, timeAt, verbOf, walkMsAt, type WalkState } from "../../m/taskmap/frame";
+import { buildFrame, placeName, timeAt, verbOf, walkEnds, walkMsAt, type WalkState } from "../../m/taskmap/frame";
 import { projectAgentOf } from "../../m/sidebar/project-groups";
 import { placeDetail, tripsByPlace } from "../../m/taskmap/inspect";
 import type { AgentCallLog } from "../../m/taskmap/live.svelte";
@@ -432,8 +432,12 @@ export function TaskMap(props: {
     const d = new Date(at());
     return lightAt(d.getHours() + d.getMinutes() / 60);
   });
-  const frame = computed(() =>
-    data() && tl() && districts()
+  // Whether a character walks is read as a frame is built: one is built again as the next walk ends,
+  // or a character that got there walks on the spot while nothing else changes (live, paused).
+  const arrived = signal(0);
+  const frame = computed(() => {
+    arrived();
+    return data() && tl() && districts()
       ? buildFrame({
           data: data()!,
           map: districts()!,
@@ -454,8 +458,16 @@ export function TaskMap(props: {
           names: bots() ? looks().map((l) => l.name) : undefined,
           tops: figures().map((f) => f.top),
         })
-      : null,
-  );
+      : null;
+  });
+  effect(() => {
+    if (!frame()) return;
+    const now = performance.now();
+    const end = walkEnds(walk, now);
+    if (end === null) return;
+    const id = setTimeout(() => arrived.set(untracked(arrived) + 1), Math.ceil(end - now) + 1);
+    return () => clearTimeout(id);
+  });
   const walkMs = () => (turning() ? 0 : walkMsAt(speed(), playing()));
 
   // A followed character keeps the camera on it, gliding as long as its own hop.

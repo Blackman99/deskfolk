@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { AgentReplay, AgentReplayCall, AgentToolPlace, SessionReplay, ToolFrame } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { buildDistricts } from "./districts.ts";
-import { buildFrame, placeName, statusText, WALK_MS, walkMsAt } from "./frame.ts";
+import { buildFrame, placeName, statusText, WALK_MS, walkEnds, walkMsAt } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, fromSessionReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
@@ -271,9 +271,13 @@ test("a character walks for as long as its hop takes, from the frame that moved 
     buildFrame({ data, map, tl, v, phi: 0, zoom: 1, now, speed: 4, playing: true, light: { w: 0, n: 0 } as never, cache: new Map(), walk, hover: -1, sel: -1, t });
   expect(frameAt(0, 0).actors[0]!.status).toBe("work");
   const hop = walkMsAt(4, true);
+  expect(walkEnds(walk, 0)).toBeNull();
   expect(frameAt(tl.v[1]!, 1000).actors[0]!.status).toBe("walk");
+  // When the map builds its next frame, though nothing else changes.
+  expect(walkEnds(walk, 1000)).toBe(1000 + hop);
   expect(frameAt(tl.v[1]!, 1000 + hop - 1).actors[0]!.status).toBe("walk");
   expect(frameAt(tl.v[1]!, 1000 + hop).actors[0]!.status).toBe("work");
+  expect(walkEnds(walk, 1000 + hop)).toBeNull();
 });
 
 test("a plate nobody is at is its dot and count, until it is picked or the map is zoomed in", () => {
