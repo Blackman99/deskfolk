@@ -11,7 +11,6 @@
  * its Bot; the blocks are what the range decides, not the roster.
  */
 import type { Bot, Routine } from "@real-bot/protocol";
-import type { CalendarEvent, CalendarSource } from "./calendar-entry.ts";
 import { botAvatarColor } from "../avatar.ts";
 import { WEEKDAYS } from "../panels/routine-form.ts";
 
@@ -21,6 +20,31 @@ const WEEKDAY_INDEX: Record<(typeof WEEKDAYS)[number], number> = {
 };
 
 const VISUAL_MINUTES = 30;
+
+/** A Bot whose routines are on the chart. */
+export type CalendarSource = {
+  id: string;
+  name: string;
+  color?: string;
+  visible?: boolean;
+  editable?: boolean;
+};
+
+/** One block: an occurrence of a routine, with what the calendar needs to draw and open it. */
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  /** Inclusive start. */
+  start: Date;
+  /** Exclusive end. */
+  end: Date;
+  allDay?: boolean;
+  color?: string;
+  /** The Bot (its source) the block belongs to. */
+  calendarId?: string;
+  editable?: boolean;
+  meta?: Record<string, unknown>;
+};
 
 export type RoutineProjection = {
   sources: CalendarSource[];

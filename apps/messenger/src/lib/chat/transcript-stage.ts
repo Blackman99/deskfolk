@@ -2,7 +2,7 @@ import type { Annotation, Attachment, Bot, ControlOffer, Message, MessageVersion
 import type { QueuedLine } from "./queued-line.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
 import type { SessionView } from "../session-view.svelte.ts";
-import type { RenderMarkdownOptions } from "../markdown.ts";
+import type { RenderMarkdownOptions } from "../markdown-options.ts";
 import type { SessionGroup } from "../sidebar/session-groups.ts";
 import type { StatusLabels } from "../sidebar/session-status.ts";
 import type { BotDmIndex } from "./bot-dm-entries.ts";

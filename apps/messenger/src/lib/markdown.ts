@@ -1,4 +1,5 @@
 import { Marked, Renderer, type Tokens } from "marked";
+import type { RenderMarkdownOptions } from "./markdown-options.ts";
 import remend, { isWithinCodeBlock } from "remend";
 import createDOMPurify, { type Config as DOMPurifyConfig } from "dompurify";
 import {
@@ -317,22 +318,6 @@ function sanitizeHtmlDom(html: string, sanitizer: Sanitizer = CHAT_SANITIZER): s
   return wrapper.innerHTML;
 }
 
-export type RenderMarkdownOptions = {
-  streaming?: boolean;
-  extraPaths?: string[];
-  mentionBots?: readonly MentionableBot[];
-  /** Present members eligible for lenient prefix/suffix resolution of misspelt @tokens. */
-  mentionMembers?: readonly MentionableBot[];
-  /** Title attribute for an unresolved @token marker. */
-  unresolvedMentionTitle?: string;
-  /**
-   * Mark every block with the source lines it came from (`data-src-start` / `data-src-end`), for the
-   * artifact preview's annotations to map a selection back to lines. Leading YAML front matter shows
-   * as a yaml block. Chat bubbles leave it off and render exactly as before.
-   */
-  sourceLines?: boolean;
-};
-
 /**
  * Rendering one bubble is marked + DOMPurify + two mention passes: fine once, expensive when
  * a long transcript re-renders on every streamed token or re-mounts bubbles while scrolling. The
@@ -570,3 +555,5 @@ function safeHref(href: string | undefined): string | null {
   }
   return null;
 }
+
+export type { RenderMarkdownOptions } from "./markdown-options.ts";
