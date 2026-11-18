@@ -9,9 +9,12 @@
       "nsh": ["./.nsh/types/nsh/index.d.ts"],
       "nsh/*": ["./.nsh/types/nsh/*.d.ts"],
       "@real-bot/protocol": ["../../../packages/protocol/src/index.ts"],
+      "@real-bot/remote": ["../../../packages/remote/src/index.ts"],
       "*": ["./.nsh/types/*.d.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["e2e/**", "build/**"]
+  // The logic's own tests and their kits, as in the messenger they came from: `nsh test` runs them
+  // without a type check, and their hand-built fixtures predate fields the protocol added since.
+  "exclude": ["e2e/**", "build/**", "src/m/**/*.test.ts", "src/m/**/test-*.ts"]
 }

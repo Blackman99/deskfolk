@@ -17,7 +17,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@real-bot/protocol": "workspace:*",
+    "@real-bot/remote": "workspace:*",
+    "fflate": "^0.8.3",
     "marked": "^18.0.13"
   },
   "devDependencies": {

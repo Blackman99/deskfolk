@@ -40,7 +40,8 @@
   },
   "resolve": {
     "alias": {
-      "@real-bot/protocol": "../../../packages/protocol/src/index.ts"
+      "@real-bot/protocol": "../../../packages/protocol/src/index.ts",
+      "@real-bot/remote": "../../../packages/remote/src/index.ts"
     }
   },
   "web": {
