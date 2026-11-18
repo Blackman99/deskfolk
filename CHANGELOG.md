@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The old Svelte messenger is gone from the source
+
+- The desktop app has been native since 0.5.0 and the phone's page has been the native app's web build since November 18, so nothing built the Svelte messenger any more. Its code is removed, and the logic both use lives in the native app (`apps/desktop-nsh/app/src/m`). Nothing you run changes.
+- A self-hosted relay builds the page as before, with `bun apps/desktop-nsh/scripts/phone-package.ts --build`; `pnpm --filter @real-bot/messenger build:hosted` is gone.
+- The Svelte messenger's code stays in the history, at tag `v0.5.1`.
+
 ### On a Mac, clicking a notification opens its conversation at once
 
 - After you clicked a system notification, the window came forward at once, but its conversation often took a second or two to open, and up to five. It happened most when the window was already in front, or a project session was open. The window only looked for a clicked notification on a five-second check, or when a Bot's chat came to the front, and it waited for a permission query first. Now the shell tells the window as it brings it forward, and the conversation opens right away.

@@ -1,6 +1,6 @@
 # 移除 Tauri 外壳 / The Tauri shell is removed
 
-Status: implemented 2026-11-18. Follows [ADR 0107](0107-spike-native-desktop-on-nsh.md) (the native app on NSH, shipped since 0.5.0) and [ADR 0112](0112-native-app-catches-up-with-tauri.md) (everything only the Tauri app had, brought over first).
+Status: implemented 2026-11-18; decision 3's messenger, the phone's page and a browser dev server, removed the same day ([ADR 0114](0114-the-svelte-messenger-is-removed.md)). Follows [ADR 0107](0107-spike-native-desktop-on-nsh.md) (the native app on NSH, shipped since 0.5.0) and [ADR 0112](0112-native-app-catches-up-with-tauri.md) (everything only the Tauri app had, brought over first).
 
 2026-11-17 你说「要彻底的移除 Tauri 的相关的所有东西了」。0.5.0 起发布的已经是原生应用，日常用的也是它；Tauri 外壳（`apps/desktop`）只剩下 CI 每次还在编、原生应用还在借它的几样东西。ADR 0112 先把只有它有的功能补到原生应用里，这份记录删它时的决定。
 

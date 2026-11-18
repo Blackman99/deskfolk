@@ -39,14 +39,13 @@ pnpm dev
 pnpm test
 pnpm typecheck
 cargo test --workspace --manifest-path apps/desktop-nsh/Cargo.toml
-pnpm --filter @real-bot/messenger build
 ```
 
 原生应用的界面测试在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx && nsh test`（`nsh` 命令行由 `bun apps/desktop-nsh/scripts/nsh-cli.ts` 按锁定的 NSH 提交编出，不要用 `~/.local/bin/nsh`）。守护进程和终端 helper 由 `apps/desktop-nsh/scripts/build-native.ts --target <triple>` 编进 `apps/desktop-nsh/build/native`，正式版打包（`scripts/package.ts --release`）把它们放进应用；开发版（`pnpm dev`）用从源码起的运行时，不需要先手动编。
 
-改信使样式时另跑 `pnpm --filter @real-bot/messenger test:visual`（本机视觉基线，见[开发说明](docs/development.md)）。改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build，以及 macOS 上原生应用的脚本测试、`cargo test` 和 `nsh check` / `nsh test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上跑协议、守护进程和信使的测试、helper crate 和守护进程的 stdio 配置通道测试；其中 daemon 测试在 Windows 上只做参考，不让任务变红。原生应用在 Ubuntu 和 Windows 上的构建由 `nsh-desktop.yml` 在推到 `main` 时跑；打 tag 时 `release.yml` 验证并打 Mac、Windows、Linux 的安装包。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
+改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build，以及 macOS 上原生应用的脚本测试、`cargo test` 和 `nsh check` / `nsh test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上跑协议、守护进程和原生应用的脚本与逻辑测试、helper crate 和守护进程的 stdio 配置通道测试；其中 daemon 测试在 Windows 上只做参考，不让任务变红。原生应用在 Ubuntu 和 Windows 上的构建由 `nsh-desktop.yml` 在推到 `main` 时跑；打 tag 时 `release.yml` 验证并打 Mac、Windows、Linux 的安装包。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 
-- 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。信使的组件也能测，和纯函数同一个 `pnpm test`，写法见[开发说明·信使组件测试](docs/development.md)。
+- 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。应用的逻辑（`apps/desktop-nsh/app/src/m`）有两种测试：跑 store 的 `*.test.ts` 由 `nsh test` 在应用自己的引擎里跑，其余的 `*.spec.ts` 由 `bun test` 带 happy-dom 跑，都在 `pnpm test` 里，见[开发说明](docs/development.md)。
 - 修改 UI、客户端状态或页面数据时，在运行中的应用或浏览器中完成实际点击、输入、提交和导航验证，覆盖共享该状态的其他界面、错误态和边界情况。
 - 修改布局或样式时检查桌面和窄屏视口；这项检查不代表支持移动端应用。
 - 涉及托盘、退出、监督与登录启动时，额外在 macOS 桌面窗口验证，浏览器不能代替原生行为检查。改到 Windows 专属的路径（ConPTY 终端、Job Object、安装包钩子、凭据管理器、回收站）时在 Windows 上验证，改到 Linux 专属的路径（forkpty 终端、xdg-open、freedesktop 回收站、Secret Service）时在 Linux 桌面上验证；没条件验证就在 PR 里写明。
@@ -56,7 +55,7 @@ pnpm --filter @real-bot/messenger build
 ## 提交 Pull Request
 
 1. 保持改动聚焦，说明解决的问题、范围和限制。
-2. 遵循现有 TypeScript / Svelte / Rust 风格，注释只解释必要约束。
+2. 遵循现有 TypeScript / Rust 风格（落地页是 Svelte），注释只解释必要约束。
 3. 同步更新受影响的文档。项目范围、用法和限制变化时，保持 `README.md` 与 `README.zh.md` 内容一致；领域语言和路线图同理，`CONTEXT.md`、`ROADMAP.md` 改了要同步到英文版 `CONTEXT.en.md`、`ROADMAP.en.md`（官网英文页读它们）。`CONTEXT.md` 只放词条的定义；长词条的行为细节在 `docs/behavior.md` / `docs/behavior.en.md`，改行为时两边一起改。
 4. 面向用户的功能、修复或不兼容变更记入 [CHANGELOG.md](CHANGELOG.md) 的 `Unreleased`（并在 [CHANGELOG.zh.md](CHANGELOG.zh.md) 同步记录），不要提前宣称发布。
 5. 新引入或改编第三方代码时保留许可证与版权声明，必要时更新 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

@@ -53,7 +53,7 @@ Optional Web Push is Mac-outbound only. VAPID private material is the credential
 - 任何模式下都直接拒绝：读或改本机 Agent 的登录凭据、递归搜索整个家目录或 `/`、Claude Code 的后台任务。
 - **信任 MCP 是安装 / 配置时的决定。** 已配置、启用且连接成功的工具对所有 Bot 可用，调用不再逐次批准。只安装可信程序和服务，使用最小权限的凭据。
 - 模型输出、工具结果和外部内容可能包含错误或提示注入；检查结果和危险动作仍然重要。
-- **HTML 预览会跑脚本。** 工作区单文件 HTML 在侧栏 iframe 里以 `allow-scripts`、无 `allow-same-origin` 执行，便于设计稿动效；脚本不能读信使页面或本机 token，外链仍受窗口 CSP 限制。不要把不可信 HTML 当隔离执行环境。
+- **HTML 预览会跑脚本。** 工作区单文件 HTML 在侧栏 iframe 里以 `allow-scripts`、无 `allow-same-origin` 执行，便于设计稿动效；脚本不能读应用页面或本机 token，外链仍受窗口 CSP 限制。不要把不可信 HTML 当隔离执行环境。
 - 拒绝和 Stop 应被尊重，但不能撤销已经发生的文件修改、外部请求或费用。本项目没有自动预算熔断保证。
 
 ## 数据与凭据位置

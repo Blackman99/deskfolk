@@ -80,7 +80,6 @@ swift run --package-path apps/runtime-helper RemoteCoreTests
 pnpm test
 pnpm typecheck
 cargo test --workspace --manifest-path apps/desktop-nsh/Cargo.toml
-pnpm --filter @real-bot/messenger build
 bun apps/desktop-nsh/scripts/package.ts --release
 ```
 
