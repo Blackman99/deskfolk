@@ -2,10 +2,11 @@
  * The whole window (`Shell`) on the runtime's own conversations, at whatever size the test opens
  * it. `shell-state` reads back what a test checks (the open conversation, which layers are up);
  * the buttons are the test's hands where a press in the shell is not enough (the test cannot
- * reach the network itself). `--open-session <id>` opens that conversation, for looking at one in a
- * real window.
+ * reach the network itself): `story-open-file` opens the file the tests seed outside the workspace
+ * (`host.params.elsewhere`) in the preview. `--open-session <id>` opens that conversation, for
+ * looking at one in a real window.
  */
-import { effect, Text, View } from "nsh";
+import { effect, host, Text, View } from "nsh";
 import { initialSession } from "../src/launch";
 import { runtime } from "../src/runtime";
 import { Button } from "../src/ui/Button";
@@ -39,6 +40,7 @@ export default function ShellStory() {
       `settings:${runtime.settingsOpen ? 1 : 0}`,
       `workspace:${runtime.workspaceOpen ? 1 : 0}`,
       `trace:${runtime.traceOpen ? 1 : 0}`,
+      `preview:${runtime.previewRelpath ? 1 : 0}`,
       `conn:${runtime.connection}`,
     ].join(" ");
   return (
@@ -49,6 +51,9 @@ export default function ShellStory() {
         </Button>
         <Button variant="secondary" testID="story-deselect" onPress={() => (runtime.selectedId = null)}>
           deselect
+        </Button>
+        <Button variant="secondary" testID="story-open-file" onPress={() => (runtime.previewRelpath = String((host.params as { elsewhere?: string }).elsewhere ?? ""))}>
+          file
         </Button>
         <Text testID="shell-state" class="flex-1 text-[11px] text-ink-muted">
           {state()}

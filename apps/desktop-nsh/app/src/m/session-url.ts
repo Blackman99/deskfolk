@@ -66,6 +66,22 @@ export function attachmentFromUrl(url: URL): string | null {
   return sanitizeBotId(url.searchParams.get(ATTACHMENT_PARAM));
 }
 
+/**
+ * `?a=` for a file no attachment backs, on the phone's page: a path cited in a message, a project's
+ * folder (their stand-in rows' ids start `virtual-` and hold the path). The address does not name
+ * such a file, so a reload cannot open it again; the value only gives the file an entry of its own
+ * under the press that opens it, which Back leaves with nothing written, as it leaves an
+ * attachment's. A path there would also reach the relay's logs.
+ */
+export const ATTACHMENT_UNNAMED = "file";
+
+/** What `?a=` says for the file `id` shows on the phone's page. */
+export function attachmentParam(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (id.startsWith("virtual-")) return ATTACHMENT_UNNAMED;
+  return sanitizeBotId(id) ?? ATTACHMENT_UNNAMED;
+}
+
 export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
   const raw = url.searchParams.get(OVERLAY_PARAM);
   if (raw === OVERLAY_SETTINGS) return { kind: "settings" };
@@ -213,7 +229,7 @@ export function sessionUrl(current: URL, view: UrlView, remote = false): string 
 
   writeOverlay(next, remote ? stripRemoteOverlay(view.overlay) : view.overlay);
   if (remote) {
-    const attachment = sanitizeBotId(view.previewAttachmentId);
+    const attachment = attachmentParam(view.previewAttachmentId);
     if (attachment) next.searchParams.set(ATTACHMENT_PARAM, attachment);
   }
 

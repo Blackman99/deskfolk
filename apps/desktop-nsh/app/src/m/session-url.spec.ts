@@ -5,6 +5,8 @@ import {
   overlayFromUrl,
   previewFromUrl,
   attachmentFromUrl,
+  attachmentParam,
+  ATTACHMENT_UNNAMED,
   sanitizeCitedPreviewPath,
   sanitizePreviewPath,
   selectionFromUrl,
@@ -421,4 +423,16 @@ test("a phone's usage page and archived list are pages in the URL, like the cale
     expect(back).not.toBeNull();
     expect(new URL(back!, "http://x/").searchParams.get("o")).toBe(kind);
   }
+});
+
+test("a file no attachment backs is `a=file` on a remote page: an entry of its own, no path", () => {
+  // A path cited in a message, a project's folder: stand-in rows whose ids hold the path.
+  for (const id of ["virtual-preview-out/report.md", "virtual-project-/Users/me/app", "virtual-01ARZ-notes.md"]) {
+    expect(attachmentParam(id)).toBe(ATTACHMENT_UNNAMED);
+    expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", previewAttachmentId: id }), true)).toBe("/?s=abc&a=file");
+  }
+  expect(attachmentParam("01ARZ3NDEKTSV4RRFFQ69G5FAV")).toBe("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+  expect(attachmentParam(null)).toBe(null);
+  // Another file no attachment backs, open in its place: the address stays.
+  expect(sessionUrl(at("?s=abc&a=file"), view({ selectedId: "abc", previewAttachmentId: "virtual-preview-b.md" }), true)).toBe(null);
 });

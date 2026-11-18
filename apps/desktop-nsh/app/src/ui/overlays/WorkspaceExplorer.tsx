@@ -5,8 +5,9 @@
  *
  * It is an `Overlay` over the window (a fixed box); the part left of the pane is the backdrop, so
  * a press there closes it and one inside the pane never does. On a phone the pane is the whole
- * width, nothing dims, and the page stops above the 60-point navigation bar. Not carried over:
- * the backdrop blur and the slide animation (`pageSlide`).
+ * width and height and nothing dims: the bottom bar is hidden while the workspace is open (the
+ * workspace left the bar for the tools), so stopping 60 points above it left an empty strip. Not
+ * carried over: the backdrop blur and the slide animation (`pageSlide`).
  */
 import { Overlay, safeArea, View, windowSize, type JSX } from "nsh";
 import type { MessengerApi } from "../../m/messenger-api.ts";
@@ -54,9 +55,7 @@ export function WorkspaceExplorer(props: {
   const narrow = () => narrowWindow();
 
   return (
-    <Overlay
-      style={{ left: 0, top: 0, right: 0, bottom: narrow() ? 60 + safeArea().bottom : 0 }}
-    >
+    <Overlay style={{ left: 0, top: 0, right: 0, bottom: 0 }}>
       <WheelLayer>
         <View
           role="group"
@@ -75,6 +74,7 @@ export function WorkspaceExplorer(props: {
             class={`min-w-0 overflow-hidden bg-pane ${narrow() ? "" : "border-l border-line"}`}
             style={{
               width: narrow() ? windowSize().width : Math.min(1400, windowSize().width - 72),
+              paddingBottom: narrow() ? safeArea().bottom : 0,
               boxShadow: narrow() ? undefined : shadow("sheet-end"),
             }}
           >

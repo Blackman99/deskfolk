@@ -457,3 +457,57 @@ test("a page over the roster has an address of its own", () => {
   page.press();
   expect(rt.listPage).toBe(null);
 });
+
+test("a file picked in the workspace stays while the snapshot moves: the page's address never names it", () => {
+  const { rt, route, write } = setup();
+  const applied: UrlOverlay[] = [];
+  const apply = rt.applyOverlay;
+  rt.applyOverlay = (overlay) => {
+    applied.push(overlay);
+    apply(overlay);
+    rt.workspaceOpen = overlay.kind === "workspace";
+    if (overlay.kind === "workspace") rt.workspaceSelected = overlay.selected ?? "";
+  };
+  // A link to the workspace opens it.
+  route.applyOverlay(new URL(`${ORIGIN}/?o=workspace`));
+  expect(applied).toEqual([{ kind: "workspace", selected: null }]);
+  applied.length = 0;
+  write();
+  expect(path(route.address())).toBe("/?o=workspace");
+  // A file pressed in it: the address stays as it was.
+  rt.workspaceSelected = "notes.md";
+  write();
+  expect(path(route.address())).toBe("/?o=workspace");
+  // A conversation moved on the Mac: the effect that applies the address runs again, and the file stays.
+  rt.snapshot = { ...rt.snapshot, sessions: [...rt.snapshot.sessions] };
+  route.applyOverlay(route.url());
+  expect(applied).toEqual([]);
+  expect(rt.workspaceSelected).toBe("notes.md");
+});
+
+test("a file no attachment backs gets an entry under the press that opens it: Back closes it writing nothing, the next Back the conversation", () => {
+  const { page, rt, route, write } = setup();
+  rt.selectedId = A;
+  write();
+  // A path pressed in a message: its stand-in's id holds the path, which the address never names.
+  rt.previewAttachmentId = "virtual-preview-out/report.md";
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`, `/?s=${A}&a=file`]);
+  // Another such file opened in its place: no entry of its own.
+  rt.previewAttachmentId = "virtual-preview-out/other.md";
+  write();
+  expect(page.entries.length).toBe(4);
+  // Back: the file closes, the conversation stays, and nothing is written (a push with no press
+  // would have Chrome's Back pass over the page's entries).
+  page.press();
+  expect(rt.previewAttachmentId).toBe(null);
+  expect(rt.selectedId).toBe(A);
+  write();
+  expect(page.entries.length).toBe(4);
+  expect(path(route.address())).toBe(`/?s=${A}`);
+  page.press();
+  expect(rt.selectedId).toBe(null);
+  // A reload at the file's entry opens nothing of it.
+  const reloaded = setup(`${ORIGIN}/?s=${A}&a=file`, "reload");
+  expect(reloaded.rt.previewAttachmentId).toBe(null);
+});

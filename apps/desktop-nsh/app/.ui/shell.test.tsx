@@ -10,7 +10,7 @@ const stateOf = (app: App) => app.texts().find((x) => x.startsWith("selected:"))
 const has = (app: App, part: string) => stateOf(app).split(" ").includes(part);
 
 const open = async (options: Parameters<typeof openStory>[1] = {}) => {
-  const app = await openStory("shell", { height: 820, ...options });
+  const app = await openStory("shell", { height: 820, ...options }, { elsewhere: seeded.elsewhere });
   await app.waitUntil(() => has(app, "conn:connected"), { timeout: 15_000 });
   await app.waitFor(`id:session-${seeded.writerDirect}`, { timeout: 15_000 });
   return app;
@@ -95,4 +95,19 @@ test("narrow: settings is one of the bottom bar's places: its list has no head a
   await app.waitUntil(() => has(app, "settings:0"));
   await app.waitUntil(() => app.count("id:settings-nav") === 0);
   expect(app.count("id:mobile-nav")).toBe(1);
+});
+
+test("narrow: a file opened over a conversation covers the window, and its ‹ puts it away", async () => {
+  const app = await open({ width: 420 });
+  await app.press(`id:session-${seeded.writerDirect}`);
+  await app.waitFor("id:conversation", { timeout: 10_000 });
+  await app.press("id:story-open-file");
+  await app.waitFor("id:preview-sheet", { timeout: 10_000 });
+  await app.waitUntil(() => app.texts().includes("Elsewhere"), { timeout: 20_000 });
+  // Over the conversation: the press reaches the preview's own ‹, where a page drawn over it
+  // would refuse it as covered (laid beside the conversation, under its page, it was).
+  await app.press("id:artifact-back");
+  await app.waitUntil(() => has(app, "preview:0"));
+  await app.waitFor("id:preview-sheet", { state: "gone" });
+  expect(app.shows("id:conversation")).toBe(true);
 });

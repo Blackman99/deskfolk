@@ -4,7 +4,8 @@
  *
  * - The address says what is open, as on the Svelte page (`session-url.ts`): the conversation
  *   `?s=`, settings, a page over the roster or a pane of the conversation `?o=` (a Bot's `&b=`),
- *   an attachment `?a=`. A reload, a link and the browser's back and forward land on what the
+ *   an attachment `?a=` (a file no attachment backs as `a=file`: an entry, not a name). A reload,
+ *   a link and the browser's back and forward land on what the
  *   address names.
  * - History is a stack of screens (`mobile-route.ts`): opening one pushes an entry, closing one
  *   walks back to the entry that opened it, or rewrites the entry when nothing of ours is under it.
@@ -28,7 +29,7 @@
  * Back and stayed open would have NSH push its entry again with no press, and Chromium's history
  * intervention then passes over every entry of the page: the next Back on a phone left the app.
  */
-import { attachmentFromUrl, overlayApply, overlayFromFlags, overlayFromUrl, selectionFromUrl, sessionFromUrl, sessionUrl, viewFromUrl, type UrlOverlay, type UrlView } from "../m/session-url.ts";
+import { ATTACHMENT_UNNAMED, attachmentFromUrl, overlayApply, overlayFromFlags, overlayFromUrl, selectionFromUrl, sessionFromUrl, sessionUrl, viewFromUrl, type UrlOverlay, type UrlView } from "../m/session-url.ts";
 import { planUrlNavigation, routeStep, stackAfter } from "../m/mobile-route.ts";
 
 /** Where the floor's entry is: the first entry's address with this fragment. */
@@ -198,7 +199,8 @@ export class PageRoute {
     if (from.selectedId) this.rt.selectedId = from.selectedId;
     // The calendar drops a file preview: seeding one and then clearing it would flash the pane.
     if (from.overlay.kind !== "routines" && from.overlay.kind !== "spend" && from.overlay.kind !== "terminal") {
-      if (from.previewAttachmentId) this.rt.previewAttachmentId = from.previewAttachmentId;
+      // A file no attachment backs (`ATTACHMENT_UNNAMED`) is not named: nothing to open again.
+      if (from.previewAttachmentId && from.previewAttachmentId !== ATTACHMENT_UNNAMED) this.rt.previewAttachmentId = from.previewAttachmentId;
     }
     if (from.overlay.kind !== "none") this.rt.applyOverlay(from.overlay);
   }
@@ -342,6 +344,8 @@ export class PageRoute {
 
   applyAttachment(url: URL): void {
     const wanted = attachmentFromUrl(url);
+    // The entry of a file no attachment backs: whatever is open stays (the address cannot say which).
+    if (wanted === ATTACHMENT_UNNAMED) return;
     if (wanted !== this.rt.previewAttachmentId) this.rt.previewAttachmentId = wanted;
   }
 
@@ -357,6 +361,11 @@ export class PageRoute {
     if ((wanted.kind === "session" || wanted.kind === "bot" || wanted.kind === "trace") && sessionFromUrl(url) !== selectedId) return;
     // The window follows the conversation, so a stale job id in the address must not win.
     if (wanted.kind === "trace" && this.rt.traceOpen) return;
+    // The page's address never names the workspace's file (`sessionUrl` drops it on a remote
+    // page): at the workspace it only says the workspace is open. Applied again while it was (this
+    // runs on every change of the snapshot), it put the file picked in it back to none, so a file
+    // pressed there went the moment a conversation moved on the Mac.
+    if (wanted.kind === "workspace" && this.rt.workspaceOpen) return;
     const next = overlayApply(wanted, overlayOf(this.rt), {
       selectedId,
       knownSessionIds: this.rt.snapshot.sessions.map((s) => s.id),

@@ -1,7 +1,7 @@
 /**
  * The shell's artifact preview (`ShellPreview.svelte`): a column beside the conversation on the
- * workbench, with the handle that drags its width, and a sheet over the conversation everywhere
- * else. What it shows and the actions on it are `ShellArtifact`'s.
+ * workbench, with the handle that drags its width, and a sheet over the whole window everywhere
+ * else (`PreviewSheet`). What it shows and the actions on it are `ShellArtifact`'s.
  *
  * `ArtifactPreview` (a later job) mounts where the Svelte lazy-loads it: `children` is a render
  * function given every prop the Svelte passes it (`ArtifactPreviewProps`, with getters, so reading
@@ -12,7 +12,7 @@
  * events on `window`, so the same drag (width = width at the press − distance, clamped, saved on
  * release) is written against the responder.
  */
-import { PanResponder, View, windowSize, type JSX } from "nsh";
+import { Overlay, PanResponder, safeArea, View, windowSize, type JSX } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import type { Annotation } from "@real-bot/protocol";
 import { projectDirOf } from "../../m/overlays/artifact-lookup.ts";
@@ -186,9 +186,28 @@ export function ShellPreview(props: {
               />
             </View>
           </If>
-          {props.children(previewProps(preview))}
+          <If when={props.wide} else={<PreviewSheet>{props.children(previewProps(preview))}</PreviewSheet>}>
+            {props.children(previewProps(preview))}
+          </If>
         </>
       )}
     </If>
+  );
+}
+
+/**
+ * Where there is no workbench (a phone, the hosted page on a tablet, a narrow window) the preview
+ * covers the whole window, over the conversation and the job page, as the Svelte shell laid it
+ * (`.shell.is-layered.is-preview .artifact-pane`: fixed, inset 0, z-index 80). Laid in the shell's
+ * row beside them instead, it was a column under the page that covers that row, so opening a
+ * file showed nothing.
+ */
+function PreviewSheet(props: { children: JSX.Element }) {
+  return (
+    <Overlay testID="preview-sheet" style={{ left: 0, top: 0, right: 0, bottom: 0 }}>
+      <View class="flex-1 min-h-0 bg-pane" style={{ paddingBottom: safeArea().bottom }}>
+        {props.children}
+      </View>
+    </Overlay>
   );
 }
