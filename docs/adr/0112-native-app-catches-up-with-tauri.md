@@ -13,7 +13,7 @@ On 2026-11-17 you asked to remove everything Tauri, to bring every feature only 
 Found by going through the Tauri shell file by file; each now exists in the native app:
 
 - **三个平台 / All three:** 调用不再 30 秒超时、拒绝时给外壳原话（`tauri-bridge.ts`）；手机停掉的运行时被窗口清掉停止标记（`runtime.rs`）；托盘的「全部停下」（`stop_all.rs`）。Host calls that wait on a person are untimed and reject with the shell's own words; a runtime a phone stopped has its stop latch cleared by the supervising window; the tray's Stop Everything.
-- **macOS:** 记住窗口大小（`window_state.rs`，沿用旧版的 `window-size.json`）；⌘W 关标签页、「视图」菜单、关于、隐藏其他；菜单栏图标左键显示窗口；登录启动只留在菜单栏（认 `keyAELaunchedAsLogInItem`），登录项跟随设置；`NSLocalNetworkUsageDescription`。The window's size, ⌘W as Close Tab and the View menu, a left click on the menu bar icon showing the window, a quiet login launch with the login item following the setting, and the local network usage string.
+- **macOS:** 记住窗口大小（`window_state.rs`，沿用旧版的 `window-size.json`）；⌘W 关标签页、「视图」菜单、关于、隐藏其他；登录启动只留在菜单栏（认 `keyAELaunchedAsLogInItem`），登录项跟随设置；`NSLocalNetworkUsageDescription`。The window's size, ⌘W as Close Tab and the View menu, a quiet login launch with the login item following the setting, and the local network usage string.
 - **Windows:** 远程配对通道（daemon 的 stdin/stdout）、Windows Hello、`remote_native_confirmation`；daemon 放进随应用结束的 Job；关窗缩到托盘；恢复窗口位置；用系统打开、在资源管理器里显示、选文件夹（`AssocIsDangerous` 的类型只显示不打开）；Ctrl+W；语音输入。The setup channel over the daemon's stdin and stdout, Windows Hello, a job that ends the daemon with the app, close to tray, restored bounds, open/reveal/folder picker, Ctrl+W, voice input.
 - **Linux:** 外壳换成 NSH 的 `run_app`（单实例、`--hidden`、恢复窗口、Ctrl+Q）；托盘（NSH 的 StatusNotifierItem，用量行、显示、全部停下、退出）；旧版的自启项 `~/.config/autostart/Deskfolk.desktop`；打开、显示、选文件夹；滚轮（NSH 自己的 `onWheel`）；HTML 预览（WebKitGTK 6）；语音输入；deb 和 AppImage。The shell on NSH's runner, the tray, the Tauri app's autostart entry, open/reveal/picker, the wheel, the HTML preview, voice input, the deb and the AppImage.
 
@@ -39,6 +39,9 @@ Found by going through the Tauri shell file by file; each now exists in the nati
 
 7. **Windows 和 Linux 的语音输入由外壳录 Ogg/Opus。** WebView 的 `MediaRecorder` 没了；宿主用 cpal 录、压成 Opus，一段最长 180 秒仍在远程链路 1 MB 的上限内。
    **Voice input on Windows and Linux is recorded by the shell as Ogg/Opus**, so a take fits the remote link's limit for its full three minutes.
+
+8. **Mac 菜单栏图标点一下就开菜单，这一项不照 Tauri。** Tauri 版左键显示窗口、右键才开菜单，补齐时照搬过来过；2026-11-18 你问「怎么变成右键才能触发了」，改回 0.5 原生版的样子：Mac 菜单栏上的图标都是一点就出菜单，菜单顶上的用量行本来就是给人瞄一眼的，显示窗口是菜单第一项，Dock 图标也能叫回窗口。Windows 托盘照旧左键显示窗口、右键开菜单，那是 Windows 的习惯。
+   **A click on the Mac menu bar icon opens its menu; this one does not follow Tauri.** The Tauri app showed the window on a left click and kept the menu for a right click, and the catching up copied that; on 2026-11-18 you asked why the menu now needed a right click, so it is back to the native 0.5 behaviour: menu bar items on the Mac open their menu on a click, the usage lines at its top are there for a glance, and the window is the menu's first item and the Dock icon's click. The Windows tray keeps a left click for the window, as Windows trays do.
 
 ## 代价 / Costs
 

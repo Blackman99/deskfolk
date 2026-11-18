@@ -11,8 +11,8 @@ use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject, Sel}
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2::{AllocAnyThread, Message};
 use objc2_app_kit::{
-    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn, NSEventMask,
-    NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
+    NSAlert, NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSControlStateValueOn,
+    NSEventModifierFlags, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem, NSWorkspace,
 };
 use objc2_foundation::{NSBundle, NSNotification, NSString, NSURL};
 
@@ -22,9 +22,6 @@ thread_local! {
     static CONFIG: OnceCell<Config> = const { OnceCell::new() };
     static DELEGATE: OnceCell<Retained<Delegate>> = const { OnceCell::new() };
     static TRAY: OnceCell<Retained<NSStatusItem>> = const { OnceCell::new() };
-    /// The menu bar extra's menu: opened by a right click (or a control-click), a left click
-    /// showing the window instead, as in the 0.4.0 tray.
-    static TRAY_MENU: OnceCell<Retained<NSMenu>> = const { OnceCell::new() };
 }
 
 /// The menu bar's workbench commands, by the ids the app runs them by (`workbench-commands.ts`
@@ -155,22 +152,6 @@ define_class!(
             let tag = sender.and_then(|s| s.downcast_ref::<NSMenuItem>()).map(|item| item.tag());
             let Some(id) = tag.and_then(|t| usize::try_from(t).ok()).and_then(|t| PANE_COMMANDS.get(t)) else { return };
             run_pane_command(self.mtm(), id);
-        }
-
-        /// The menu bar extra: a left click shows the window, a right click (or a control-click)
-        /// opens the menu, as the 0.4.0 tray did.
-        #[unsafe(method(trayClicked:))]
-        fn tray_clicked(&self, _sender: Option<&AnyObject>) {
-            let mtm = self.mtm();
-            let event = NSApplication::sharedApplication(mtm).currentEvent();
-            let wants_menu = event.is_some_and(|event| {
-                event.r#type() == NSEventType::RightMouseUp || event.modifierFlags().contains(NSEventModifierFlags::Control)
-            });
-            if wants_menu {
-                open_tray_menu(mtm);
-            } else {
-                show(mtm);
-            }
         }
 
         /// "Stop Everything" can be chosen while the runtime answers, as in the 0.4.0 tray.
@@ -414,18 +395,10 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -
     menu.addItem(&targeted(mtm, "Stop Everything", sel!(stopAll:), "", delegate));
     menu.addItem(&NSMenuItem::separatorItem(mtm));
     menu.addItem(&item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), ""));
-    // No menu on the item itself: a left click shows the window, a right click opens this one
-    // (`trayClicked:`).
-    if let Some(button) = status.button(mtm) {
-        unsafe {
-            button.setTarget(Some(delegate));
-            button.setAction(Some(sel!(trayClicked:)));
-        }
-        button.sendActionOn(NSEventMask::LeftMouseUp | NSEventMask::RightMouseUp);
-    }
-    TRAY_MENU.with(|m| {
-        let _ = m.set(menu.clone());
-    });
+    // Any click opens the menu, as a Mac menu bar item's does: its usage lines are there to be seen
+    // at a glance, and showing the window is its first item. (The Windows tray keeps 0.4.0's left
+    // click showing the window, `win_tray.rs`; ADR 0112, decision 8.)
+    status.setMenu(Some(&menu));
     if let Some(data_dir) = data_dir {
         let target: Retained<NSObject> = Retained::into_super(delegate.retain());
         crate::usage_tray::start(menu.clone(), target, data_dir);
@@ -440,9 +413,6 @@ fn tray(mtm: MainThreadMarker, delegate: &Delegate, data_dir: Option<PathBuf>) -
     status
 }
 
-/// Development checks: `tray` logs the menu bar menu's items, each with whether it wears an icon;
-/// `tray <title>` then picks the first item whose title starts with `title`, as a click would. The
-/// menu is never opened on the screen.
 /// Menu command `id` to the window in front: the key window when it is the app's; a panel in front
 /// (the About window) is closed by Close Tab and leaves the rest to the newest window; with no
 /// window of the app's open, one comes forward for any command but Close Tab (the app keeps an
@@ -479,25 +449,12 @@ fn menu_request(mtm: MainThreadMarker, title: &str) {
     log::warn!("menu: no item starts with {title}");
 }
 
-/// Opens the menu bar extra's menu under its item, as a click on an item with a menu would.
-fn open_tray_menu(mtm: MainThreadMarker) {
+/// Development checks: `tray` logs the menu bar menu's items, each with whether it wears an icon;
+/// `tray <title>` then picks the first item whose title starts with `title`, as a click would. The
+/// menu is never opened on the screen.
+fn tray_request(mtm: MainThreadMarker, title: &str) {
     TRAY.with(|t| {
-        let Some(status) = t.get() else { return };
-        let Some(menu) = TRAY_MENU.with(|m| m.get().cloned()) else { return };
-        // The documented way to open a status item's menu from its action: lend it the menu for
-        // the click, then take it back so the next left click is the item's own again.
-        status.setMenu(Some(&menu));
-        if let Some(button) = status.button(mtm) {
-            // SAFETY: the item's own button, on the main thread.
-            unsafe { button.performClick(None) };
-        }
-        status.setMenu(None);
-    });
-}
-
-fn tray_request(_mtm: MainThreadMarker, title: &str) {
-    TRAY.with(|_| {
-        let Some(menu) = TRAY_MENU.with(|m| m.get().cloned()) else {
+        let Some(menu) = t.get().and_then(|status| status.menu(mtm)) else {
             log::warn!("tray: no menu");
             return;
         };
