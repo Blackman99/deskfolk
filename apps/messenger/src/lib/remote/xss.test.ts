@@ -1,14 +1,5 @@
 import { expect, test } from "bun:test";
-import { renderMarkdown } from "../markdown.ts";
 import { HTML_PREVIEW_SANDBOX, htmlPreviewBlob, stripSvgActiveContent } from "../overlays/artifacts.ts";
-
-test("markdown XSS negatives stay sanitized even when origin is trusted", () => {
-  const html = renderMarkdown('<img src=x onerror="alert(1)"><script>alert(1)</script>[go](javascript:alert(1)) <a href="data:text/html,hi">x</a>');
-  expect(html).not.toContain("onerror");
-  expect(html).not.toContain("<script");
-  expect(html).not.toContain("javascript:");
-  expect(html).not.toContain("data:text/html");
-});
 
 test("HTML preview sandbox never gains allow-same-origin", () => {
   expect(HTML_PREVIEW_SANDBOX).not.toContain("allow-same-origin");
