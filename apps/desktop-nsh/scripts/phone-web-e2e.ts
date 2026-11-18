@@ -12,7 +12,9 @@
  * pressed between, as on a phone, the page staying), a conversation over
  * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
- * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
+ * arriving live, a file pressed in a message covering the conversation (and Back putting only the
+ * file away), Back to the roster, the workspace with a file picked in it that stays while the Mac
+ * moves on, a project's folder over its conversation, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
  * page that keeps the reader's place when a line comes into another conversation and when the relay
  * goes out of reach and the link comes back to the snapshot; and the same page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
@@ -238,6 +240,9 @@ async function expectHistory(page: Page, when: string, lines: string[]): Promise
 }
 /** How wide `testID` is drawn, in CSS pixels (0 when it is not there). */
 const widthOf = async (page: Page, testID: string) => (await testid(page, testID).first().boundingBox().catch(() => null))?.width ?? 0;
+/** Whether a finger in the middle of the screen lands inside `testID`: what is on top, not what the page holds. */
+const onTop = (page: Page, testID: string) =>
+  page.evaluate((id) => Boolean(document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest(`[data-testid="${id}"]`)), testID);
 
 let failed = false;
 let browser: Browser | undefined;
@@ -605,10 +610,98 @@ try {
   const devices = (await setup({ operation: "list_devices" })) as { items: Array<{ name?: string }> };
   step(`the Mac: remote ${status.state}, ${status.devices} device(s) enrolled (${devices.items.map((d) => d.name).join(", ")})`);
 
+  // A file pressed in a message covers the conversation (it once lay under the conversation's
+  // page: pressing it showed nothing). What is on top is read where a finger lands, not from what
+  // the page holds. A path no attachment backs has no address of its own, so Back puts it away
+  // and leaves the conversation.
+  const workspace = join(mac.dataDir, "workspace");
+  mkdirSync(join(workspace, "out"), { recursive: true });
+  writeFileSync(join(workspace, "out", "report.md"), "# 报告\n\n正文一行。\n");
+  writeFileSync(join(workspace, "notes.md"), "# 笔记\n\n顶层文件。\n");
+  await mac.api("POST", `/v1/sessions/${mac.writerDirect}/messages`, { body: "看这个文件 [report.md](out/report.md)" });
+  await until("the file's link on the phone", 20_000, () => shownIn(page, "conversation", "看这个文件"));
+  await page.getByText("report.md", { exact: true }).last().tap();
+  await until("the file over the conversation", 15_000, () => onTop(page, "preview-sheet"));
+  await until("the file's text", 20_000, () => shownIn(page, "preview-sheet", "正文一行"));
+  await page.screenshot({ path: shot("3b-file") });
+  // In Chromium, Back after Back as a phone does it: nothing pressed between, the page read only
+  // through a session of our own (a locator or `evaluate` is a gesture, which clears the entries
+  // Chrome's Back would pass over). Closing the file writes the conversation's entry again with no
+  // press: the second Back must still land on the roster, not leave the page.
+  const backTwice = async (what: string, first: string, second: string) => {
+    if (!backWorker) {
+      await back();
+      await until(`${what}: the first Back`, 10_000, async () => (await page.evaluate((expression) => Boolean(eval(expression)), first)) as boolean);
+      return false;
+    }
+    const quiet = await context.newCDPSession(page);
+    const read = async (expression: string) => ((await quiet.send("Runtime.evaluate", { expression, returnByValue: true })) as { result: { value: boolean } }).result.value;
+    try {
+      for (const [n, there] of [first, second].entries()) {
+        await Bun.sleep(400);
+        await back();
+        await until(`${what}: Back ${n + 1} of 2 with nothing pressed between`, 10_000, () => read(there));
+      }
+    } finally {
+      await quiet.detach();
+    }
+    return true;
+  };
+  const present = (id: string) => `!!document.querySelector('[data-testid="${id}"]')`;
+  const absent = (id: string) => `!document.querySelector('[data-testid="${id}"]')`;
+  const walked = await backTwice("the file", `${absent("preview-sheet")} && ${present("conversation")}`, `${absent("conversation")} && ${present(`session-${mac.writerDirect}`)}`);
+  if (walked) {
+    if (!page.url().startsWith(origin)) throw new Error(`Back after Back from a file left the page for ${page.url()}`);
+    await row.click();
+    await testid(page, "conversation").waitFor({ timeout: 10_000 });
+  }
+  step(`a file pressed in a message covers the conversation; Back puts the file away and the conversation stays${walked ? ", and the next Back (nothing pressed between) the conversation, the page staying" : ""}`);
+
   await testid(page, "top-back").click();
   await until("the conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
   await row.waitFor({ timeout: 10_000 });
   step("Back: the conversation is put down, the roster is there");
+
+  // The workspace from the tools: a file picked in it stays while the Mac's snapshot moves (the
+  // address names no file there, and applying it again on each change of the snapshot put the file
+  // back to none).
+  await page.locator('[data-testid="tools-toggle"]:visible').first().tap();
+  await testid(page, "tools-workspace").tap();
+  await until("the workspace", 10_000, () => onTop(page, "workspace-pane"));
+  await testid(page, "artifact-picker").first().tap();
+  await page.getByText("notes.md", { exact: true }).last().tap();
+  await until("the workspace's file", 20_000, () => shownIn(page, "workspace-pane", "顶层文件"));
+  // A Bot renamed on the Mac: the roster under the workspace takes the name, so the snapshot moved.
+  const editorBot = (await mac.api<{ items: Array<{ id: string; name: string }> }>("GET", "/v1/bots")).items.find((bot) => bot.name === "Editor")!;
+  const renamed = `Editor ${stamp}`;
+  await mac.api("PATCH", `/v1/bots/${editorBot.id}`, { name: renamed });
+  await until("the rename heard on the phone", 20_000, async () => (await page.getByText(renamed, { exact: true }).count()) > 0);
+  await Bun.sleep(1000);
+  if (!(await shownIn(page, "workspace-pane", "顶层文件"))) throw new Error("the workspace's file went when the Mac's snapshot moved");
+  await mac.api("PATCH", `/v1/bots/${editorBot.id}`, { name: "Editor" });
+  await until("the name back on the phone", 20_000, async () => (await page.getByText(renamed, { exact: true }).count()) === 0);
+  await page.screenshot({ path: shot("3c-workspace") });
+  await back();
+  await until("the workspace put away", 10_000, async () => (await testid(page, "workspace-pane").count()) === 0);
+  step("the workspace from the tools: a file picked in it stays while the Mac renames a Bot; Back puts it away");
+
+  // A project's folder from its row's menu covers the project's conversation the same way.
+  await testid(page, "nav-projects").tap();
+  const projectRow = page.locator(`[data-testid="session-${mac.claudeProject}"]:visible`).first();
+  await projectRow.waitFor({ timeout: 10_000 });
+  await projectRow.click({ button: "right" });
+  await testid(page, "session-menu-project-dir").tap();
+  await until("the project's folder over its conversation", 15_000, () => onTop(page, "preview-sheet"));
+  await page.screenshot({ path: shot("3d-project-folder") });
+  if (!(await backTwice("the project's folder", `${absent("preview-sheet")} && ${present("conversation")}`, `${absent("conversation")} && ${present(`session-${mac.claudeProject}`)}`))) {
+    await testid(page, "top-back").click();
+  }
+  await until("the project's conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
+  if (!page.url().startsWith(origin)) throw new Error(`Back after Back from a project's folder left the page for ${page.url()}`);
+  await testid(page, "nav-sessions").tap();
+  await row.waitFor({ timeout: 10_000 });
+  step("a project's folder from its row's menu covers its conversation; Back puts the folder away, then the conversation");
+
 
   // The device store: a reload keeps the enrollment (IndexedDB) and links again, no pairing.
   await page.reload();
