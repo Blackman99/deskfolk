@@ -9,7 +9,7 @@
 ## 它是怎么接起来的
 
 - **你的 Mac** 仍然是唯一干活的地方。守护进程向中继保持一条出站的控制连接，每连上一台设备再多开一条。Mac 上不监听任何入站连接。
-- **中继**是一个跑在 Caddy 后面的小 Bun 服务，放在你自己的服务器和域名上。它用 HTTPS 提供手机端页面——托管信使，一个能装到主屏幕的网页——并在 Mac 和每台设备之间转发不透明的 Noise 帧。它只存登记用的公钥，日志只记固定的事件码，解不开任何一条消息。
+- **中继**是一个跑在 Caddy 后面的小 Bun 服务，放在你自己的服务器和域名上。它用 HTTPS 提供手机端页面——Deskfolk 自己的应用编成的网页，能装到主屏幕——并在 Mac 和每台设备之间转发不透明的 Noise 帧。它只存登记用的公钥，日志只记固定的事件码，解不开任何一条消息。
 - **每台设备**由你在 Mac 旁配对一次。之后它和 Mac 之间走端到端的 Noise IK，中继只负责把字节送到。
 
 单人、单台 Mac、最多 16 台已配对设备。链路断着的时候什么都不排队：Mac 睡了或者连不上，设备上会直接说连不上，不发任何东西；Mac 回来后它自己重连。
@@ -76,7 +76,7 @@ sh deploy/remote/check-health.sh /srv/deskfolk-relay/remote.env
 
 Caddy 会为你的域名申请证书。现在打开 `https://relay.example.com`，应该能看到配对页。
 
-不用 Docker 也行：同一个中继可以用 `bun apps/relay/dist/main.js` 跑（先 `pnpm --filter @real-bot/relay build`，Bun 1.4.2），环境变量不变；前面放任何一个逐条复刻 [`deploy/remote/Caddyfile`](../deploy/remote/Caddyfile) 的 TLS 代理，由它提供 `pnpm --filter @real-bot/messenger build:hosted` 的产物。页面的 Content-Security-Policy 里带着这次构建的脚本哈希：每次重新构建都用 `node deploy/remote/csp.mjs <产物>/index.html <头文件>` 重新生成这个头，和产物一起发布，否则页面白屏。
+不用 Docker 也行：同一个中继可以用 `bun apps/relay/dist/main.js` 跑（先 `pnpm --filter @real-bot/relay build`，Bun 1.4.2），环境变量不变；前面放任何一个逐条复刻 [`deploy/remote/Caddyfile`](../deploy/remote/Caddyfile) 的 TLS 代理，由它提供 `bun apps/desktop-nsh/scripts/phone-package.ts --build` 的产物（`apps/desktop-nsh/build/phone/Deskfolk`；需要带 `wasm32-unknown-unknown` 目标的 Rust、clang 和 `llvm-ar`）。页面的 Content-Security-Policy 用 `node deploy/remote/csp.mjs <产物>/index.html <头文件>` 生成：它必须允许 `'wasm-unsafe-eval'`，这个命令生成的就有，否则页面白屏。按内容命名的文件（`name.<10 位十六进制>.ext`、`browser.<10 位十六进制>/…`）永久缓存，页面本身、`_app/version.json` 和 `sw.js` 不缓存；缺失的按内容命名的文件回 404，不回页面。先传新文件再换页面，打开着的页面就不会指向还没到的文件。
 
 全部变量、限额和恢复规则见[自托管部署](deploy-remote.md)。
 

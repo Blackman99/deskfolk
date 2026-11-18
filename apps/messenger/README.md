@@ -2,7 +2,7 @@
 
 > **WIP：**项目范围与当前限制见[根 README](../../README.md)，运行细节见[开发说明](../../docs/development.md)。
 
-SvelteKit static SPA. 它不再是桌面窗口：桌面应用是原生的 `apps/desktop-nsh`（只复用本包不碰 DOM 的逻辑，见 `apps/desktop-nsh/scripts/port-messenger.ts`），本包是中继给手机的页面（`pnpm --filter @real-bot/messenger build:hosted`）和浏览器开发服务器：对着一个在跑的守护进程 `pnpm --filter @real-bot/messenger dev`（Vite，:5173），只用于浏览器改 UI，不是黄金路径。根目录 `pnpm dev` 起的是原生应用的开发版，不起本包。
+SvelteKit static SPA. 它不再是桌面窗口：桌面应用是原生的 `apps/desktop-nsh`（只复用本包不碰 DOM 的逻辑，见 `apps/desktop-nsh/scripts/port-messenger.ts`），中继给手机的页面 2026-11-18 起也是原生应用的 web 包（`bun apps/desktop-nsh/scripts/phone-package.ts --build`）；本包的托管构建（`pnpm --filter @real-bot/messenger build:hosted`）仍在 CI 里编、不再部署。本包还是浏览器开发服务器：对着一个在跑的守护进程 `pnpm --filter @real-bot/messenger dev`（Vite，:5173），只用于浏览器改 UI，不是黄金路径。根目录 `pnpm dev` 起的是原生应用的开发版，不起本包。
 
 桌面侧栏底部是带文字的三个入口：工作区（仍是 ⌘O）、工具、设置。工具菜单依次是日程、花费、新建终端；分隔线后是已归档会话，数量只在菜单里以灰色显示，工具按钮保持简洁。新建终端新开一条 shell；已经开着、没被标签摆出来的，仍从窗格「＋」或空窗格接回。日程和花费再打开时定位到已有标签，不另开一块。设置保留更新小红点。外观在 设置 → 基础偏好 → 外观。手机仍用搜索旁的工具菜单（仍叫终端，打开终端页），底部导航（会话 / 工作区 / 设置）保留。手机终端页的地址是 `?o=terminal`，刷新、前进和后退都回到这一页；返回回到打开它之前的会话或列表，shell 继续由守护进程持有。
 

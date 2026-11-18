@@ -62,9 +62,15 @@ https://{$RELAY_DOMAIN} {
 		handle @private {
 			respond 404
 		}
-		handle /_app/immutable/* {
-			# Scripts and styles are ~2.2 MB raw, ~0.65 MB compressed: what a phone pays on first
-			# load and after every deploy.
+		# The phone's page (`apps/desktop-nsh/scripts/phone-package.ts`) names every file but the page,
+		# the manifest and the service worker by its content: `name.<10 hex>.ext`, `browser.<10 hex>/…`,
+		# `facades/name.<10 hex>.js`. Those are cached for good; a missing one is a 404, never the page.
+		# The engine and its parts are ~21 MB raw, ~7 MB compressed: what a phone pays on first load,
+		# and for the parts a deploy changed. Compressed here (`encode` takes `application/wasm`), not
+		# from the build's `.br` / `.gz`: Caddy 2.10.2 answers a precompressed file with a 206, which a
+		# browser does not cache as the whole file.
+		@hashed path_regexp hashed "\.[0-9a-f]{10}[./]"
+		handle @hashed {
 			encode zstd gzip
 			root * /srv
 			@asset {

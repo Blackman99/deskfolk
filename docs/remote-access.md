@@ -9,7 +9,7 @@ Remote access lets a phone, or a browser on another computer, reach the Deskfolk
 ## How it fits together
 
 - **Your Mac** is still the only place work runs. The daemon keeps one outbound connection to the relay for control and opens one more for each connected device. Nothing on the Mac listens for inbound connections.
-- **The relay** is a small Bun service behind Caddy, on a server and domain you own. It serves the phone app — the hosted messenger, an installable web page — over HTTPS, and forwards opaque Noise frames between the Mac and each device. It stores only enrollment public keys, logs only fixed event codes, and cannot decrypt a message.
+- **The relay** is a small Bun service behind Caddy, on a server and domain you own. It serves the phone app — Deskfolk's own app built for the web, an installable page — over HTTPS, and forwards opaque Noise frames between the Mac and each device. It stores only enrollment public keys, logs only fixed event codes, and cannot decrypt a message.
 - **Each device** is paired once, by you at the Mac. From then on it talks to the Mac end to end over Noise IK; the relay only routes the bytes.
 
 One owner, one Mac, at most 16 paired devices. Nothing is queued while the link is down: if the Mac is asleep or unreachable the device says so and sends nothing, and it reconnects on its own when the Mac is back.
@@ -76,7 +76,7 @@ sh deploy/remote/check-health.sh /srv/deskfolk-relay/remote.env
 
 Caddy requests the certificate for your domain. Opening `https://relay.example.com` should now show the pairing page.
 
-Without Docker, the same relay runs as `bun apps/relay/dist/main.js` (from `pnpm --filter @real-bot/relay build`, on Bun 1.4.2) with the same environment variables, behind any TLS proxy that reproduces [`deploy/remote/Caddyfile`](../deploy/remote/Caddyfile) rule for rule and serves the output of `pnpm --filter @real-bot/messenger build:hosted`. The page's Content-Security-Policy carries hashes of that build's scripts: regenerate the header with `node deploy/remote/csp.mjs <build>/index.html <header-file>` every time you rebuild, and ship both together, or the page loads blank.
+Without Docker, the same relay runs as `bun apps/relay/dist/main.js` (from `pnpm --filter @real-bot/relay build`, on Bun 1.4.2) with the same environment variables, behind any TLS proxy that reproduces [`deploy/remote/Caddyfile`](../deploy/remote/Caddyfile) rule for rule and serves the output of `bun apps/desktop-nsh/scripts/phone-package.ts --build` (`apps/desktop-nsh/build/phone/Deskfolk`; it needs Rust with the `wasm32-unknown-unknown` target, clang and `llvm-ar`). Make the page's Content-Security-Policy with `node deploy/remote/csp.mjs <build>/index.html <header-file>`: it must allow `'wasm-unsafe-eval'`, as that generates it, or the page loads blank. Cache the files named by their content (`name.<10 hex>.ext`, `browser.<10 hex>/…`) for good, never the page, `_app/version.json` or `sw.js`, and send a missing one as a 404, not the page. Upload the new files before the new page, so an open page never names a file that is not there yet.
 
 Every variable, limit and recovery rule is in [self-hosted deployment](deploy-remote.md).
 

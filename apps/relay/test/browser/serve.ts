@@ -2,7 +2,8 @@ import { join, resolve, sep } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { productionCsp } from '../../../../deploy/remote/csp.mjs';
 
-const root = resolve(import.meta.dir, '../../../messenger/build');
+// The phone's page as the relay serves it: `bun apps/desktop-nsh/scripts/phone-package.ts --build`.
+const root = resolve(process.env.PHONE_SITE ?? resolve(import.meta.dir, '../../../desktop-nsh/build/phone/Deskfolk'));
 const html = readFileSync(join(root, 'index.html'), 'utf8');
 const csp = productionCsp(html);
 const server = Bun.serve({
@@ -20,7 +21,10 @@ const server = Bun.serve({
     const path = resolve(root, `.${decodeURIComponent(url.pathname)}`);
     if (path !== root && !path.startsWith(root + sep)) return new Response(null, { status: 404, headers });
     const file = Bun.file(path);
-    return new Response(path !== root && await file.exists() ? file : html, { headers: { ...headers, 'content-type': path !== root && await file.exists() ? file.type : 'text/html' } });
+    const found = path !== root && await file.exists();
+    // A file named by its content that is not there is a 404, never the page (as the Caddyfile's `@hashed`).
+    if (!found && /\.[0-9a-f]{10}[./]/.test(url.pathname)) return new Response(null, { status: 404, headers });
+    return new Response(found ? file : html, { headers: { ...headers, 'content-type': found ? file.type : 'text/html' } });
   },
 });
 console.log('Static production placeholder: http://[::1]:5186; no daemon or discovery endpoint.');

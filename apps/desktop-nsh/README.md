@@ -75,8 +75,8 @@ bun apps/desktop-nsh/scripts/dev.ts            # 起开发运行时（没起的�
 bun apps/desktop-nsh/scripts/dev.ts --seed-from-stable   # 空数据目录时从稳定版的库拷一份快照（只读拷贝；Bot 仍指向你真实的工作区）
 bun apps/desktop-nsh/scripts/dev.ts --stable-instance    # 当日常用的版本：顶替稳定版，用你自己的对话、设置和远程控制（见上面）
 bun apps/desktop-nsh/scripts/web-dev.ts        # 编 web 包（app/native 编成 wasm）并在 http://127.0.0.1:17991/ 提供，连开发运行时
-cd apps/desktop-nsh/app && nsh package Hosted.tsx --target web --out ../build/phone   # 手机版（托管）的 web 包，由中继的来源提供
-bun apps/desktop-nsh/scripts/phone-package.ts   # 再给它加上信使的 /sw.js（推送、点通知、远程媒体）、它要的文件和主屏幕图标；phone-web-e2e.ts 打包时自己做
+bun apps/desktop-nsh/scripts/phone-package.ts --build   # 手机页面：以正式名字 nsh package Hosted.tsx --target web，再加信使的 /sw.js（推送、点通知、远程媒体）和主屏幕图标，清单沿用 Svelte 页的身份（id "./"），去掉只有本机窗口要的块，写进版本号（页面参数 + _app/version.json）；中继提供的就是 build/phone/Deskfolk
+bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--edge caddy] [--from-svelte] [--browser webkit]   # 手机页面端到端，带生产的头和 CSP；--edge caddy 走生产 Caddyfile，--from-svelte 先在 Svelte 页上配对再换成本页
 bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]   # 开发版的 .app（Deskfolk Dev）
 bun apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env [--smoke]          # 正式版，见上面「正式版」
 ```

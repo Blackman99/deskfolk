@@ -13,6 +13,11 @@ test('shared CSP fails without entry scripts and mailbox bounds consume the prot
   expect(productionCsp('<script src="/entry.js"></script>')).toContain("script-src 'self'");
   expect(productionCsp('<script>boot()</script>')).toContain("script-src-attr 'none'");
   expect(productionCsp('<script src="/_app/immutable/entry.js"></script>')).not.toContain('sha256-');
+  // The NSH page: its engine is WebAssembly, its config and params are data blocks that never run.
+  const nshPage = '<script type="application/json" id="nsh-app">{"wasm":"nsh.0123456789.wasm"}</script><script type="module" src="nsh-start.0123456789.js"></script>';
+  expect(productionCsp(nshPage)).toContain("script-src 'self' 'wasm-unsafe-eval';");
+  // A data block is no entry script.
+  expect(() => productionCsp('<script type="application/json">{}</script>')).toThrow('missing production entry scripts');
   expect(LIMITS.mailbox).toBe(PAIR_MAILBOX_CONTRACT.maximumEnvelopeBytes);
   expect(LIMITS.mailboxTtlMs).toBe(PAIR_MAILBOX_CONTRACT.maximumLifetimeSeconds * 1_000);
 });
@@ -42,9 +47,14 @@ test('Caddy forwards exact relay routes, hides discovery/dev/API and uses hash-o
   const csp = read('deploy/remote/csp.mjs');
   expect(csp).toContain("script-src-attr 'none'");
   expect(csp).not.toContain("script-src 'unsafe-inline'");
-  expect(csp).not.toContain('unsafe-eval');
+  expect(csp).not.toContain("'unsafe-eval'");
+  expect(csp).toContain("'wasm-unsafe-eval'");
+  expect(productionCsp('<script src="/a.js"></script>')).not.toMatch(/script-src[^;]*(?:blob:|'unsafe-inline')/);
   expect(csp).toContain("connect-src 'self' wss: https:");
   expect(csp).toContain("manifest-src 'self'");
-  expect(read('deploy/remote/Dockerfile')).toContain('pnpm --filter @real-bot/messenger build:hosted');
+  // The phone's page is the NSH app's web build, its policy made from the page it serves.
+  expect(read('deploy/remote/Dockerfile')).toContain('bun apps/desktop-nsh/scripts/phone-package.ts --build');
+  expect(read('deploy/remote/Dockerfile')).toContain('node deploy/remote/csp.mjs apps/desktop-nsh/build/phone/Deskfolk/index.html');
+  expect(read('deploy/remote/Dockerfile')).not.toContain('build:hosted');
   expect(read('deploy/remote/Dockerfile')).not.toContain('vite preview');
 });

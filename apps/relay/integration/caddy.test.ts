@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { brotliCompressSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DeviceSession, HostSession, identityPublic, utf8 } from '@real-bot/remote';
@@ -12,8 +13,13 @@ const caddy = process.env.CADDY_BIN ?? 'caddy';
 const directory = mkdtempSync(join(tmpdir(), 'rb-edge-'));
 const script = 'document.documentElement.dataset.fixture = "ready";';
 const html = `<!doctype html><title>Relay edge fixture</title><script>${script}</script>`;
-const assetPath = '/_app/immutable/entry/fixture.01234567.js';
+// Named by its content, as the phone's page names its files (`name.<10 hex>.ext`, `browser.<10 hex>/…`).
+const assetPath = '/app.0123456789.js';
 const asset = 'export const fixture = true;';
+const nestedPath = '/browser.abcdef0123/dom.js';
+const enginePath = '/nsh.0123456789.wasm';
+// Past `encode`'s 512-byte floor, as every real part is.
+const engine = new Uint8Array(4096); engine.set([0, 97, 115, 109, 1, 0, 0, 0]);
 let httpOrigin: string, httpsOrigin: string, ca: string;
 let processHandle: Bun.Subprocess | undefined;
 let relay: Awaited<ReturnType<typeof fixture>> | undefined;
@@ -44,8 +50,11 @@ beforeAll(async () => {
   httpOrigin = `http://localhost:${httpPort}`; httpsOrigin = `https://localhost:${httpsPort}`;
   relay = await fixture({ origin: httpsOrigin, trustedProxyIp: '127.0.0.1' }, { origin: httpsOrigin, ca });
   const staticRoot = join(directory, 'static');
-  mkdirSync(join(staticRoot, '_app/immutable/entry'), { recursive: true });
+  mkdirSync(join(staticRoot, 'browser.abcdef0123'), { recursive: true });
   writeFileSync(join(staticRoot, 'index.html'), html); writeFileSync(join(staticRoot, assetPath), asset);
+  writeFileSync(join(staticRoot, nestedPath), asset); writeFileSync(join(staticRoot, enginePath), engine);
+  // The build's own `.br` beside it, which Caddy is not asked to send (see the Caddyfile).
+  writeFileSync(join(staticRoot, `${enginePath}.br`), brotliCompressSync(engine));
   const cspPath = join(directory, 'csp.caddy');
   writeFileSync(cspPath, `header Content-Security-Policy "${productionCsp(html)}"\n`);
   const production = readFileSync(join(root, 'deploy/remote/Caddyfile'), 'utf8');
@@ -147,7 +156,19 @@ test('real HTTPS headers cache only existing immutable assets, never shell/error
       expect(conditional.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
     }
   }
-  for (const path of ['/_app/immutable/missing.js', '/__local-api', '/v1/settings', '/@vite/client', '/src/main.ts']) {
+  for (const path of [nestedPath, enginePath]) {
+    const response = await request(path);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  }
+  // The engine goes out compressed, whole (a 200, which a browser caches), whatever sits beside it.
+  const compressed = await request(enginePath, true, { headers: { 'accept-encoding': 'gzip, br, zstd' } });
+  expect(compressed.status).toBe(200);
+  expect(compressed.headers.get('content-encoding')).toBe('zstd');
+  expect(compressed.headers.get('content-type')).toBe('application/wasm');
+  expect(compressed.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  expect(new Uint8Array(await compressed.arrayBuffer())).toEqual(engine);
+  for (const path of ['/missing.0123456789.js', '/browser.abcdef0123/missing.js', '/__local-api', '/v1/settings', '/@vite/client', '/src/main.ts']) {
     const response = await request(path);
     expect(response.status).toBe(404); expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.text()).not.toBe(html);

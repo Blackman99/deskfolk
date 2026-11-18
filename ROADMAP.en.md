@@ -92,7 +92,7 @@ Next:
 Groundwork in place:
 
 - A self-hosted Bun relay: one-time bootstrap and per-device outbound links; it only forwards opaque Noise traffic, and its logs record only metadata.
-- Noise IK end-to-end encryption and WebAuthn identity; the one-time pairing payload pins the host's public key, and the relay is the same one that serves the hosted page; the hosted messenger PWA uses the same set of methods as the Local API, and the hosted production bundle contains no local discovery and no loopback bearer.
+- Noise IK end-to-end encryption and WebAuthn identity; the one-time pairing payload pins the host's public key, and the relay is the same one that serves the hosted page; the phone's page (a PWA; since 2026-11-18 the native app's web build) uses the same set of methods as the Local API, and its package contains no local discovery and no loopback bearer.
 - Sessions, the workspace, terminals and files on the phone: after a disconnect it reconnects on its own with backoff, and back in the foreground it fetches only what changed in the meantime; pictures arrive first as scaled-down copies; the "Files" session sends files from the phone into the workspace `inbox/` without waking a Bot.
 - Optional Web Push sends only generic reminders that something is waiting, goes out from the Mac, and when opened only brings you back to the session list; it never approves anything.
 - Everyday features on the phone, Web Push and the screen have been verified and work.

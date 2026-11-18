@@ -6,6 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The phone's page is the desktop app's own
+
+- The page your relay serves to phones is now the native app built for the web, the same screens as on the Mac, in place of the separate Svelte page. A phone paired before stays paired: the page keeps the same address, the same device store and the same notifications, and a phone that added it to the home screen keeps the same app.
+- A page left open notices a newer one on the relay and offers a reload, as before; the old page offers the reload into this one too.
+- The first visit downloads more, about 8 MB compressed against 0.65 MB; after that the browser keeps the files, and a new version downloads only the parts that changed.
+- Self-hosted relays: the page is built with `bun apps/desktop-nsh/scripts/phone-package.ts --build` (Rust with the WebAssembly target), and its Content-Security-Policy allows `'wasm-unsafe-eval'`. The Docker image builds it. See the deploy guide.
+
 ### The old Tauri app is gone from the source
 
 - From source, `pnpm dev` starts the native app's development build, beside the copy you installed; `pnpm dev:steady` is gone. Nothing installed changes: the app you download has been the native one since 0.5.0.
