@@ -1,6 +1,9 @@
 {
   "extends": "./.nsh/tsconfig.json",
   "compilerOptions": {
+    // The browser's types too: the shared logic in src/m reaches browser APIs (the phone's page
+    // runs in a browser). They used to come in through xterm's typings, which reference them.
+    "lib": ["ES2023", "ESNext.Disposable", "DOM"],
     "allowImportingTsExtensions": true,
     "paths": {
       "nsh": ["./.nsh/types/nsh/index.d.ts"],
