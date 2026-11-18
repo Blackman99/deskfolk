@@ -267,6 +267,8 @@ test("out of usage, a Codex session moves to another account of yours and goes o
   await h.say(id, "跑一遍测试");
   await h.until(() => h.lines(id).some((row) => row.body === "换了账号，接着做完了"));
   expect(h.store.projectOf(id)?.configDir).toBe(other);
+  // The line names the agent whose account ran out, not Claude.
+  expect(h.lines(id).some((row) => row.kind === "system" && row.body.startsWith("Codex 账号") && row.body.includes("这个会话换到"))).toBe(true);
   expect(h.store.accountsOut().map((row) => [row.runner, row.known])).toEqual([["codex", true]]);
   const asked = h.sent(1, "turn/start").map((params) => JSON.stringify(params.input));
   expect(asked.some((input) => input.includes("现在会话换到了用户的另一个账号") && input.includes("跑一遍测试"))).toBe(true);

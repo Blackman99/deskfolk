@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Codex project session that moves to another account says it is a Codex account
+
+- When a Codex project session ran out of usage and moved to another of your Codex accounts, its line said "Claude account … is out of usage". It now names Codex.
+
 ### The phone's page shows its first screen after downloading half as much
 
 - The phone's page downloaded the whole app before its first screen: the rich text box, the code editor, the spreadsheet view, the date pickers, the file tree and the terminal, and the app's own Rust for PDFs, Office files and the remote screen, about 7.1 MB compressed. It now downloads about 3.6 MB (about 2.8 MB as the relay sends it, brotli) before its first screen. The message box and a message's text are fetched just after the first screen, so the first conversation opened does not wait for them; the rest is fetched the first time you open what needs it, and a phone that never opens a spreadsheet never downloads it.

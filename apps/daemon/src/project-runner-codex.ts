@@ -1038,7 +1038,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       keepSaid(live);
       update(live.runId, { status: "failed", activity: null, partial: null, approval: null, error: detail });
       store.tuneProjectSession(live.sessionId, { configDir: next });
-      postLine(live.sessionId, "system", switchedLine(locale(), accountName(from, en), accountName(next, en), reset));
+      postLine(live.sessionId, "system", switchedLine(locale(), accountName(from, en), accountName(next, en), reset, "Codex"));
       // Once this run is gone: the next starts on the account moved to, and carries the thread over.
       startRun(live.sessionId, () => ({ input: [{ type: "text", text: continueNote(locale(), "switched", messagesOf(unanswered), "Codex"), text_elements: [] }], command: null, messageIds: [] }));
       return;

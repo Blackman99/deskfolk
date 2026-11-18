@@ -25,11 +25,11 @@ export function moveProjectAccount(store: Store, sessionId: string, project: Pro
 /** How long a run waits for the Claude Code before it to exit before its session is copied. */
 export const EXIT_WAIT_MS = 5_000;
 
-/** The line a session moved by itself says: which account ran out, until when, and where it goes on. */
-export function switchedLine(locale: Locale, from: string, to: string, reset: string | null): string {
+/** The line a session moved by itself says: which of the agent's accounts ran out, until when, and where it goes on. */
+export function switchedLine(locale: Locale, from: string, to: string, reset: string | null, agent = "Claude"): string {
   return locale === "en"
-    ? `Claude account ${from} is out of usage${reset ? ` (${reset})` : ""}; this session goes on on ${to}.`
-    : `Claude 账号 ${from} 的用量额度用完了${reset ? `（${reset}）` : ""}，这个会话换到 ${to} 接着做。`;
+    ? `${agent} account ${from} is out of usage${reset ? ` (${reset})` : ""}; this session goes on on ${to}.`
+    : `${agent} 账号 ${from} 的用量额度用完了${reset ? `（${reset}）` : ""}，这个会话换到 ${to} 接着做。`;
 }
 
 /** The line a session out of usage on every account says; `detail` names the reset and when it picks up. */
