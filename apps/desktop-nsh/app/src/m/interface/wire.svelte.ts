@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 3a24c91eb197af58
 import { effect } from "../../lib/reactive";
 /**
  * Shell's hook-up of your interface profile (ADR 0106): starts this window's controller once,

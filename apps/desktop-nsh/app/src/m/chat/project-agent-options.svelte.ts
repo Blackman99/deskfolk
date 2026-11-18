@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 578ee444112d00bd
 import { deep } from "../../lib/reactive";
 import { isClaudeEffort, type AgentsStatusResponse, type BotRunner, type ClaudeCodeModel, type ClaudeCodeStatus } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 45766318f6aa061e
 import {
   AGENT_KINDS,
   isClaudeEffort,

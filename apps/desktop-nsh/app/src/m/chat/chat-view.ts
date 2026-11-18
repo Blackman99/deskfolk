@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: f52304797ee3e7ce
 import { interfaceBehaviour } from "../interface/behaviour.svelte.ts";
 import {
   INTERRUPT_NOTE_BODY,

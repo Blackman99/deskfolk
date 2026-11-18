@@ -42,7 +42,7 @@ export const EDGE_HEADERS: Readonly<Record<string, string>> = {
   "Permissions-Policy": "camera=(), microphone=(self), geolocation=(), publickey-credentials-get=(self)",
 };
 
-/** The production edge's query rule (`@illegal_query`): only the messenger's id-style keys. */
+/** The production edge's query rule (`@illegal_query`): only the page's id-style keys. */
 export const ALLOWED_QUERY = /^(?:(?:s|o|b|a|k)=[0-9A-Za-z._-]+)(?:&(?:s|o|b|a|k)=[0-9A-Za-z._-]+)*$/;
 
 /** A frame on its way upstream: text, or bytes in a buffer of their own (what `WebSocket.send` takes). */

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 4bf942e66919ab73
 import { state } from "../../lib/reactive";
 /**
  * One job on screen: the jobs to switch between, the one picked, its trace and its plan, and what is

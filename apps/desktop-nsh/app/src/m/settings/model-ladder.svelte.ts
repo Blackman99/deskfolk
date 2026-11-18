@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 3d476d90e8a57649
 import { state } from "../../lib/reactive";
 import type { ModelLadderResponse, ModelLadderRung } from '@real-bot/protocol';
 

@@ -3,7 +3,7 @@
 /*
   Deskfolk landing — design tokens.
 
-  The same palette and type as the messenger (apps/messenger/src/lib/styles/tokens.css): the
+  The same palette and type as the messenger (apps/desktop-nsh/assets/tokens.css): the
   Deskfolk mark's teal (#146A7C) as the accent and mustard (#F0AB3D) as its second colour, on
   greys that lean toward the teal rather than toward blue; dark mode is the app's teal-grey, each
   surface a step lighter than the one under it. Type is the system sans the app uses, with a
@@ -54,7 +54,7 @@
   --shadow-float: 0 12px 32px -12px rgba(18, 28, 32, 0.22);
 
   /* Behind the recorded app while a clip loads, and around it on the film page: the messenger's
-     own colours (apps/messenger/src/lib/styles/tokens.css, --bg / --pane / --ink). */
+     own colours (apps/desktop-nsh/assets/tokens.css, --bg / --pane / --ink). */
   --app-bg: #eef1f2;
   --app-pane: #ffffff;
   --app-ink: #121c20;

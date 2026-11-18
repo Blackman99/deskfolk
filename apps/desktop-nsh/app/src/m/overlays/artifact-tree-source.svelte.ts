@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: f309f63d2f4adff6
 import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import type { Attachment, TaskArtifacts } from "@real-bot/protocol";

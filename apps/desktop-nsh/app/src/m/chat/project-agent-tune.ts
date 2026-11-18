@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: dc2a258af722cd72
 import { CLAUDE_EFFORTS, type ClaudeCodeModel, type PatchProjectSessionRequest } from "@real-bot/protocol";
 import { effortChoices, modelChoices, modelRowOf } from "../claude-models.svelte.ts";
 import type { TuneRow } from "./tune-picker.ts";

@@ -2,21 +2,19 @@
  * The phone's page: `nsh package Hosted.tsx --target web` under the released name, and what the
  * page needs beside what NSH writes.
  *
- * - From the messenger's `static/`, as the Svelte page has them: the service worker (`sw.js`, which
+ * - From `assets/phone/`: the service worker (`sw.js`, which
  *   loads `media-stream.js`) that web push, a tapped notification, the app badge and remote media go
  *   through (`src/platform/page-service-worker.ts` registers it); the picture a notification shows
  *   (`icon-192.png`, `notification-badge.png`); and the home-screen icons. An iPhone gets web push
  *   only for a page added to the home screen, which takes the manifest's icons and the
  *   apple-touch-icon.
- * - The manifest keeps the identity the Svelte page installed under (`id: "./"`, its name and
+ * - The manifest keeps the identity the page was first installed under (`id: "./"`, its name and
  *   icons): a phone that added the page to its home screen keeps the same app.
  * - The two chunks only a local window runs (`local-api`, `local-discovery`: the loopback endpoint
  *   and its bearer) leave the package. The hosted page never imports them (`HOSTED_MESSENGER`), and
- *   the relay's page carries no code that asks for a local token, as the Svelte page's
- *   `REAL_BOT_HOSTED=1` build does not.
+ *   the relay's page carries no code that asks for a local token.
  * - The build's version, one digest of what the package serves: in `_app/version.json`, which an
- *   open page polls (the NSH page's `BuildUpdateNotice`, and a Svelte page still open from before
- *   the switch, whose own notice reads the same file), and in the page's params (`#nsh-params`,
+ *   open page polls (`BuildUpdateNotice`), and in the page's params (`#nsh-params`,
  *   `host.params.build`), so the page knows which build it is.
  *
  * NSH writes a `.br` / `.gz` beside each file for a server that sends them precompressed (Caddy's
@@ -34,7 +32,7 @@ import { join, resolve } from "node:path";
 import { nshCli } from "./nsh-cli";
 import { RELEASE_APP_NAME, RELEASE_BUNDLE_ID } from "./package";
 
-export const MESSENGER_STATIC = resolve(import.meta.dir, "..", "..", "messenger", "static");
+export const PHONE_ASSETS = resolve(import.meta.dir, "..", "assets", "phone");
 
 export const PHONE_STATIC = ["sw.js", "media-stream.js", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "notification-badge.png"] as const;
 
@@ -72,10 +70,10 @@ function files(dir: string, prefix = ""): string[] {
   });
 }
 
-/** The manifest as the Svelte page's: its identity and icons over what NSH wrote. */
+/** The manifest as the page was first installed: its identity and icons over what NSH wrote. */
 function phoneManifest(written: Record<string, unknown>, from: string): Record<string, unknown> {
-  const messenger = JSON.parse(readFileSync(join(from, "manifest.webmanifest"), "utf8")) as Record<string, unknown>;
-  return { ...written, id: messenger.id, name: messenger.name, short_name: messenger.short_name, description: messenger.description, icons: ICONS };
+  const installed = JSON.parse(readFileSync(join(from, "manifest.webmanifest"), "utf8")) as Record<string, unknown>;
+  return { ...written, id: installed.id, name: installed.name, short_name: installed.short_name, description: installed.description, icons: ICONS };
 }
 
 /** Takes the local-only chunks out of the package and out of the page's map of chunks. */
@@ -103,7 +101,7 @@ export function siteVersion(site: string): string {
 }
 
 /** Adds the worker, its files and the icons to the packaged site at `site`. Run again, it changes nothing more. */
-export function addPhoneStatic(site: string, from: string = MESSENGER_STATIC): void {
+export function addPhoneStatic(site: string, from: string = PHONE_ASSETS): void {
   for (const name of PHONE_STATIC) copyFileSync(join(from, name), join(site, name));
 
   const manifestPath = join(site, "manifest.webmanifest");

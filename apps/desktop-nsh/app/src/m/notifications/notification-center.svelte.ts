@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: acb8c6807eae35b8
 import { state } from "../../lib/reactive";
 import type { RuntimeSnapshot } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 0a778c4b788a7517
 import { state } from "../../lib/reactive";
 import {
   TAB_CHANNEL,

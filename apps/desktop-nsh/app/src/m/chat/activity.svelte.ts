@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 86a7f8982f001d7a
 import { state } from "../../lib/reactive";
 import type { StreamFrame, ToolFrame } from "@real-bot/protocol";
 import { parseStreamFrame, parseToolFrame } from "../ephemeral-frames.ts";

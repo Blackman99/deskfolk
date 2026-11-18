@@ -23,14 +23,12 @@ COPY apps/desktop-nsh/scripts/nsh-cli.ts apps/desktop-nsh/scripts/nsh-cli.ts
 RUN bun apps/desktop-nsh/scripts/nsh-cli.ts
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/desktop-nsh/package.json apps/desktop-nsh/package.json
-COPY apps/messenger/package.json apps/messenger/package.json
 COPY packages/protocol/package.json packages/protocol/package.json
 COPY packages/remote/package.json packages/remote/package.json
 RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY tsconfig.base.json ./
 COPY packages/protocol packages/protocol
 COPY packages/remote packages/remote
-COPY apps/messenger apps/messenger
 COPY apps/desktop-nsh apps/desktop-nsh
 RUN bun apps/desktop-nsh/scripts/phone-package.ts --build
 COPY deploy/remote/csp.mjs deploy/remote/csp.mjs

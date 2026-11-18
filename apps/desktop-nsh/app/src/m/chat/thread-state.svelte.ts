@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: a905218b0fe981a5
 import { state } from "../../lib/reactive";
 import type { GroupLeadState } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";

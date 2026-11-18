@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: b070e96a499534b4
 import { state } from "../../lib/reactive";
 import type { Terminal } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";

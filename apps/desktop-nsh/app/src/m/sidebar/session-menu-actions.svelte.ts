@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: b42f48f21aa33a9a
 import { state } from "../../lib/reactive";
 /**
  * The session context menu: which row it is open on, and what each of its items does.

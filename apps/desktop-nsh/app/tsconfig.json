@@ -14,7 +14,8 @@
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  // The logic's own tests and their kits, as in the messenger they came from: `nsh test` runs them
-  // without a type check, and their hand-built fixtures predate fields the protocol added since.
-  "exclude": ["e2e/**", "build/**", "src/m/**/*.test.ts", "src/m/**/test-*.ts"]
+  // The logic's own tests and their kits, as in the messenger they came from: `nsh test` runs the
+  // `*.test.ts`, `bun test` the `*.spec.ts` (scripts/spec-setup.ts), neither with a type check, and
+  // their hand-built fixtures predate fields the protocol added since.
+  "exclude": ["e2e/**", "build/**", "src/m/**/*.test.ts", "src/m/**/*.spec.ts", "src/m/**/test-*.ts"]
 }

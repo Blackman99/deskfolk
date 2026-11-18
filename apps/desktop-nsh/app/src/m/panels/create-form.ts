@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: bb767aeeea809fc9
 import {
   THINKING_LEVELS,
   isAgentEffort,

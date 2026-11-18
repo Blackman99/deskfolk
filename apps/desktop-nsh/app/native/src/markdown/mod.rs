@@ -2,7 +2,7 @@
 //! paths and roster names linked and those links turned into `<artifact>` and `<mention>`
 //! elements. It is the port of `app/src/ui/markdown.ts` (kept there as `prepareMarkdownJs`, the
 //! fallback and the reference the parity test compares against), of `linkifyWorkspacePaths` and
-//! `parseArtifactHref` (`apps/messenger/src/lib/overlays/artifacts.ts`), of `linkifyRosterMentions`
+//! `parseArtifactHref` (`app/src/m/overlays/artifacts.ts`), of `linkifyRosterMentions`
 //! and `parseMentions` (`mention-chips.ts`, `packages/protocol/src/mentions.ts`) and of
 //! `looksLikeWorkspacePath` (`cited-path.ts`).
 //!

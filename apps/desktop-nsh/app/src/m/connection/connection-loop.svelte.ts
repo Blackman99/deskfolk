@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: e5d1e969f47e670a
 import type {
   CatchupResponse,
   ClientEvent,

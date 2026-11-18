@@ -7,7 +7,7 @@ shadow is not a layer: the messenger draws it, so a hopping folk leaves it on th
 
 Run with Blender 5.2 (headless):
   Blender -b --factory-startup --python render.py -- OUT_DIR
-The task map's characters (apps/messenger/scripts/map-figures/figures.py) import `Folk` and
+The task map's characters (apps/desktop-nsh/scripts/map-figures/figures.py) import `Folk` and
 `setup_scene` from here; a Bot's avatar is one of them, seen by this camera (FIG_VIEW=avatar there),
 packed by build.py into src/folk-avatar-assets.ts. The landing page's mascots (Pudding, Mochi) are
 rendered here (apps/landing/scripts/mascots).

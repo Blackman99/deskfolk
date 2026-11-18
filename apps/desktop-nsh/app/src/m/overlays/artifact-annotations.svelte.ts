@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 40424a1378ce7b8d
 import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import type { AnchorOf, Annotation, AnnotationAnchor, AnnotationAnchorKind, CreateAnnotationRequest, PatchAnnotationRequest } from "@real-bot/protocol";

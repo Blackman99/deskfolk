@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: d7987b20497d88e9
 import { effect, state } from "../../lib/reactive";
 /**
  * The endpoint editor behind the Models tab — its autosave, the model probe, the create-once

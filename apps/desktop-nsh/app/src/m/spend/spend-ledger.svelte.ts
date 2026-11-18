@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 73b1c70a0895f0a2
 import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import type { SpendDetail, SpendGroup, SpendLine, SpendSummary } from "@real-bot/protocol";

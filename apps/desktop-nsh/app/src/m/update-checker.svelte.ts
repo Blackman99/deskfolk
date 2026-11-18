@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 8efb1e7916720125
 import { state } from "../lib/reactive";
 import { inDesktopShell } from "./desktop-shell.ts";
 import {

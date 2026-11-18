@@ -1,4 +1,4 @@
-//! The package checks of `apps/messenger/src/lib/overlays/office/archive.ts`, in Rust: a file over
+//! The package checks of `app/src/m/overlays/office/archive.ts`, in Rust: a file over
 //! 50 MiB, an archive of more than 4000 entries, an entry over 32 MiB or all of them over 128 MiB
 //! expanded is `office-limit`; a package without `[Content_Types].xml` and its main part is
 //! `office-invalid`. The numbers come from the entries' headers, and reading an entry stops at the

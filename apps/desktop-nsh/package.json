@@ -10,10 +10,9 @@
   "scripts": {
     "dev": "bun scripts/dev.ts",
     "web": "bun scripts/web-dev.ts",
-    "mirror": "bun scripts/port-messenger.ts",
     "theme": "bun scripts/theme-from-tokens.ts",
     "ui": "bun scripts/ui-tests.ts",
-    "test": "bun test scripts && bun scripts/port-messenger.ts --check && bun scripts/theme-from-tokens.ts --check",
+    "test": "bun test scripts && bun test --conditions browser --preload ./scripts/spec-setup.ts .spec.ts && bun scripts/theme-from-tokens.ts --check",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -24,7 +23,10 @@
     "marked": "^18.0.13"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.14.5",
+    "@playwright/test": "^1.63.0",
     "@types/bun": "1.4.2",
+    "happy-dom": "^20.14.5",
     "typescript": "^6.0.3"
   }
 }

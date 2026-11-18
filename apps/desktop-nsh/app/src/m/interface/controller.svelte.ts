@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 2144ae82cd15b3f8
 import { state } from "../../lib/reactive";
 /**
  * This window's side of your interface profile (ADR 0106): applies what the daemon holds, keeps the

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: b5e7ebbc6049295c
 import { state } from "../lib/reactive";
 import { BUILD_POLL_MS, offersRefresh, publishedVersion } from "./build-version.ts";
 

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: a3be9dff5e9841b4
 import { derived, effect, state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import { batch } from "nsh";

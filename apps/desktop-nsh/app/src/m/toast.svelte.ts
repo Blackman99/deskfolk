@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: e79c40a10e62d444
 import { state } from "../lib/reactive";
 /**
  * Short notices in the top-right corner: "Copied", "Saved to …", "Not sent — Retry".

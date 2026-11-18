@@ -7,7 +7,6 @@
  *
  *   bun apps/daemon/scripts/fake-openai.ts &
  *   REAL_BOT_DATA_DIR=/tmp/rb-annot/data bun apps/daemon/scripts/ui-fixture.ts
- *   cd apps/messenger && REAL_BOT_DATA_DIR=/tmp/rb-annot/data pnpm exec vite dev --port 5197 --strictPort
  *
  * Env: REAL_BOT_DATA_DIR (required), REAL_BOT_FIXTURE_BIND (default 127.0.0.1:17907),
  * REAL_BOT_FAKE_ORIGIN (default http://127.0.0.1:17917/v1). Generated media need `ffmpeg` on PATH;

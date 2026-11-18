@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 8b3f1d04c19474b5
 import {
   AGENT_KINDS,
   isAgentModelName,

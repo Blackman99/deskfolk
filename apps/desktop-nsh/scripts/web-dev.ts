@@ -1,8 +1,8 @@
 /**
  * The app's web build on this Mac, against the dev runtime: packages it (`nsh package --target
  * web`, the app's Rust crate compiled to wasm) and serves it on 127.0.0.1:17991 with one more path
- * the page's host module asks, `/__deskfolk/endpoint` (the dev runtime's address and token, as the
- * messenger's Vite plugin hands the token to its dev page). Loopback only; never the stable runtime.
+ * the page's host module asks, `/__deskfolk/endpoint` (the dev runtime's address and token).
+ * Loopback only; never the stable runtime.
  *
  *   bun apps/desktop-nsh/scripts/web-dev.ts [--no-build]
  */

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 4dc85edee529be2f
 import type { Message, MessageVersion, WorkAnswerResult } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";
 import type { MessengerApi } from "../messenger-api.ts";

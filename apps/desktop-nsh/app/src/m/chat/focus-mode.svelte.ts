@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 58f7d99bb08c1977
 import { rawState } from "../../lib/reactive";
 import { forgetStored, readStored, writeStored } from "../storage.ts";
 

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 2ca840facc246d3d
 import { state } from "../../lib/reactive";
 import type { Annotation, AnnotationFilter, CreateAnnotationRequest, PatchAnnotationRequest } from "@real-bot/protocol";
 import type { ApiError } from "../api.ts";

@@ -1,4 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
 /** `MessageImageLightbox.svelte`'s origin: where the picture sat before it was enlarged. */
 export type ImageOrigin = { top: number; left: number; width: number; height: number };
 

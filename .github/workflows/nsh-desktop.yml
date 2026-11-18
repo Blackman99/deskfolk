@@ -9,7 +9,6 @@ on:
     paths:
       - apps/desktop-nsh/**
       - apps/daemon/**
-      - apps/messenger/src/lib/**
       - packages/protocol/**
       - .github/workflows/nsh-desktop.yml
   workflow_dispatch:
@@ -101,7 +100,7 @@ jobs:
       - name: nsh version
         run: nsh --version
 
-      - name: Dev instance scripts, the messenger mirror, the scripts' types
+      - name: Dev instance scripts, the logic specs, the scripts' types
         run: |
           pnpm --filter @real-bot/desktop-nsh test
           pnpm --filter @real-bot/desktop-nsh typecheck
@@ -170,5 +169,5 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
           sudo apt-get install -y llvm
-          pnpm --filter @real-bot/messenger exec playwright install --with-deps chromium
+          pnpm --filter @real-bot/desktop-nsh exec playwright install --with-deps chromium
           AR_wasm32_unknown_unknown="$(command -v llvm-ar)" bun apps/desktop-nsh/scripts/phone-web-e2e.ts --browser chromium --shots "$RUNNER_TEMP/phone-shots"

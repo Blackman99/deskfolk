@@ -31,13 +31,13 @@ import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 // Playwright's types straight from `playwright-core` in pnpm's store: TypeScript does not follow
-// the messenger's `@playwright/test` symlink for a relative import, so its `export * from
-// "playwright/test"` resolves to nothing from here. The browsers come from the messenger's
+// the package's `@playwright/test` symlink for a relative import, so its `export * from
+// "playwright/test"` resolves to nothing from here. The browsers come from this package's
 // `@playwright/test` at run time (Bun follows the symlink), below.
 import type { Browser, BrowserType, Page } from "../../../node_modules/.pnpm/node_modules/playwright-core";
 import { devSocketPath } from "../../daemon/src/remote/dev-setup";
 import { ulid } from "../../daemon/src/ids";
-import { hostSigningFingerprint } from "../../messenger/src/lib/remote/fingerprint.ts";
+import { hostSigningFingerprint } from "../app/src/m/remote/fingerprint.ts";
 import { base64url, encodePairingCode, randomBytes, type PairingQr } from "../../../packages/remote/src/index.ts";
 import { RELEASE_APP_NAME } from "./package";
 import { ALLOWED_QUERY, certificate, RELAY_ROUTES, startCaddyEdge, startEdge } from "./phone-edge";
@@ -290,7 +290,7 @@ try {
   step(`pairing window open: ${code.slice(0, 12)}… (${code.length} characters)`);
 
   // @ts-expect-error -- a JavaScript entry without types of its own (they are `playwright-core`'s, above).
-  const { chromium, webkit } = (await import("../../messenger/node_modules/@playwright/test/index.mjs")) as { chromium: BrowserType; webkit: BrowserType };
+  const { chromium, webkit } = (await import("../node_modules/@playwright/test/index.mjs")) as { chromium: BrowserType; webkit: BrowserType };
   // The edge's certificate is made for the run: Chromium fetches a service worker's script only from
   // an origin whose certificate it trusts, whatever the context ignores.
   browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true, args: engine === "webkit" ? [] : ["--ignore-certificate-errors"] });

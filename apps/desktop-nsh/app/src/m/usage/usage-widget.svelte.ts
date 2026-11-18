@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: be8027835db10da2
 import { state } from "../../lib/reactive";
 /**
  * Where the floating usage widget is and whether it shows (ADR 0080), kept per device in

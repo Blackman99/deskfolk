@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 415e21a0302a069a
 import { state } from "../../lib/reactive";
 import type { AgentToolPlace, ToolFrame } from "@real-bot/protocol";
 import type { LiveCall } from "./map-data.ts";

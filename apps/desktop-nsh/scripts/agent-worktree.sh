@@ -15,7 +15,7 @@ if [ ! -d "$dir" ]; then
   git -C "$repo" worktree add --detach "$dir" main >/dev/null
 fi
 [ -e "$dir/node_modules" ] || ln -s "$main/node_modules" "$dir/node_modules"
-for pkg in apps/messenger apps/daemon packages/protocol packages/remote; do
+for pkg in apps/daemon apps/relay packages/protocol packages/remote; do
   rsync -a --exclude .vite "$main/$pkg/node_modules/" "$dir/$pkg/node_modules/"
 done
 rsync -a "$repo/apps/desktop-nsh/node_modules/" "$dir/apps/desktop-nsh/node_modules/"

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 98568b0e28fb766d
 import { state } from "../../lib/reactive";
 import { runAwaitsAsk, USER_MEMBER, type ControlActionResult, type ControlOffer, type ResolveApprovalRequest } from "@real-bot/protocol";
 import { ApiError } from "../api.ts";

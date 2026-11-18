@@ -67,19 +67,11 @@ jobs:
         if: success() || failure()
         run: pnpm --filter @real-bot/daemon typecheck
 
-      - name: Typecheck messenger
-        if: success() || failure()
-        run: pnpm --filter @real-bot/messenger typecheck
-
       - name: Typecheck desktop
         if: success() || failure()
         run: pnpm --filter @real-bot/desktop-nsh typecheck
 
-      - name: Messenger tests
-        if: success() || failure()
-        run: pnpm --filter @real-bot/messenger test
-
-      - name: Desktop script tests
+      - name: Desktop script and logic tests
         if: success() || failure()
         run: pnpm --filter @real-bot/desktop-nsh test
 

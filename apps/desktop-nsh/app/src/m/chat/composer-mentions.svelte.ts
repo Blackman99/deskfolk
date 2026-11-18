@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: e17201c2283fdaf8
 import { derived, effect, state } from "../../lib/reactive";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import { isOutside } from "../click-outside.ts";

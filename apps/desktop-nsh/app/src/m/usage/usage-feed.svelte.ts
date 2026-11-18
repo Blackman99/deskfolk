@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 8d2b32a3b84a5725
 import { state } from "../../lib/reactive";
 import { untrack } from "../../lib/reactive";
 import type { AgentUsageResponse, ClaudeUsage, UsageAgent, UsageResponse } from "@real-bot/protocol";

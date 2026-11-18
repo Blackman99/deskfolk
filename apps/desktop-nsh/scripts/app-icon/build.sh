@@ -1,11 +1,11 @@
 #!/bin/sh
-# Rebuilds the app's icon set from assets/icons/app-icon.svg and the messenger's home-screen icons
+# Rebuilds the app's icon set from assets/icons/app-icon.svg and the phone page's home-screen icons
 # from app-icon-bleed.svg (the same art, full bleed). Run from anywhere; macOS only (sips, iconutil).
 #
 #   assets/icons/icon.icns          the macOS bundle's icon
 #   assets/icons/icon.ico           the Windows exe, installer and daemon's icon
 #   assets/linux/icons/<n>x<n>.png  the Linux package's hicolor icons (32, 64, 128, 256, 512)
-#   apps/messenger/static/          icon-512.png, icon-192.png, apple-touch-icon.png
+#   assets/phone/                   icon-512.png, icon-192.png, apple-touch-icon.png
 #
 # The SVG has to be rasterized first, with `rsvg-convert` (brew install librsvg) or `resvg`, which
 # both keep the tile's transparent margins and drop shadow.
@@ -14,7 +14,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 app="$here/../.."
 icons="$app/assets/icons"
 linux="$app/assets/linux/icons"
-static="$app/../messenger/static"
+static="$app/assets/phone"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 

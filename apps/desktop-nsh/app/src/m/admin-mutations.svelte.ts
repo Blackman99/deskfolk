@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: d857017ec5b6b400
 import type {
   ApiFormat,
   BotRunner,

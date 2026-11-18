@@ -1,5 +1,5 @@
 //! Workspace paths in chat text: `looksLikeWorkspacePath` (`packages/protocol/src/cited-path.ts`)
-//! and `linkifyWorkspacePaths` with the artifact hrefs (`apps/messenger/src/lib/overlays/artifacts.ts`).
+//! and `linkifyWorkspacePaths` with the artifact hrefs (`app/src/m/overlays/artifacts.ts`).
 
 use std::collections::HashSet;
 

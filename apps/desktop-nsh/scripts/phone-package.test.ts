@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { addPhoneStatic, MESSENGER_STATIC, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
+import { addPhoneStatic, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
 
 const CONFIG = { id: "com.real-bot.desktop", code: "app.0123456789.js", chunks: { "Main.js": "Main.0123456789.js", "local-api.js": "local-api.1111111111.js", "local-discovery.js": "local-discovery.2222222222.js" } };
 
@@ -31,11 +31,11 @@ const read = (dir: string, name: string) => readFileSync(join(dir, name), "utf8"
 const params = (index: string) => JSON.parse(/<script type="application\/json" id="nsh-params">([^<]*)<\/script>/.exec(index)![1]!) as { build: string };
 
 describe("the phone's package", () => {
-  test("gets the messenger's service worker, its files and the icons, with the compressed copies made again", () => {
+  test("gets the service worker, its files and the icons, with the compressed copies made again", () => {
     const dir = site();
     try {
       addPhoneStatic(dir);
-      for (const name of PHONE_STATIC) expect(readFileSync(join(dir, name))).toEqual(readFileSync(join(MESSENGER_STATIC, name)));
+      for (const name of PHONE_STATIC) expect(readFileSync(join(dir, name))).toEqual(readFileSync(join(PHONE_ASSETS, name)));
       expect(read(dir, "sw.js")).toContain('importScripts("/media-stream.js")');
 
       const index = read(dir, "index.html");
@@ -58,12 +58,12 @@ describe("the phone's package", () => {
     const dir = site();
     try {
       addPhoneStatic(dir);
-      const messenger = JSON.parse(readFileSync(join(MESSENGER_STATIC, "manifest.webmanifest"), "utf8"));
+      const installed = JSON.parse(readFileSync(join(PHONE_ASSETS, "manifest.webmanifest"), "utf8"));
       const manifest = JSON.parse(read(dir, "manifest.webmanifest"));
-      expect(manifest.id).toBe(messenger.id);
+      expect(manifest.id).toBe(installed.id);
       expect(manifest.id).toBe("./");
-      expect(manifest.name).toBe(messenger.name);
-      expect(manifest.short_name).toBe(messenger.short_name);
+      expect(manifest.name).toBe(installed.name);
+      expect(manifest.short_name).toBe(installed.short_name);
       expect(manifest.icons.map((icon: { src: string }) => icon.src)).toEqual(["icon-192.png", "icon-512.png"]);
       // What NSH wrote and the Svelte page had no say in stays.
       expect(manifest.display).toBe("standalone");

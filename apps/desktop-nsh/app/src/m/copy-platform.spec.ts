@@ -1,0 +1,118 @@
+import { expect, test } from "bun:test";
+import { COPY } from "./copy.ts";
+
+// copy/platform-words.ts reads the platform once, when it loads, and test-setup.ts pins the
+// navigator to the Mac. The Windows and Linux wording needs its own instances of copy.ts and the
+// copy/ modules, loaded under that navigator: they leave the module cache for that import. Bun
+// registers `copy.ts?platform=…` as copy.ts itself, and putting the Mac entries back into
+// require.cache does not reach that registry, so a test file loaded later would import the words
+// just built for another platform. They are built once more under the Mac's navigator before the
+// cache is handed back. The cache is keyed by the disk's own path, with backslashes on Windows.
+const COPY_MODULE = /[\\/]src[\\/]m[\\/]copy(\.ts$|[\\/])/;
+let builds = 0;
+
+async function copyOn(platform: string): Promise<typeof COPY> {
+  const kept = Object.entries(require.cache).filter(([key]) => COPY_MODULE.test(key));
+  const drop = () => {
+    for (const key of Object.keys(require.cache)) if (COPY_MODULE.test(key)) delete require.cache[key];
+  };
+  drop();
+  Object.defineProperty(navigator, "platform", { configurable: true, value: platform });
+  try {
+    return (await import(`./copy.ts?platform=${platform}&build=${++builds}`)).COPY;
+  } finally {
+    Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+    drop();
+    await import(`./copy.ts?platform=MacIntel&build=${++builds}`);
+    for (const [key, module] of kept) require.cache[key] = module;
+  }
+}
+
+const routineHints = (copy: typeof COPY) => [
+  copy.zh.routines.zone,
+  copy.zh.routines.availability,
+  copy.zh.calendar.projectionHint,
+  copy.zh.calendar.lastFiredHostOnly,
+  copy.en.routines.zone,
+  copy.en.routines.availability,
+  copy.en.calendar.projectionHint,
+  copy.en.calendar.lastFiredHostOnly,
+];
+
+test("on a Mac the routine hints still name the Mac, word for word", () => {
+  expect(routineHints(COPY)).toEqual([
+    "按执行 Mac 的本地时区运行，不按此浏览器的时区换算。",
+    "执行 Mac 需醒着且运行时可用；恢复时只补最近一次，不逐次补跑。归档 Bot 不执行日程。",
+    "格子是规则展开，不是每次运行的记录。标出的应跑点只在这台 Mac 上可信。",
+    "应跑点标记只在执行 Mac 上显示。格子上的钟点就是那台 Mac 的本地时间。",
+    "Runs in the execution Mac’s local time zone, not this browser’s time zone.",
+    "The Mac must be awake with the runtime available. On recovery, only the latest missed occurrence is caught up. Archived Bots do not run routines.",
+    "A block is the rule unfolded, not a record of each run. A marked due time is only trustworthy on this Mac.",
+    "Due marks show only on the execution Mac. The clock on a block is that Mac’s local time.",
+  ]);
+});
+
+test("on Windows the routine hints name the computer that runs them, not a Mac", async () => {
+  const windows = await copyOn("Win32");
+  for (const hint of routineHints(windows)) expect(hint).not.toContain("Mac");
+  expect(windows.zh.routines.zone).toBe("按执行电脑的本地时区运行，不按此浏览器的时区换算。");
+  expect(windows.en.calendar.lastFiredHostOnly).toBe(
+    "Due marks show only on the execution computer. The clock on a block is that computer’s local time.",
+  );
+});
+
+const remoteHostCopy = (copy: typeof COPY) => [
+  copy.zh.remote.hostPairEmpty,
+  copy.zh.remote.hostPairDone,
+  copy.zh.remote.hostConnectIntro,
+  copy.zh.remote.relayGuideLead,
+  copy.zh.remote.relayGuideFill,
+  copy.zh.screen.macToggle,
+  copy.zh.screen.macToggleDesc,
+  copy.zh.screen.macIceServersDesc,
+  copy.zh.screen.macActive("Pixel", "直连"),
+  copy.en.remote.hostPairEmpty,
+  copy.en.remote.hostPairDone,
+  copy.en.remote.hostConnectIntro,
+  copy.en.remote.hostConnectFailed,
+  copy.en.remote.relayGuideLead,
+  copy.en.remote.relayGuideFill,
+  copy.en.screen.macToggle,
+  copy.en.screen.macToggleDesc,
+  copy.en.screen.macIceServersDesc,
+  copy.en.screen.macActive("Pixel", "Direct"),
+];
+
+test("the window's remote-access and remote-screen words name the Mac there, and the computer on Windows", async () => {
+  expect(COPY.zh.remote.hostPairEmpty).toBe("还没有设备配对到这台 Mac。");
+  expect(COPY.zh.remote.relayGuideLead).toContain("：Mac 只往外连它");
+  expect(COPY.zh.screen.macActive("Pixel", "直连")).toBe("Pixel 正在看这台 Mac 的屏幕（直连）");
+  expect(COPY.en.screen.macToggle).toBe("Allow viewing and controlling this Mac's screen");
+  const windows = await copyOn("Win32");
+  for (const line of remoteHostCopy(windows)) expect(line).not.toContain("Mac");
+  expect(windows.zh.screen.macToggle).toBe("允许看和操作这台电脑的屏幕");
+  expect(windows.zh.screen.macSharingSettings).toBe("下载 TightVNC");
+  expect(windows.en.screen.macSharingOff).toBe("No VNC server found: the phone cannot connect");
+});
+
+test("on Linux the words name the computer, its file manager, its Trash and its keyring", async () => {
+  const linux = await copyOn("Linux");
+  for (const hint of routineHints(linux)) expect(hint).not.toContain("Mac");
+  expect(linux.zh.routines.zone).toBe("按执行电脑的本地时区运行，不按此浏览器的时区换算。");
+  expect(linux.zh.stream.artifactReveal).toBe("在文件管理器中显示");
+  expect(linux.en.stream.artifactReveal).toBe("Show in File Manager");
+  expect(linux.zh.stream.artifactTrash).toBe("移到回收站");
+  expect(linux.en.stream.artifactTrash).toBe("Move to Trash");
+  for (const line of [linux.zh.stream.artifactTrashBody(["a.md"], 1, false, false), linux.en.stream.artifactTrashBody(["a.md"], 1, false, false)]) {
+    expect(line).not.toContain("Mac");
+  }
+  expect(linux.zh.settings.mcpAuthHint).toContain("系统密钥环");
+  expect(linux.en.settings.mcpAuthHint).toContain("system keyring");
+  expect(linux.zh.onboarding.subtitle).toContain("本机 Linux 单人");
+  expect(linux.en.notifications.deviceEnabledDesktopNote).toContain("on Linux yet");
+  expect(linux.zh.speech.micDenied).not.toContain("系统设置 → 隐私与安全性");
+  expect(linux.en.remote.setupNotOnLinux).toContain("not there yet on Linux");
+  // The Mac keeps its own words.
+  expect(COPY.zh.stream.artifactReveal).toBe("在 Finder 中打开");
+  expect(COPY.en.settings.mcpAuthHint).toContain("keychain");
+});

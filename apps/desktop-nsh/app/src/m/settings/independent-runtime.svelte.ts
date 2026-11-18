@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 0da4ed4d15bd3c23
 import { effect, state } from "../../lib/reactive";
 /**
  * The independent-runtime switch on the General tab and the confirm it raises, lifted out of

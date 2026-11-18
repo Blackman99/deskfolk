@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 31bf9a5c2df42f89
 import { state } from "../../lib/reactive";
 /**
  * The flow board's camera: where it sits, how far zoomed, and the gestures that move it.

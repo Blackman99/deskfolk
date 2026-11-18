@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: aa7eae006dec7e8d
 import { state } from "../lib/reactive";
 /**
  * The state every save-as-you-type page keeps: the debounce timer, whether a save is in flight,

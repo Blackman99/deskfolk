@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: b740df50b34bc60d
 import { state } from "../lib/reactive";
 import type { ComposerSuggestion } from "@real-bot/protocol";
 

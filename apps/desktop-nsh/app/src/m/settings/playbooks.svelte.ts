@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 0dc5c1d0b91e7f39
 import { state } from "../../lib/reactive";
 import type { Playbook, PlaybookDiff, PlaybookImpact, PlaybookList, PlaybookRevision, PlaybookStepId } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";

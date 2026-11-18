@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 1bdeba43abb27c32
 import { state } from "../../lib/reactive";
 import type { Copy } from '../copy.ts';
 import { ApiError } from '../api.ts';

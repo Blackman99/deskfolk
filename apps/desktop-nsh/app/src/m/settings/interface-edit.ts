@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: a26a1b40bd0ed1ef
 import type { InterfacePatch, InterfaceResponse } from '@real-bot/protocol';
 import { ApiError } from '../api.ts';
 import type { MessengerRuntime } from '../runtime.svelte.ts';

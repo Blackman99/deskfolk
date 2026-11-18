@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: e639b5796e0da056
 import { derived, state } from "../../lib/reactive";
 import { isImageFileName } from "./attachments.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";

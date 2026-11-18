@@ -1,5 +1,5 @@
 //! `@Name` in chat text: `parseMentions` (`packages/protocol/src/mentions.ts`) and
-//! `linkifyRosterMentions` (`apps/messenger/src/lib/chat/mention-chips.ts`).
+//! `linkifyRosterMentions` (`app/src/m/chat/mention-chips.ts`).
 //!
 //! The JavaScript counts in UTF-16 units and this in bytes. Every index here is the same place in
 //! the text either way, because each one is found at an ASCII character or is the end of a token

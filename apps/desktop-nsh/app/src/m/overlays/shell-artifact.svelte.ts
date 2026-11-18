@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 74c4c88dd1ecf308
 import { derived, state } from "../../lib/reactive";
 /**
  * The shell's artifact preview and workspace explorer: which file the preview shows, the ways to

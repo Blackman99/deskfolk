@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: bac21ea10e0a6424
 /**
  * Dragging workspace paths out of a file tree and onto a composer.
  *

@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 4ac97ae9ba08d916
 /**
  * What keeps a drag from doing its expensive follow-up work on every pixel.
  *

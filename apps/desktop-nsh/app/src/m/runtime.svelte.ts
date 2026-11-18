@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 0de827e000f4fe86
 import { reconciledState, state } from "../lib/reactive";
 import type {
   ApiFormat,

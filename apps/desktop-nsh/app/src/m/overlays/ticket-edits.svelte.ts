@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 9409358b7a6a9990
 import { derived, state } from "../../lib/reactive";
 /**
  * Edits to a plan's tickets, from wherever they are made: a status from the menu or a drop on the

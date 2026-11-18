@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 02081b86a48c2031
 import { state } from "../../lib/reactive";
 import type { Attachment, BuiltinModelRole, ProjectAgent } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";

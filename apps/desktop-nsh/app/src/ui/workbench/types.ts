@@ -1,12 +1,12 @@
 /**
- * What the workbench components share beyond the mirrored layout types (`src/m/workbench/layout-types.ts`).
- * A Svelte snippet becomes a render function: a tab's picture, its body, its label.
+ * What the workbench components share beyond the layout types (`src/m/workbench/layout-types.ts`):
+ * the render functions for a tab's picture, its body, its label.
  */
 import type { JSX } from "nsh";
-import type { TabAction as MirroredTabAction, TabClosing, WorkbenchTab } from "../../m/workbench/layout-types.ts";
+import type { TabAction as LayoutTabAction, TabClosing, WorkbenchTab } from "../../m/workbench/layout-types.ts";
 
 /** Something a tab offers to do: `icon` is the host's picture, drawn at the start of the row. */
-export type TabAction = Omit<MirroredTabAction, "icon"> & { icon?: () => JSX.Element };
+export type TabAction = LayoutTabAction & { icon?: () => JSX.Element };
 
 export type { TabClosing, WorkbenchTab };
 

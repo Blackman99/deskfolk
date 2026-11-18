@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: f07a6b4a336519b6
 import { state } from "../../lib/reactive";
 /**
  * The open placements this window uses, as one shared value: the settings write it, the workbench

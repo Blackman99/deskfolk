@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: fb0d7b990c710b09
 import { derived, effect, state } from "../../lib/reactive";
 /**
  * The desktop workbench cluster: the layout itself, its localStorage persistence, the effects

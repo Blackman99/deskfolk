@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 7ec6bcd7ab4821cf
 import { state } from "../../lib/reactive";
 /**
  * One confirm at a time, and the small cluster of open/delete actions that arm it.

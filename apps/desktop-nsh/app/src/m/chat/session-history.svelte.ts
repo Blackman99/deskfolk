@@ -1,5 +1,3 @@
-// Ported from apps/messenger/src/lib by scripts/port-messenger.ts; edited here since.
-// Source: 01fa59db234a95b9
 import { state } from "../../lib/reactive";
 import {
   FILE_DROP_SESSION_ID,
