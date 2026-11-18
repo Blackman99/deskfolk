@@ -60,7 +60,12 @@ test("the account picker names this computer's own first, then each listed direc
   ]);
   expect(agentAccountOptions(codex, "/opt/gone", t).at(-1)).toEqual({ value: "/opt/gone", label: "/opt/gone" });
   // An agent with no config directories has no accounts, whatever its status holds.
-  expect(agentAccountOptions(status("grok", { accounts }) as never, "", t)).toEqual([{ value: "", label: t.sidebar.botAgentAccountDefault }]);
+  expect(agentAccountOptions(status("opencode", { accounts }) as never, "", t)).toEqual([{ value: "", label: t.sidebar.botAgentAccountDefault }]);
+  // Grok takes accounts through GROK_HOME, as Codex does through CODEX_HOME.
+  expect(agentAccountOptions(status("grok", { accounts }) as never, "", t)).toEqual([
+    { value: "", label: `${t.sidebar.botAgentAccountDefault} · ChatGPT Plus` },
+    { value: "/opt/b", label: "/opt/b" },
+  ]);
 });
 
 test("a new Bot starts on the app while an endpoint can run it, else on the agent the app was set up on, else Claude Agent", () => {

@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Grok can have several accounts
+
+- Grok's card in Settings › Agents now takes other accounts' directories, as Codex's does: each is a `GROK_HOME`, signed in with `GROK_HOME=<dir> grok login`, and the card says which are signed in. A Bot running on Grok picks in its panel whose plan it spends; one left alone uses the default `~/.grok`.
+- Each account's directory is off limits to every Bot, as `~/.grok` is; only Grok's shipped skills inside it (`bundled`) can be read.
+
 ### A Codex project session that moves to another account says it is a Codex account
 
 - When a Codex project session ran out of usage and moved to another of your Codex accounts, its line said "Claude account … is out of usage". It now names Codex.

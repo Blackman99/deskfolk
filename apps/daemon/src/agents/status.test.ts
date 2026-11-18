@@ -118,3 +118,36 @@ test("an agy too old for `agy acp` is signed in and lists its models, yet its ca
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("Grok lists its accounts: the default first, then one per directory asked under its own GROK_HOME", async () => {
+  const { chmodSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { describeAgent } = await import("./status");
+  const dir = mkdtempSync(join(tmpdir(), "grok-status-"));
+  const grok = join(dir, "grok");
+  // Signed in only where GROK_HOME names the "work" account; the default home is signed out.
+  writeFileSync(grok, `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "grok 1.0.89"; exit 0; fi
+case "$GROK_HOME" in
+  *work) printf 'Logged in with work@example.com.\\nDefault model: grok-build\\n- grok-build\\n- grok-fast\\n'; exit 0;;
+  *) echo 'Not logged in. Run grok login.'; exit 1;;
+esac
+`);
+  chmodSync(grok, 0o755);
+  const work = join(dir, "grok work");
+  try {
+    const deps = { path: () => grok, configDirs: (runner: BotRunner) => (runner === "grok" ? [work] : []), customAgents: () => [] as CustomAgent[], env: { PATH: "/usr/bin:/bin" } };
+    const result = await describeAgent("grok", null, deps);
+    expect(result.logged_in).toBe(false);
+    expect(result.accounts).toHaveLength(2);
+    expect(result.accounts![0]).toMatchObject({ config_dir: null, logged_in: false, login_command: "grok login" });
+    expect(result.accounts![1]).toMatchObject({ config_dir: work, logged_in: true, auth: "work@example.com", error: null });
+    expect(result.accounts![1]!.login_command).toBe(`GROK_HOME='${work}' grok login`);
+    // With no account listed there is no accounts list, as before.
+    const plain = await describeAgent("grok", null, { ...deps, configDirs: () => [] });
+    expect(plain.accounts).toBeUndefined();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

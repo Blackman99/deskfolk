@@ -71,8 +71,11 @@ test("accounts are listed for an agent that has config directories, and one a Bo
   const dir = join(homedir(), ".codex-work");
   expect((await h.call("PUT", "/v1/runtime/agents/accounts", { runner: "codex", config_dirs: [dir] })).status).toBe(200);
   expect(h.store.agentConfigDirs("codex")).toEqual([dir]);
-  // Grok has none the app knows of.
-  expect((await h.call("PUT", "/v1/runtime/agents/accounts", { runner: "grok", config_dirs: [dir] })).status).toBe(422);
+  // Grok takes accounts through GROK_HOME; OpenCode has none the app knows of.
+  const grokDir = join(homedir(), ".grok-work");
+  expect((await h.call("PUT", "/v1/runtime/agents/accounts", { runner: "grok", config_dirs: [grokDir] })).status).toBe(200);
+  expect(h.store.agentConfigDirs("grok")).toEqual([grokDir]);
+  expect((await h.call("PUT", "/v1/runtime/agents/accounts", { runner: "opencode", config_dirs: [dir] })).status).toBe(422);
   h.store.createBot({ name: "Coder", duties: "code", boundaries: "none", runner: "codex", agent_config_dir: dir });
   const refused = await h.call("PUT", "/v1/runtime/agents/accounts", { runner: "codex", config_dirs: [] });
   expect(refused.status).toBe(409);

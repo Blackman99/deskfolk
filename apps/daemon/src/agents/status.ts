@@ -168,15 +168,21 @@ export async function describeAgent(runner: OtherRunner, custom: CustomAgent | n
         break;
       }
       case "grok": {
-        const listed = await run(resolved.executable, ["models"], resolved.env);
-        const text = listed.out;
-        const signed = /logged in with (.+?)\.?\s*$/im.exec(text);
-        base.logged_in = signed ? true : /not logged in|log ?in first|please (?:sign|log) in/i.test(text) ? false : null;
-        base.auth = signed?.[1]?.trim() ?? null;
-        base.default_model = /Default model:\s*(\S+)/i.exec(text)?.[1] ?? base.default_model;
-        const models = [...text.matchAll(/^\s*[-*]\s+(\S+)/gm)].map((match) => match[1]!).filter((id, index, all) => all.indexOf(id) === index);
-        if (models.length > 0) base.models = models.map((id) => ({ id, name: id, efforts: [...AGENT_KINDS.grok.efforts] }));
-        if (!listed.ok && !signed) base.error = firstLine(listed.err || listed.out) ?? "grok models failed";
+        const asked = await askGrok(resolved.executable, resolved.env);
+        base.logged_in = asked.logged_in;
+        base.auth = asked.auth;
+        base.default_model = asked.default_model ?? base.default_model;
+        if (asked.models.length > 0) base.models = asked.models;
+        base.error = asked.error;
+        const dirs = deps.configDirs(runner);
+        if (dirs.length > 0) {
+          const accounts: AgentAccount[] = [{ config_dir: null, logged_in: asked.logged_in, auth: asked.auth, error: asked.error, login_command: AGENT_LAUNCH.grok.login }];
+          for (const dir of dirs) {
+            const one = await askGrok(resolved.executable, { ...resolved.env, GROK_HOME: dir });
+            accounts.push({ config_dir: dir, logged_in: one.logged_in, auth: one.auth, error: one.error, login_command: `GROK_HOME=${shellQuote(dir)} grok login` });
+          }
+          base.accounts = accounts;
+        }
         break;
       }
       case "opencode": {
@@ -219,6 +225,22 @@ export async function describeAgent(runner: OtherRunner, custom: CustomAgent | n
     base.error = error instanceof Error ? error.message : String(error);
   }
   return base;
+}
+
+/** `grok models` under one environment (one account's `GROK_HOME`, or none): signed in or not, and the models. */
+async function askGrok(executable: string, env: Record<string, string>): Promise<{ logged_in: boolean | null; auth: string | null; models: AgentModel[]; default_model: string | null; error: string | null }> {
+  const listed = await run(executable, ["models"], env);
+  const text = listed.out;
+  const signed = /logged in with (.+?)\.?\s*$/im.exec(text);
+  const logged_in = signed ? true : /not logged in|log ?in first|please (?:sign|log) in/i.test(text) ? false : null;
+  const ids = [...text.matchAll(/^\s*[-*]\s+(\S+)/gm)].map((match) => match[1]!).filter((id, index, all) => all.indexOf(id) === index);
+  return {
+    logged_in,
+    auth: signed?.[1]?.trim() ?? null,
+    models: ids.map((id) => ({ id, name: id, efforts: [...AGENT_KINDS.grok.efforts] })),
+    default_model: /Default model:\s*(\S+)/i.exec(text)?.[1] ?? null,
+    error: !listed.ok && !signed ? (firstLine(listed.err || listed.out) ?? "grok models failed") : null,
+  };
 }
 
 /** `codex app-server`: who is signed in and which models it offers; nothing is run on the model. */

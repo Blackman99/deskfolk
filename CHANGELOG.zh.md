@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### Grok 能有多个账号了
+
+- 设置 › Agent 里 Grok 那张卡和 Codex 的一样能加别的账号的目录：每个是一个 `GROK_HOME`，在终端里用 `GROK_HOME=<目录> grok login` 登录，卡上写哪个登录着。跑在 Grok 上的 Bot 可以在面板里选花哪个账号的额度，没选的用默认的 `~/.grok`。
+- 每个账号的目录和 `~/.grok` 一样，所有 Bot 都碰不到；只有里面 Grok 自带的技能（`bundled`）能读。
+
 ### Codex 项目会话换账号时说的是 Codex 账号
 
 - Codex 项目会话用完额度、换到你另一个 Codex 账号接着做时，那一行写的是「Claude 账号……的用量额度用完了」。现在写 Codex。

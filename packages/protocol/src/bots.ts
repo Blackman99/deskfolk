@@ -50,7 +50,7 @@ export const AGENT_KINDS: Record<BotRunner, AgentKindInfo> = {
   codex: { runner: "codex", label: "Codex", protocol: "codex_app_server", command: "codex",
     efforts: ["low", "medium", "high", "xhigh", "max"], modelAliases: [], configDirVar: "CODEX_HOME", planUsage: true, appTools: true },
   grok: { runner: "grok", label: "Grok", protocol: "acp", command: "grok",
-    efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: null, planUsage: true, appTools: true },
+    efforts: ["low", "medium", "high", "xhigh"], modelAliases: [], configDirVar: "GROK_HOME", planUsage: true, appTools: true },
   opencode: { runner: "opencode", label: "OpenCode", protocol: "acp", command: "opencode",
     efforts: [], modelAliases: [], configDirVar: null, planUsage: false, appTools: true },
   antigravity: { runner: "antigravity", label: "Antigravity", protocol: "acp", command: "agy",

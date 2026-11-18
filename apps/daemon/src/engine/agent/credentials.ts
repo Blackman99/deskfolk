@@ -53,11 +53,21 @@ export function isAgentCredentialPath(abs: string, home: string, platform: NodeJ
   if (!isAbsoluteHostPath(abs, platform)) return false;
   const norm = platform === "win32" ? abs : posix.resolve(abs);
   if (isKeychainPath(norm, home, platform)) return true;
+  if (configDirs.some((dir) => ownReadableIn(dir, norm, platform))) return false;
   if (configDirs.some((dir) => isWithinPath(dir, norm, platform))) return true;
   const rel = homeRelative(abs, home, platform);
   if (rel === null) return false;
   if (AGENT_OWN_READABLE.some((entry) => under(rel, entry))) return false;
   return AGENT_HOME_ENTRIES.some((entry) => under(rel, entry));
+}
+
+/**
+ * Inside a listed account directory, the same shipped skills (`<dir>/bundled`, Grok's `GROK_HOME`)
+ * as under the default home; the directory itself stays a credential directory.
+ */
+function ownReadableIn(dir: string, norm: string, platform: NodeJS.Platform): boolean {
+  const base = dir.replace(platform === "win32" ? /[\\/]+$/ : /\/+$/, "");
+  return isWithinPath(`${base}${platform === "win32" ? "\\" : "/"}bundled`, norm, platform);
 }
 
 /** What an agent may read of its own install without a card (Grok's shipped skills). */
@@ -87,7 +97,7 @@ export function touchesAgentCredentials(command: string, home: string, platform:
   const entries = AGENT_HOME_ENTRIES.map((entry) => spelled(entry)).join("|");
   const names = new RegExp(`(?:${homes.join("|")})${sep}${own}(?:${entries})(?![A-Za-z0-9_-])`, win ? "i" : "");
   if (names.test(command)) return true;
-  if (configDirs.some((dir) => namesDir(command, dir, home, platform))) return true;
+  if (configDirs.some((dir) => namesDir(command, dir, home, platform, true))) return true;
   return asksKeychainForSecret(command, platform);
 }
 
@@ -96,7 +106,7 @@ export function touchesAgentCredentials(command: string, home: string, platform:
  * `~`, `$HOME` (and on Windows `%USERPROFILE%` and the like), either slash on Windows, any case there.
  * A longer name that only starts the same (`~/.claude-b2` for `~/.claude-b`) is another directory.
  */
-export function namesDir(command: string, dir: string, home: string, platform: NodeJS.Platform): boolean {
+export function namesDir(command: string, dir: string, home: string, platform: NodeJS.Platform, sparingBundled = false): boolean {
   const win = platform === "win32";
   const sep = win ? "[\\\\/]+" : "/+";
   const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
@@ -115,7 +125,9 @@ export function namesDir(command: string, dir: string, home: string, platform: N
       : ["~", "\\$HOME", "\\$\\{HOME\\}"];
     for (const spelling of homes) prefixes.push(`${spelling}${sep}${rel}`);
   }
-  return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])`, win ? "i" : "").test(command);
+  // `sparingBundled`: `<dir>/bundled` (Grok's shipped skills in an account's GROK_HOME) is not named.
+  const own = sparingBundled ? `(?!${sep}bundled(?![A-Za-z0-9._-]))` : "";
+  return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])${own}`, win ? "i" : "").test(command);
 }
 
 /**

@@ -128,6 +128,33 @@ test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing 
   expect((await remote.json() as UsageResponse).agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "opencode"]);
 });
 
+test("a Grok account's usage is asked of grok with that account's GROK_HOME", async () => {
+  const { chmodSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "grok-usage-"));
+  const grok = join(root, "grok");
+  writeFileSync(grok, "#!/bin/sh\nexit 0\n");
+  chmodSync(grok, 0o755);
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  try {
+    store.setAgentPath("grok", grok);
+    store.setAgentConfigDirs("grok", ["/opt/grok-b"]);
+    store.createBot({ name: "Grok Bot", duties: "x", boundaries: "y", runner: "grok", agent_config_dir: "/opt/grok-b" });
+    const homes: Array<string | undefined> = [];
+    const probe = createAgentUsageProbe({
+      store,
+      askGrok: async (env) => { homes.push(env.GROK_HOME); return { plan: "SuperGrok", windows: [], credits: null }; },
+    });
+    const usage = await probe.current() as AgentUsageResponse;
+    expect(usage.items.map((item) => [item.runner, item.config_dir])).toEqual([["grok", "/opt/grok-b"]]);
+    expect(homes).toEqual(["/opt/grok-b"]);
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a Claude account only a built-in call runs on is in use too", () => {
   const store = new Store({ endpointKey: memoryKeyStore() });
   try {
