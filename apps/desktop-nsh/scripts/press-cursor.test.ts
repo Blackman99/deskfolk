@@ -29,6 +29,7 @@ const BASE_LISTS = new Set(["Select", "Combobox", "DatePicker"]);
 
 /** Views that take presses and rightly keep the arrow (file, then its `testID` up to the first `${`). */
 const PLAIN = new Map<string, string>([
+  ["src/ui/BottomSheet.tsx bottom-sheet-backdrop", "the backdrop: a press beside the sheet closes it"],
   ["src/ui/chat/MessageFileOverlay.tsx msg-file-overlay", "the backdrop: a press beside the file closes it"],
   ["src/ui/chat/MessageFileOverlay.tsx msg-file-frame", "stops a press on the file from reaching the backdrop"],
   ["src/ui/chat/MessageImageLightbox.tsx msg-image-stage", "a tap shows or hides the viewer's bars"],
