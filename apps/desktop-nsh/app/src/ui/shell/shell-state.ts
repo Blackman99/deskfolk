@@ -515,7 +515,10 @@ export function createShellState() {
     !runtime.sessionSettingsOpen &&
     !runtime.profileBotId &&
     !danger.dangerConfirm &&
-    (runtime.settingsOpen ? !mobileSettingsDetail() && !providerEditor() : !runtime.workspaceOpen && !selected() && !artifact.artifactPreview);
+    // Usage, roles and the archived list are pages one level down from Tools, with their own ‹.
+    (runtime.settingsOpen
+      ? !mobileSettingsDetail() && !providerEditor()
+      : !runtime.listPage && !runtime.workspaceOpen && !selected() && !artifact.artifactPreview);
 
   /**
    * One step out of whatever is on top (the phone's Back first, Escape the same order). True:

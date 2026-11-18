@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On the phone, Usage, Roles and Archived sessions have no bottom bar
+
+- On the phone, the Usage, Roles and Archived sessions pages opened from Tools kept the Bot / Projects / Settings bar at the bottom, though none of those was where you were. They are pages one level down, like Spend and the Routine calendar: the bar is gone under them, and their ‹ or the phone's Back brings you back to the list with the bar.
+
 ### The phone's page keeps its engine in its own cache
 
 - The phone's page keeps its engine (the `.wasm` files, about 16 MB) and its other files named by their content in its service worker's cache, as the earlier page did with its own files; until now only the browser's HTTP cache held them, which is shared with every other site and drops the least recently used files as it fills, and the phone then downloaded the engine again. The old page's cached files are dropped. The scripts the app's own frame loads still come from the HTTP cache: Chromium does not pass them through the worker.

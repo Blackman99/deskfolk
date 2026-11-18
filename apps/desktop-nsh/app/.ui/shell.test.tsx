@@ -97,6 +97,24 @@ test("narrow: settings is one of the bottom bar's places: its list has no head a
   expect(app.count("id:mobile-nav")).toBe(1);
 });
 
+test("narrow: usage, roles and the archived list are pages one level down: no bottom bar under them, their ‹ brings it back", async () => {
+  const app = await open({ width: 420 });
+  for (const [item, page, back] of [
+    ["tools-usage", "usage-page", "usage-page-back"],
+    ["tools-roles", "roles-page", "roles-page-back"],
+    ["tools-archived", "mobile-archived-head", "mobile-archived-back"],
+  ] as const) {
+    expect(app.count("id:mobile-nav")).toBe(1);
+    await app.press("id:tools-toggle");
+    await app.press(`id:${item}`);
+    await app.waitFor(`id:${page}`, { timeout: 10_000 });
+    await app.waitUntil(() => app.count("id:mobile-nav") === 0);
+    await app.press(`id:${back}`);
+    await app.waitUntil(() => app.count(`id:${page}`) === 0);
+    await app.waitUntil(() => app.count("id:mobile-nav") === 1);
+  }
+});
+
 test("narrow: a file opened over a conversation covers the window, and its ‹ puts it away", async () => {
   const app = await open({ width: 420 });
   await app.press(`id:session-${seeded.writerDirect}`);

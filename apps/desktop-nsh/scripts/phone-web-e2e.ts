@@ -1039,6 +1039,28 @@ try {
   await expectAt("Back after leaving settings by the bar", "/");
   step("settings is one of the bottom bar's places: no head over its list, the bar under it; the bar leaves it, and Back stays on the page");
 
+  // Usage, roles and the archived conversations are pages one level down from Tools, each with its
+  // own ‹: no bottom bar under them (it showed Bot / Projects / Settings, none of them where the
+  // page is), and Back puts the page away with the bar back under the roster.
+  for (const [item, pageId, kind] of [
+    ["tools-usage", "usage-page", "usage"],
+    ["tools-roles", "roles-page", "roles"],
+    ["tools-archived", "mobile-archived-head", "archived"],
+  ] as const) {
+    await page.locator('[data-testid="tools-toggle"]:visible').first().tap();
+    await testid(page, item).tap();
+    await showing(pageId);
+    await expectAt(`the ${kind} page from the tools`, `/?o=${kind}`);
+    await until(`no bottom bar under the ${kind} page`, 5_000, async () => (await testid(page, "mobile-nav").count()) === 0);
+    if (kind === "usage") await page.screenshot({ path: shot("3e-usage-page") });
+    await back();
+    await putAway(pageId);
+    await expectAt(`Back from the ${kind} page`, "/");
+    await showing("mobile-nav");
+    await row.waitFor({ timeout: 5_000 });
+  }
+  step("usage, roles and the archived list from the tools: no bottom bar under them; Back puts each away and the bar is back under the roster");
+
   // Settings on a phone drills down: the list of tabs, a tab, a section of it. Each page opened
   // has an entry of its own, settings' address with `#l<depth>`, so the browser's Back steps out
   // one level at a time, as the page's own ‹ does, and only off the list closes settings.
