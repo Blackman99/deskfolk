@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The phone's page keeps its engine in its own cache
+
+- The phone's page keeps its engine (the `.wasm` files, about 16 MB) and its other files named by their content in its service worker's cache, as the earlier page did with its own files; until now only the browser's HTTP cache held them, which is shared with every other site and drops the least recently used files as it fills, and the phone then downloaded the engine again. The old page's cached files are dropped. The scripts the app's own frame loads still come from the HTTP cache: Chromium does not pass them through the worker.
+
 ### On the phone, a project folder's + opens a sheet from the bottom
 
 - On the phone's Projects page, the + on a project folder's row opened a small desktop-style menu hanging under it. It now opens a sheet from the bottom of the screen, named after the folder, as a conversation's long-press menu and the floating create button do: a new session of each agent in that folder, Open project folder and Open terminal in project folder, in rows sized for a thumb. The ✕, a tap outside it or the phone's Back put it away. A desktop window keeps the menu under the +.

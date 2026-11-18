@@ -1,12 +1,17 @@
 importScripts("/media-stream.js");
 
-const CACHE = "real-bot-immutable-v1";
+// v2 (2026-11-18): the NSH page's files, named by their content; activating drops v1, which held
+// the Svelte page's `/_app/immutable/` files.
+const CACHE = "real-bot-immutable-v2";
 
 // Cache-first entries are stamped with when they were last served, so unused ones can be pruned
 // without ever evicting something the phone is actively relying on. The stamp lives in a response
 // header rather than a second store: whatever puts a response is the only thing that needs to
 // write it, and a cache-first read already has the response in hand to read it back from.
 const USED_HEADER = "x-rb-used";
+// The body's own size, written with the stamp: `Content-Length` is what came over the wire, a third
+// of the engine's 12 MB when the relay sent its `.br`, and none at all when nginx compressed as it went.
+const SIZE_HEADER = "x-rb-size";
 // A cached response gets a fresh stamp when its existing one is at least this old, so a file
 // still being fetched daily is not rewritten on every single hit.
 const RESTAMP_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
@@ -22,11 +27,20 @@ const MAX_BYTES = 120 * 1024 * 1024;
 // accounting below never counts it as a real entry.
 const PRUNE_STAMP_KEY = "https://real-bot.invalid/sw-prune-stamp";
 
+// The page's files named by their content, the rule the relay's vhost marks immutable:
+// `name.<10 hex>.ext`, `browser.<10 hex>/…`, `facades/name.<10 hex>.js`. Never the page, this
+// worker, `media-stream.js`, the manifest or `_app/version.json`, which an open page polls.
+// What reaches the worker is what the page itself fetches: the engine, its side modules, `nsh.js`.
+// The scripts the app's `about:blank` frame loads (`app.js`, `Main.js`, the facades) do not come
+// through here in Chromium (measured 2026-11-18) and stay on the HTTP cache. Served from here, the
+// engine started a repeat load as fast as from the HTTP cache.
+const CONTENT_NAMED = /\.[0-9a-f]{10}[./]/;
+
 function isImmutable(url) {
   try {
     const parsed = new URL(url);
     if (parsed.origin !== self.location.origin) return false;
-    return parsed.pathname.startsWith("/_app/immutable/");
+    return CONTENT_NAMED.test(parsed.pathname);
   } catch {
     return false;
   }
@@ -37,6 +51,10 @@ async function stampedClone(response, usedAt) {
   const headers = new Headers(response.headers);
   headers.set(USED_HEADER, String(usedAt));
   const body = await response.arrayBuffer();
+  // `fetch` hands over the body decoded; the headers of the wire's encoding no longer describe it.
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  headers.set(SIZE_HEADER, String(body.byteLength));
   return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
 
@@ -47,7 +65,7 @@ function usedAtOf(response) {
 }
 
 function byteSizeOf(response) {
-  const raw = response.headers.get("content-length");
+  const raw = response.headers.get(SIZE_HEADER) ?? response.headers.get("content-length");
   const n = raw ? Number(raw) : NaN;
   // A coarse fallback so the byte cap still means something without Content-Length; better an
   // estimate than treating an unknown size as zero.

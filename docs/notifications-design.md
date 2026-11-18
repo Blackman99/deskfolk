@@ -29,7 +29,7 @@
 | Web Push 服务端 | `remote/push.ts::PushService` 已有订阅、原生 VAPID 读取、P-256/HKDF/AES128GCM 加密、HTTPS 主机允许名单、禁止重定向、TTL 60 秒、250ms 合并、404/410 删除订阅。 | 保留可复用密码与订阅路径，补策略、有限重试、订阅版本、吊销竞态防护与脱敏诊断。 |
 | Push 分类 | `shouldNotify` 对批准、ask、bot、部分失败文案及 interrupted 通知；直接排除 Bot↔Bot 私聊，也排除了其中真实待批准。群里的 Bot 消息尚无精细分类；失败依赖中英文前缀。 | 统一分类，明确人类批准例外、群内协作过滤、语义唯一键；去掉按失败文案识别的依赖。 |
 | Push 客户端 | `remote/push.ts::enablePush` 从用户操作申请许可、注册订阅，经 E2EE 上传。`SettingsModal.svelte` 已有远程待办推送开关。 | 收敛至“通知”设置，展示浏览器许可与主机订阅两层状态，补订阅漂移和失效恢复。 |
-| Service Worker | `static/sw.js` 只缓存 `/_app/immutable/`；收到固定 pending 就显示通用通知；点击 focus 第一个窗口并发送 `{type:'inbox'}`，无窗口则打开 `/`。`+layout.svelte` 只在 hosted 构建注册 SW。 | 点开真正的通知收件箱、严格筛选窗口、保持业务零缓存；固定通知不承担后台业务同步。 |
+| Service Worker | `apps/desktop-nsh/assets/phone/sw.js` 只缓存按内容命名的文件（`name.<10 位十六进制>.ext`、`browser.<10 位>/…`，和中继 vhost 标成 immutable 的同一条规则；2026-11-18 起，之前是 Svelte 页的 `/_app/immutable/`）；收到固定 pending 就显示通用通知；点击 focus 第一个窗口并发送 `{type:'inbox'}`，无窗口则打开 `/`。`+layout.svelte` 只在 hosted 构建注册 SW。 | 点开真正的通知收件箱、严格筛选窗口、保持业务零缓存；固定通知不承担后台业务同步。 |
 | 当前“收件箱”行为 | `runtime.svelte.ts::onPushMessage` 只断开重连；没有专用通知列表与待处理总览。冷启动 `/` 也没有收件箱导航意图。 | 已连接时刷新收件箱，断线时重连后再打开；冷启动使用通用入口。 |
 | 桌面 | `Cargo.lock` 锁定 Tauri 2.11.5；`Cargo.toml` 只有 autostart / single-instance 等依赖，没有 notification 插件。`lib.rs` 的 `show_main`、`RunEvent::Reopen`、关窗隐藏和退出监督已存在。 | 添加独立于 WebView 的原生通知适配器及点击桥；复用现有窗口与监督行为。 |
 | 远程多标签页 | `apps/relay/src/server.ts` 同一 device 已有 route 时拒绝第二条 route；身份按浏览器存储分区保存在 IndexedDB。 | 同源标签页协调连接所有者，避免开第二页就争抢设备通道。 |
@@ -513,7 +513,7 @@ sequenceDiagram
 
 - SW 是按事件短暂启动的 worker，不能持有常驻 WebSocket、轮询业务、运行定时器保证或充当离线守护进程。push / click / activate 使用 `event.waitUntil`。
 - 有效 Push 严格只接收单字段 `t=pending`。即使页面已前台或事项可能已处理，也显示通用可见通知；只把解析错误 / 非法载荷作为无效事件拒绝。遵守 WebKit userVisibleOnly，不能用静默 Push 更新业务或偷偷清角标。
-- SW 不从主机下载消息、名称、审批或准确未读数，不调用本机发现，不读取身份密钥。只允许缓存同源 GET 的已哈希 `/_app/immutable/` 静态资源，并在现有 `isImmutable` 上补 origin / 响应类型检查；导航、API、Noise、blob、文件和错误响应不缓存。
+- SW 不从主机下载消息、名称、审批或准确未读数，不调用本机发现，不读取身份密钥。只允许缓存同源 GET 的按内容命名的静态资源（NSH 页的 `name.<10 位十六进制>.ext`；Svelte 页时是 `/_app/immutable/`），并在现有 `isImmutable` 上补 origin / 响应类型检查；导航、API、Noise、blob、文件和错误响应不缓存。
 - 当前壳 HTML network-only 保持不变；全离线冷启动可能只能显示浏览器网络错误，应用不承诺离线收件箱。SW 可以在关闭页面时显示系统通知；点击后有网但 Mac 不可达则显示主机不可达页。
 - 只保存非业务的 SW 偏好（语言、用户通知 opt-in、角标开关），不持久化通知目标、正文、计数历史或点击命令。语言从安装 / 页面显式同步的 zh/en 选择，推送载荷仍固定。
 - 前台已认证页面可按 capability 调用 Badging API 设置当前准确 attention_count；后台通用 Push 仅设置“有事项”的点 / 无数值 badge，无法知道准确数量。没有 badge API 的浏览器保留应用内角标。
