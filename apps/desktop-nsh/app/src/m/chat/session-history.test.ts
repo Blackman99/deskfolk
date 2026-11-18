@@ -122,3 +122,14 @@ test("a conversation not read yet takes its first page as the history, whatever 
   expect(held(host)).toEqual(["m6", "m7"]);
   expect(host.sessionView("a").messageNext).toBe("c6");
 });
+
+test("a link to a line reads the first page again in the same connection and keeps what was paged back", async () => {
+  const { host, history } = setup(() => ({ items: [line(7), line(6), line(5)], next: "c5" }));
+  await history.selectSession("a");
+  // Paged back since, as scrolling to the top does: older lines and the cursor past them.
+  host.snapshot = { ...host.snapshot, messages: [...host.snapshot.messages, ...[2, 3, 4].map(line)] as never };
+  host.sessionView("a").messageNext = "c2";
+  await history.selectSession("a", { messageId: "m3" });
+  expect(held(host)).toEqual(["m2", "m3", "m4", "m5", "m6", "m7"]);
+  expect(host.sessionView("a").messageNext).toBe("c2");
+});
