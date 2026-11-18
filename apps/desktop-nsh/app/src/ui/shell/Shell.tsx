@@ -18,7 +18,7 @@
  * `session-drag.ts`; the interface profile is applied from `shell-state.ts` (ADR 0108).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { computed, PanResponder, Text, View } from "nsh";
+import { cleanup, computed, PanResponder, Text, View } from "nsh";
 import { snapshot } from "../../lib/reactive";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
 import { spendCopyFor } from "../../m/spend/spend-copy.ts";
@@ -71,6 +71,7 @@ import { WorkspaceDragGhost } from "../WorkspaceDragGhost";
 import { bindShellKeys } from "./shell-keys";
 import { createSessionDrag } from "./session-drag";
 import { createShellState, type ShellState } from "./shell-state";
+import { provideBackChain } from "../../platform/page-route";
 import { WINDOW_CHROME } from "../../m/window-chrome";
 import { windowGlass } from "../glass";
 
@@ -79,6 +80,8 @@ const SPLIT_GRIP = 7;
 
 export function Shell() {
   const s = createShellState();
+  // The phone's Back walks this before history (`platform/page-route.ts`).
+  cleanup(provideBackChain(s));
   // Bound before any child mounts: a layer's own Escape, bound later, wins while it is open.
   bindShellKeys(s);
   return (

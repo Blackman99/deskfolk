@@ -7,7 +7,10 @@
  * As there too, the shell waits for the first connection behind `ConnectionScreen` (connecting, or
  * unreachable with a Retry): before it the snapshot is the empty one, whose settings say the
  * first-run onboarding is not done, and every start showed the onboarding for a moment. Once the
- * shell has been up it stays through a lost connection.
+ * shell has been up it stays through a lost connection, faded under `OfflineBanner`.
+ *
+ * Hosted, the page's address follows what is open and Back walks it (`platform/page-route.ts`),
+ * and another tab of the page holding the device's link puts this one on `TabStandbyScreen`.
  *
  * Two development checks open one of the spike's panes alone instead (`--pane terminal` for
  * `scripts/terminal-probe.ts` and the frame-rate probe, `--pane pdf` with `--pdf <path>`), until
@@ -18,13 +21,14 @@ import { initialPane, initialSession, windowId } from "./launch";
 import { appBanners } from "./platform/app-banners";
 import { installLinuxTray } from "./platform/linux-tray";
 import { pageBuildUpdates, reloadPage } from "./platform/page-build";
+import { pageRoute } from "./platform/page-route-install";
 import { linuxWheelProps } from "./platform/wheel";
 import { installWindowLife } from "./platform/window-life";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
 import { BuildUpdateNotice } from "./ui/BuildUpdateNotice";
 import { PairingScreen } from "./ui/remote/PairingScreen";
-import { ConnectionScreen } from "./ui/shell/ConnectionScreen";
+import { ConnectionScreen, OfflineBanner, TabStandbyScreen } from "./ui/shell/ConnectionScreen";
 import { Shell } from "./ui/shell/Shell";
 import { warmCodeColors } from "./ui/code-colors";
 
@@ -32,7 +36,12 @@ export function Main() {
   // On Windows the window's controls go into the app as on macOS: no title bar of the system's, the
   // caption buttons drawn over the top right (`titleBar().right`), the top rows' empty space dragging.
   // The shell opens the window that way (`host/src/win.rs`), with Mica behind it where there is some.
+  // The phone's page: what the address names opens, and the address follows what is open
+  // (`platform/page-route.ts`). Seeded before the runtime connects, as the Svelte page does.
+  const route = runtime.hosted ? pageRoute() : null;
+  route?.seed();
   runtime.start();
+  route?.install();
   // Windows and Linux: the app shows the banners (`platform/app-banners.ts`), in the first window
   // only, as the macOS shell runs one loop for the process; a press opens its conversation now.
   const banners = windowId <= 1 ? appBanners() : null;
@@ -79,7 +88,10 @@ export function Main() {
   });
   const shown = (
     <If when={shellShown()} else={<ConnectionScreen />}>
-      <Shell />
+      <View class="flex-1">
+        <Shell />
+        <OfflineBanner />
+      </View>
     </If>
   );
   // Linux: the wheel the shell does not forward, heard here (`platform/wheel.ts`).
@@ -87,8 +99,9 @@ export function Main() {
   if (runtime.hosted) {
     // Not enrolled is not a connection problem: this device has nothing to connect with yet.
     const pairing = () => runtime.connection !== "connected" && !runtime.enrolled;
+    // Another tab of the page holds the device's link: this one waits, over the shell if it was up.
     const page = (
-      <If when={pairing()} else={shell}>
+      <If when={pairing()} else={<If when={runtime.tabRole === "standby"} else={shell}><TabStandbyScreen /></If>}>
         <PairingScreen />
       </If>
     );

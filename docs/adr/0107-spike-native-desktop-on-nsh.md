@@ -1197,3 +1197,32 @@ On 11-18 the user said "do it": the page the relay serves to phones changes from
 - **The edge.** NSH names its files by their content (`name.<10 hex>.ext`, `browser.<…>/`, `facades/…`). The Caddyfile and the live nginx cache that pattern for good and send a missing one as a 404, not the page. Caddy 2.10.2 answers a precompressed `.br` sidecar with a 206 (the official image too), which a browser does not cache as the whole file, so Caddy compresses with `encode`; nginx's `gzip_static` answers 200, and the live box uses it. The first load is ~21 MB, ~7.8 MB compressed (the Svelte page was ~0.65 MB).
 - **Checks.** `phone-web-e2e.ts` now packages what the relay serves and serves it with the production edge's headers, policy and query rule; any policy violation and any request for the local endpoint's code fail it; a newer build put up midway is offered, and after its reload the device is still enrolled. Chromium and WebKit pass; `--edge caddy`, real Caddy running the production Caddyfile, passes; `--from-svelte` pairs on the Svelte page, then swaps the edge to the NSH page: the old page offers the reload, and after it the device is still enrolled, under the same worker, with push (both browsers). The live nginx config was checked rule by rule on nginx 1.24 in Docker (types, compression, caching, 404, 400, no violation in a browser).
 - **Not changed.** The messenger's Svelte app and CI's `build:hosted` stay: it is the source of the ported logic and the way back. The switch has not been seen on a real phone (Android Chrome, an iOS home screen).
+
+## 补记 2026-11-18（四十四）：手机页面的网址和返回 / Addendum 2026-11-18 (44): the phone page's address and Back
+
+补记四十三上线当天用户说「移动端路由体系乱了」，回滚到 Svelte 页。原因是 Svelte 页 `routes/+page.svelte` 和 `+layout.svelte` 里的胶水没随镜像过来（镜像只搬 `src/lib`）：网址不跟着打开的东西走，打开会话后按返回直接离开页面，刷新和链接回不到会话。逐行对照这两个文件，还缺两样：第二个标签页的等待和接管（`tab-standby`），以及断线后盖在外壳上的提示条。
+
+- **`platform/page-route.ts`**，`+page.svelte` 那套搬到 NSH 的 `UrlScheme` 上：网址→打开什么（会话 `?s=`、设置和各页 `?o=`、附件 `?a=`，同 `session-url.ts`），打开什么→网址（`mobile-route.ts`：打开推一条，关闭退回打开它的那条，没有我们的条目就改写），返回先关网址不带的层（`backMobileLayer`），第一条下面垫一条 `#floor`（`armBackFloor` 的做法）：在那里返回就关掉当前这屏直到名单，再没东西可关才离开页面。刷新保留第一次加载的那条，NSH 把它作为 `open` 交回来。
+- **先量 NSH 再写。** 48559f8 上 Chromium 和 WebKit 都量过：`setUrl` 推一条就是一条，返回是带下面那条网址的 `change`；应用自己的 `history.back()` 也是 `change`（所以要记一笔 `selfBack`）；同一轮里先 replace 再 push 只剩 push，地板的 push 要等 replace 落地；刷新后返回到上次加载的条目是 `open`。NSH 自己给底部菜单、对话框这类模态写条目，返回由它关；设置既是模态又在网址里，返回关掉它时页面已经在下面那条了，所以往哪走按页面实际所在（`href`）决定，不只看我们记的栈，否则会再退一步、退出页面。
+- **另外两样。** `TabStandbyScreen`（另一个标签页拿着设备的链路时这一个等着，「接管」）；`OfflineBanner`（外壳出来以后断线：外壳变淡、不接点按，顶上一条「正在连接…」或「连不上」加「重试」）。桌面也会显示后者。
+- **检查。** `page-route.test.ts` 用照实测写的假历史跑十种情形。`phone-web-e2e.ts` 加了：会话的网址和浏览器的返回/前进，页内返回不留条目，底部菜单先关、再关会话，流程页，设置一次返回就关且不离开，会话里刷新，链接加地板，第二个标签页接管再接回，中继断开时的提示条；Chromium、WebKit、`--edge caddy`、`--host localhost`、`--from-svelte` 都过。两件测试自己的事：NSH 写模态条目用 `setTimeout(0)`，无头浏览器能把它压后近一秒，测试先等条目写好再按返回；中继每个地址每分钟 10 次握手，这里页面和 Mac 共用回环一个地址、一次加载两次，连续加载会碰到，测试按「重试」并在输出里说明（真实里手机和 Mac 是两个地址）。
+
+On the day of addendum 43 the user said the phone's routing was a mess, and the relay went back to the Svelte page. The glue in the Svelte page's `routes/+page.svelte` and `+layout.svelte` had never been carried over (the mirror carries `src/lib` only): the address did not follow what was open, Back from a conversation left the page, and a reload or a link did not land on the conversation. Read line by line against those two files, two more things were missing: a second tab's wait and takeover (`tab-standby`), and the banner over the shell once the connection is lost.
+
+- **`platform/page-route.ts`** is `+page.svelte`'s routing on NSH's `UrlScheme`. The address names what is open (the conversation `?s=`, settings and the pages `?o=`, an attachment `?a=`, as `session-url.ts` has it). What opens follows the address, and the address follows what opens (`mobile-route.ts`: opening pushes, closing walks back to the entry that opened it or rewrites the entry when nothing of ours is under it). Back closes a layer the address does not carry first (`backMobileLayer`), and a floor sits under the first entry, `#floor`, as `armBackFloor` did: Back there closes the screen showing down to the roster, and only with nothing left to close leaves the page. A reload keeps the first load's floor, which NSH hands back as an `open`.
+- **NSH measured first.** On 48559f8, in Chromium and WebKit:
+  - A push through `setUrl` is one entry, and Back off it is a `change` with the address under it.
+  - The app's own `history.back()` is a `change` too, hence `selfBack`.
+  - A replace and a push in one turn are the push alone, so the floor's push waits for its replace to land.
+  - Back onto an earlier load's entry after a reload is an `open`.
+  - NSH writes entries for sheets and dialogs (modals) and closes them on Back. Settings is a modal the address carries too: when Back closes it the page is already on the entry under it, so where to go is decided from where the page is (`href`), not only from our stack. Otherwise it would step back once more, out of the page.
+- **The other two.**
+  - `TabStandbyScreen`: another tab holds the device's link, this one waits, "take over".
+  - `OfflineBanner`: the connection is lost once the shell was up. The shell fades and takes no presses, and a pill at the top says "connecting…", or "can't reach" with Retry. The desktop shows it too.
+- **Checks.**
+  - `page-route.test.ts` runs ten cases on a fake history written from the measurements.
+  - `phone-web-e2e.ts` gains: a conversation's address with the browser's Back and Forward; the page's own Back leaving no entry; Back closing the sheet first, then the conversation; the flow page; settings closed by one Back without leaving; a reload inside a conversation; a link plus the floor; a second tab taking over and back; and the banner while the relay is out of reach.
+  - It passes in Chromium, in WebKit, with `--edge caddy`, with `--host localhost` and with `--from-svelte`.
+- **Two things that belong to the test, not the app.**
+  - NSH writes a modal's entry on a `setTimeout(0)`, which a headless browser can hold back for most of a second, so the test waits for the entry before pressing Back.
+  - The relay allows an address 10 handshakes a minute. Here the page and the Mac share loopback, at two handshakes a load, and back-to-back loads reach the limit. The test presses Retry and says so. On a phone the page and the Mac are two addresses.

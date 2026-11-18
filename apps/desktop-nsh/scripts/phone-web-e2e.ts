@@ -261,6 +261,7 @@ try {
   const tls = certificate(work);
   const bootstrap = base64url(randomBytes(32));
   await startRelay(origin, relayPort, bootstrap);
+  let bounceEdge: ((meanwhile: () => Promise<void>) => Promise<void>) | null = null;
   // What the edge serves: the messenger's page first with --from-svelte, until the switch below.
   let serving = fromSvelte ? svelteSite : site;
   if (edgeKind === "caddy") {
@@ -269,10 +270,19 @@ try {
     const caddy = await startCaddyEdge({ port: edgePort, httpPort, relayPort, site, tls, dir: work });
     stops.push(() => caddy.stop());
   } else if (edgeKind === "bun") {
-    const edge = startEdge({ port: edgePort, relayPort, site: () => serving, tls });
+    let edge = startEdge({ port: edgePort, relayPort, site: () => serving, tls });
     stops.push(() => {
       edge.stop(true);
     });
+    // The relay out of reach for a while, as a phone's page loses it.
+    bounceEdge = async (meanwhile) => {
+      edge.stop(true);
+      try {
+        await meanwhile();
+      } finally {
+        edge = startEdge({ port: edgePort, relayPort, site: () => serving, tls });
+      }
+    };
   } else throw new Error(`--edge ${edgeKind}: bun or caddy`);
   step(`relay on 127.0.0.1:${relayPort}, its origin and the ${fromSvelte ? "messenger's" : "NSH"} page at ${origin} (${edgeKind === "caddy" ? "Caddy, the production Caddyfile" : "the script's edge, the production headers"})`);
 
@@ -481,6 +491,146 @@ try {
   await Bun.sleep(1000);
   if (await testid(page, "build-update").count()) throw new Error("the reloaded page still offers a build it is running");
   step("reloaded for the new build: still enrolled, nothing more offered");
+
+  // The address and Back at a phone's width (`platform/page-route.ts`, the Svelte page's routing).
+  const here = () => {
+    const url = new URL(page.url());
+    return `${url.pathname}${url.search}${url.hash}`;
+  };
+  const writerAt = `/?s=${mac.writerDirect}`;
+  const expectAt = (what: string, path: string) =>
+    until(`${what} at ${path}`, 10_000, () => here() === path).catch((error: Error) => {
+      throw new Error(`${error.message}: the page is at ${here()}`);
+    });
+  const putAway = (id: string) => until(`${id} put away`, 10_000, async () => (await testid(page, id).count()) === 0);
+  const showing = (id: string, ms = 10_000) => testid(page, id).first().waitFor({ timeout: ms });
+  // NSH writes a sheet's (a modal's) history entry a turn after it opens, on a timer the headless
+  // browser can hold back for most of a second; a Back before it would be the screen's own.
+  // The relay lets an address through 10 handshakes a minute (`LIMITS.handshakesPerMinute`), and
+  // here the page's links and the Mac's share one, loopback: two a load. The loads below run past
+  // it, a try fails as unreachable and waits for Retry, which is pressed here, and said. A phone
+  // and its Mac are two addresses, and a page loaded that often is what the limit is for.
+  let retried = 0;
+  const showingAfterLoad = (id: string) => {
+    let pressedAt = 0;
+    return until(`${id} after a new load`, 45_000, async () => {
+      if ((await testid(page, id).count()) > 0) return true;
+      // Once the try has failed, and not again while the next one is under way.
+      const retry = testid(page, "retry-connection");
+      if (Date.now() - pressedAt > 8_000 && (await retry.count())) {
+        pressedAt = Date.now();
+        retried += 1;
+        await retry.first().click().catch(() => {});
+      }
+      return false;
+    });
+  };
+  const sheetEntry = () => until("the sheet's history entry", 5_000, () => page.evaluate(() => ((history.state as { nsh?: number } | null)?.nsh ?? 0) >= 1));
+  await row.waitFor({ timeout: 10_000 });
+  await expectAt("the roster", "/");
+  await row.click();
+  await showing("conversation");
+  await expectAt("a conversation", writerAt);
+  await page.goBack();
+  await putAway("conversation");
+  await expectAt("Back to the roster", "/");
+  await page.goForward();
+  await showing("conversation");
+  await expectAt("Forward to the conversation", writerAt);
+  step("a conversation has its address: the browser's Back closes it, Forward opens it again");
+  const entries = await page.evaluate(() => history.length);
+  await testid(page, "top-back").click();
+  await putAway("conversation");
+  await expectAt("the page's own Back", "/");
+  if ((await page.evaluate(() => history.length)) !== entries) throw new Error("the page's own Back left an entry behind");
+  step("the page's own Back walks history back, leaving no entry to bounce into");
+
+  await row.click();
+  await showing("conversation");
+  await testid(page, "top-more").click();
+  await showing("mobile-actions-menu");
+  await sheetEntry();
+  await page.goBack();
+  await putAway("mobile-actions-menu");
+  if (!(await testid(page, "conversation").count())) throw new Error("Back closed the conversation with the sheet");
+  await page.goBack();
+  await putAway("conversation");
+  await expectAt("Back after the sheet", "/");
+  step("Back closes the conversation's sheet first, then the conversation");
+
+  await row.click();
+  await showing("conversation");
+  await testid(page, "top-more").click();
+  await showing("mobile-actions-menu");
+  await testid(page, "mobile-trace").click();
+  await showing("trace-pane");
+  await until("the flow page's address", 10_000, () => new URL(page.url()).searchParams.get("o") === "trace");
+  await page.goBack();
+  await putAway("trace-pane");
+  await expectAt("Back from the flow page", writerAt);
+  await page.goBack();
+  await putAway("conversation");
+  await expectAt("Back to the roster", "/");
+  step("the flow page has its address: Back to the conversation, then to the roster");
+
+  await testid(page, "nav-settings").click();
+  await showing("settings-modal");
+  await expectAt("settings", "/?o=settings");
+  await sheetEntry();
+  await page.goBack();
+  await putAway("settings-modal");
+  await expectAt("Back from settings", "/");
+  await row.waitFor({ timeout: 5_000 });
+  step("settings has its address: one Back closes it, and the page stays");
+
+  // Another conversation than the Writer's, whose rows the steps above went through.
+  const editorRow = testid(page, `session-${mac.editorDirect}`);
+  const editorAt = `/?s=${mac.editorDirect}`;
+  await editorRow.click();
+  await showing("conversation");
+  await expectAt("the Editor's conversation", editorAt);
+  await page.reload();
+  await showingAfterLoad("conversation");
+  await expectAt("the reloaded conversation", editorAt);
+  step("a reload inside a conversation comes back to it");
+  await page.goto(`${origin}${editorAt}`);
+  await showingAfterLoad("conversation");
+  await page.goBack();
+  await putAway("conversation");
+  await expectAt("Back from a link's first entry", "/");
+  await row.waitFor({ timeout: 5_000 });
+  step(`a link to a conversation: Back goes to the roster, not out of the page${retried ? ` (Retry pressed ${retried}×: the relay's handshakes a minute, loopback's for the page and the Mac both)` : ""}`);
+
+  // Another tab of the page: it waits behind this one until asked to take the device's link over.
+  const second = await context.newPage();
+  await second.goto(`${origin}/`);
+  await testid(second, "tab-standby").waitFor({ timeout: 30_000 });
+  await testid(second, "tab-takeover").click();
+  await testid(second, `session-${mac.writerDirect}`).waitFor({ timeout: 40_000 });
+  await testid(page, "tab-standby").waitFor({ timeout: 20_000 });
+  await second.close();
+  await testid(page, "tab-takeover").click();
+  await row.waitFor({ timeout: 40_000 });
+  step("a second tab waits behind the first; taking over moves the link, and back again");
+
+  if (bounceEdge) {
+    await bounceEdge(async () => {
+      await until("the lost connection said over the shell", 30_000, async () => (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) > 0);
+      if (!(await row.isVisible())) throw new Error("the shell went away with the connection");
+      await page.screenshot({ path: shot("3c-offline") });
+    });
+    // Retry once a try has failed, and seldom: each try is two handshakes of the relay's 10 a minute here.
+    let pressedAt = 0;
+    await until("the link back", 120_000, async () => {
+      const retry = testid(page, "retry-connection");
+      if (Date.now() - pressedAt > 20_000 && (await retry.count())) {
+        pressedAt = Date.now();
+        await retry.first().click().catch(() => {});
+      }
+      return (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) === 0;
+    });
+    step("the relay out of reach: the shell stays under the banner, which goes once the link is back");
+  }
 
   // A tablet's width, the same page (a new context would be a new device store, unpaired): the
   // hosted shell keeps the roster as a column beside one page, and never the desktop's workbench.
