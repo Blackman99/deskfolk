@@ -19,10 +19,11 @@
  * its reload keeps the device. `--edge caddy` serves through Caddy running the production
  * `deploy/remote/Caddyfile` (`CADDY_BIN`) instead of the script's own edge. `--from-svelte` pairs
  * on the messenger's hosted page (`build:hosted`) first, as a phone paired before the switch did,
- * then swaps the edge to the NSH page and reloads: the device is still enrolled.
+ * then swaps the edge to the NSH page and reloads: the device is still enrolled. `--host localhost`
+ * puts the page at an origin its meta policy does not name, as the relay's domain is not.
  *
  *   bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <dir>]
- *                                                 [--edge bun|caddy] [--from-svelte]
+ *                                                 [--edge bun|caddy] [--from-svelte] [--host localhost]
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -253,7 +254,10 @@ try {
   const relayPort = await freePort();
   let edgePort = await freePort();
   while (edgePort === relayPort) edgePort = await freePort();
-  const origin = `https://127.0.0.1:${edgePort}`;
+  // `--host localhost`: an origin the page's own meta policy does not name (it names 127.0.0.1 for
+  // the local window), so the link to the relay is allowed by `'self'` alone, as on the relay's domain.
+  const origin = `https://${flag("host") ?? "127.0.0.1"}:${edgePort}`;
+  if (edgeKind === "caddy" && !origin.startsWith("https://127.0.0.1:")) throw new Error("--edge caddy serves 127.0.0.1: leave --host out");
   const tls = certificate(work);
   const bootstrap = base64url(randomBytes(32));
   await startRelay(origin, relayPort, bootstrap);
