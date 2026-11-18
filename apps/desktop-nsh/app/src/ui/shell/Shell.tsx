@@ -72,7 +72,7 @@ import { WorkspaceDragGhost } from "../WorkspaceDragGhost";
 import { bindShellKeys } from "./shell-keys";
 import { createSessionDrag } from "./session-drag";
 import { createShellState, type ShellState } from "./shell-state";
-import { provideBackChain } from "../../platform/page-route";
+import { provideBackChain, reportDialogLevels } from "../../platform/page-route";
 import { WINDOW_CHROME } from "../../m/window-chrome";
 import { windowGlass } from "../glass";
 
@@ -654,6 +654,7 @@ function ShellLayers(props: { s: ShellState }) {
           closeSettings={s.closeSettings}
           workbench={s.wide()}
           onHandle={(handle) => s.setSettingsHandle(handle)}
+          onPageLevels={reportDialogLevels}
           // Not tied to `settingsOpen`: leaving settings through the bar, the dialog goes as it came
           // (no head, no fade) instead of fading out with its head back for a moment.
           mobileNavigation={

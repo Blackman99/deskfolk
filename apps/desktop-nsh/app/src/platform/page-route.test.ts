@@ -1,6 +1,6 @@
 import { expect, test } from "nsh/test";
 import type { UrlOverlay } from "../m/session-url.ts";
-import { FLOOR, PageRoute, viewOf, type AddressMove, type BackChain, type Cell, type PageHistory, type RouteRuntime } from "./page-route";
+import { FLOOR, PageRoute, viewOf, withoutHash, type AddressMove, type BackChain, type Cell, type PageHistory, type RouteRuntime } from "./page-route";
 
 const ORIGIN = "https://relay.example.com";
 const A = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -16,7 +16,7 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
   let index = 0;
   const later: Array<() => void> = [];
   let listener: ((url: string, move: AddressMove) => void) | null = null;
-  const page: PageHistory & { entries: string[]; at(): number; go(delta: number): void; flush(): void; press(): void; forward(): void; reload(): void } = {
+  const page: PageHistory & { entries: string[]; at(): number; nshGo(delta: number): void; flush(): void; press(): void; forward(): void; reload(): void } = {
     entries,
     at: () => index,
     href: () => entries[index]!,
@@ -36,6 +36,10 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
       index -= 1;
       later.push(() => listener?.(entries[index]!, "back"));
     },
+    go(delta) {
+      index += delta;
+      later.push(() => listener?.(entries[index]!, delta < 0 ? "back" : "forward"));
+    },
     whenAt(_hash, then) {
       later.push(then);
     },
@@ -44,7 +48,7 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
       return () => (listener = null);
     },
     /** NSH's own `history.go`: its pop is ignored, so the app hears nothing. */
-    go(delta) {
+    nshGo(delta) {
       index += delta;
     },
     flush() {
@@ -114,7 +118,7 @@ function setup(start = `${ORIGIN}/`, navigation = "navigate", chain: Partial<Bac
   const page = fakePage(start, navigation);
   const rt = fakeRuntime();
   const back: BackChain = { backMobileLayer: () => false, backFromFloor: () => false, ...chain };
-  const route = new PageRoute(page, rt, cell(start), () => back);
+  const route = new PageRoute(page, rt, cell(withoutHash(start)), () => back);
   route.seed();
   route.armFloor();
   page.flush();
@@ -214,7 +218,7 @@ test("settings closed by the app (✕, the bottom bar) leaves the going back to 
   const waiting = page.href();
   page.entries[page.at()] = `${ORIGIN}/?o=settings`;
   page.entries[page.at() - 1] = waiting;
-  page.go(-1);
+  page.nshGo(-1);
   expect(page.at()).toBe(1);
   expect(path(page.href())).toBe("/");
   expect(route.stack).toEqual([""]);
@@ -245,7 +249,7 @@ test("a group's settings, a Bot opened from them, then the Bot's closed by the a
   write();
   const waiting = page.href();
   page.entries[page.at() - 1] = waiting;
-  page.go(-1);
+  page.nshGo(-1);
   expect(path(page.href())).toBe(`/?s=${A}`);
   expect(route.stack).toEqual(["", `?s=${A}`]);
   // Back off the conversation is the roster's, as ever.
@@ -307,6 +311,134 @@ test("settings closed by the browser's Back moves only our books: no second step
   expect(page.at()).toBe(1);
   expect(path(route.address())).toBe("/");
   expect(page.entries.length).toBe(3);
+});
+
+/**
+ * Settings open on their list, their levels reported as `SettingsModal` reports them: a press opens
+ * a page one deeper (`open`), ‹ steps out of one (`stepOut`), and the route's Back steps out
+ * through the chain as `stepOutOfSettings` does.
+ */
+function settingsSetup() {
+  let depth = 0;
+  const stepped = { count: 0 };
+  let ctx: ReturnType<typeof setup>;
+  ctx = setup(`${ORIGIN}/`, "navigate", {
+    stepOutOfDialog: () => {
+      stepped.count += 1;
+      depth -= 1;
+      ctx.route.levels([depth]);
+    },
+  });
+  ctx.rt.settingsOpen = true;
+  ctx.write();
+  ctx.route.levels([0]);
+  const open = () => {
+    depth += 1;
+    ctx.route.levels([depth]);
+  };
+  const stepOut = () => {
+    depth -= 1;
+    ctx.route.levels([depth]);
+  };
+  return { ...ctx, open, stepOut, depth: () => depth, stepped };
+}
+
+test("settings' pages each get an entry under the press that opens them, and Back steps out of one writing nothing", () => {
+  const { page, rt, route, write, open, depth } = settingsSetup();
+  open();
+  open();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings", "/?o=settings#l1", "/?o=settings#l2"]);
+  page.press();
+  expect(depth()).toBe(1);
+  expect(page.at()).toBe(3);
+  page.press();
+  expect(depth()).toBe(0);
+  expect(page.at()).toBe(2);
+  // Nothing written on the way: the entries are as the presses left them.
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings", "/?o=settings#l1", "/?o=settings#l2"]);
+  expect(path(route.address())).toBe("/?o=settings");
+  // Off the list the dialog closes itself (its own entry), as before.
+  page.back();
+  rt.applyOverlay({ kind: "none" });
+  route.levels([]);
+  write();
+  page.flush();
+  expect(page.at()).toBe(1);
+  expect(path(route.address())).toBe("/");
+});
+
+test("‹ goes back over its page's entry, and two at once go back two, not three", () => {
+  const { page, route, open, stepOut, stepped } = settingsSetup();
+  open();
+  open();
+  stepOut();
+  stepOut();
+  page.flush();
+  expect(page.at()).toBe(2);
+  expect(path(page.href())).toBe("/?o=settings");
+  expect(stepped.count).toBe(0); // our own moves, not Backs to step for
+  // The next press writes its entry over the ones gone back over.
+  open();
+  expect(page.entries.map(path).slice(2)).toEqual(["/?o=settings", "/?o=settings#l1"]);
+  expect(path(route.address())).toBe("/?o=settings");
+});
+
+test("a dialog that closes takes its pages' entries with its own: no move of ours", () => {
+  const { page, rt, route, open } = settingsSetup();
+  open();
+  // The endpoint editor over the tab's page, then its form: an entry of its own.
+  route.levels([1, 0]);
+  route.levels([1, 1]);
+  expect(path(page.href())).toBe("/?o=settings#l2");
+  const at = page.at();
+  // The app closes the editor (a save, its ✕): NSH goes back over the editor's entries itself.
+  route.levels([1]);
+  page.flush();
+  expect(page.at()).toBe(at);
+  // The app closes settings from a page (Prompts' link to Roles): NSH again.
+  rt.settingsOpen = false;
+  route.levels([]);
+  page.flush();
+  expect(page.at()).toBe(at);
+  // A press later in settings starts from the list's entry again.
+  rt.settingsOpen = true;
+  route.levels([0]);
+  route.levels([1]);
+  expect(path(page.href())).toBe("/?o=settings#l1");
+});
+
+test("Forward onto a page closed since goes back to the one showing", () => {
+  const { page, open, stepped } = settingsSetup();
+  open();
+  page.press();
+  expect(page.at()).toBe(2);
+  page.forward();
+  page.flush();
+  expect(page.at()).toBe(2);
+  expect(stepped.count).toBe(1); // the Back's step only
+});
+
+test("a reload on a page of settings opens their list, and its entry says so", () => {
+  const { page } = setup(`${ORIGIN}/?o=settings#l2`, "reload");
+  expect(page.entries.map(path)).toEqual(["/?o=settings"]);
+});
+
+test("Back onto an earlier load's page of settings goes on to settings' own entry", () => {
+  const { page, rt, route, write, open, stepped } = settingsSetup();
+  open();
+  // A reload on the tab's page and a page after it; Back reaches the earlier load's entry for the
+  // tab's page, which NSH hands over as an `open`.
+  page.setUrl(`${ORIGIN}/?o=settings`, "push");
+  page.nshGo(-1);
+  expect(path(page.href())).toBe("/?o=settings#l1");
+  route.moved(page.href(), "open");
+  page.flush();
+  expect(page.at()).toBe(2);
+  expect(path(page.href())).toBe("/?o=settings");
+  expect(stepped.count).toBe(0);
+  expect(rt.settingsOpen).toBe(true);
+  write();
+  expect(path(route.address())).toBe("/?o=settings");
 });
 
 test("an earlier load's entry handed over after a reload opens what it names", () => {

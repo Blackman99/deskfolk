@@ -5,11 +5,11 @@
  */
 import { cleanup, effect, signal, untracked, UrlScheme } from "nsh";
 import { runtime } from "../runtime";
-import { PageRoute, viewOf, withoutHash, type PageHistory } from "./page-route";
+import { PageRoute, provideRoute, viewOf, withoutHash, type PageHistory } from "./page-route";
 
 type PageWindow = {
   location: { href: string; hash: string };
-  history: { back(): void };
+  history: { back(): void; go(delta: number): void };
   performance: { getEntriesByType(type: string): Array<{ type?: string }> };
 };
 
@@ -20,6 +20,7 @@ export const browserHistory: PageHistory = {
   navigation: () => pageWindow().performance.getEntriesByType("navigation")[0]?.type,
   setUrl: (url, history) => UrlScheme.setUrl(url, { history }),
   back: () => pageWindow().history.back(),
+  go: (delta) => pageWindow().history.go(delta),
   whenAt(hash, then) {
     // NSH writes the address once the turn's entries exist; two seconds at most.
     let tries = 0;
@@ -49,6 +50,8 @@ export function pageRoute() {
     install(): void {
       route.armFloor();
       cleanup(browserHistory.onAddress((url, move) => route.moved(url, move)));
+      // Settings' pages each get an entry (`reportDialogLevels`, from `SettingsModal`).
+      cleanup(provideRoute(route));
       // The address moved (a link, Back, Forward): what it names opens. Each reads only the address,
       // as on the Svelte page: read together with what is open, the two would fight over a click.
       effect(() => {

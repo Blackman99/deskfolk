@@ -21,12 +21,27 @@
  * a replace and a push in one turn are the push alone, so the floor's push waits for its replace.
  * Settings is a modal that the address carries too: a Back that closes it has moved the page
  * already, so where to go is decided from where the page is (`href`), not only from our stack.
+ *
+ * Settings' pages on a phone (a tab, a section of it, the endpoint editor's form) each have an
+ * entry of their own, at settings' address with `#l<depth>` (`LEVEL`), written under the press that
+ * opens the page; Back between them steps out of one page and writes nothing. A dialog that took
+ * Back and stayed open would have NSH push its entry again with no press, and Chromium's history
+ * intervention then passes over every entry of the page: the next Back on a phone left the app.
  */
 import { attachmentFromUrl, overlayApply, overlayFromFlags, overlayFromUrl, selectionFromUrl, sessionFromUrl, sessionUrl, viewFromUrl, type UrlOverlay, type UrlView } from "../m/session-url.ts";
 import { planUrlNavigation, routeStep, stackAfter } from "../m/mobile-route.ts";
 
 /** Where the floor's entry is: the first entry's address with this fragment. */
 export const FLOOR = "#floor";
+
+/** A page inside the dialog the address carries: its entry is the dialog's address with this fragment and how deep the page is. */
+export const LEVEL = "#l";
+
+/** How deep `url`'s fragment says its page is inside the dialog the address carries (0: the dialog itself, or none). */
+export function levelOf(url: string): number {
+  const match = /#l(\d+)$/.exec(url);
+  return match ? Number(match[1]) : 0;
+}
 
 /** How the page's address moved without the app moving it (NSH's `change` reasons, and `open`). */
 export type AddressMove = "back" | "forward" | "address" | "open";
@@ -40,6 +55,8 @@ export interface PageHistory {
   setUrl(url: string, history: "push" | "replace"): void;
   /** The page's own `history.back()`. */
   back(): void;
+  /** The page's own `history.go(delta)`. */
+  go(delta: number): void;
   /** Runs `then` once the page is at `href`'s fragment `hash` (a replace lands a turn later). */
   whenAt(hash: string, then: () => void): void;
   onAddress(listener: (url: string, move: AddressMove) => void): () => void;
@@ -72,6 +89,8 @@ export interface RouteRuntime {
 export interface BackChain {
   backMobileLayer(): boolean;
   backFromFloor(): boolean;
+  /** Out of the deepest page of the dialog the address carries (`PageRoute.levels`), as its ‹ does; never the dialog itself. */
+  stepOutOfDialog?(): void;
 }
 
 /** A value whose reads the caller's effect follows (an NSH `signal`). */
@@ -89,6 +108,23 @@ export function provideBackChain(next: BackChain): () => void {
     if (chain === next) chain = null;
   };
 }
+
+let live: PageRoute | null = null;
+
+/** The page's route hears how deep the dialogs are (`reportDialogLevels`); the returned function stops it. */
+export function provideRoute(route: PageRoute): () => void {
+  live = route;
+  return () => {
+    if (live === route) live = null;
+  };
+}
+
+/** How deep each dialog the address carries is, the bottom one first (`PageRoute.levels`). Nothing without a page (the desktop). */
+export function reportDialogLevels(layers: readonly number[]): void {
+  live?.levels(layers);
+}
+
+const total = (layers: readonly number[]) => layers.reduce((sum, n) => sum + n, 0);
 
 /** `url` without its fragment. */
 export function withoutHash(url: string): string {
@@ -135,6 +171,12 @@ export class PageRoute {
   private selfBack = false;
   /** Back landed on the floor and is being answered: what it closes writes no address of its own. */
   private onFloor = false;
+  /** How deep the page's entry is in the dialog the address carries (`LEVEL`), or will be once a move of ours lands. */
+  private level = 0;
+  /** How deep each dialog was, as last reported (`levels`). */
+  private layers: readonly number[] = [];
+  /** Moves of ours over the dialog's pages' entries on their way: their `change`s are not the person's. */
+  private ownMoves = 0;
 
   constructor(
     private readonly page: PageHistory,
@@ -163,7 +205,11 @@ export class PageRoute {
 
   /** The floor under the first entry, unless a reload kept the first load's. */
   armFloor(): void {
-    if (this.page.navigation() === "reload") return;
+    if (this.page.navigation() === "reload") {
+      // Reloaded on a page of settings: settings opens on its list, and the entry says so.
+      if (levelOf(this.page.href()) > 0) this.page.setUrl(this.address(), "replace");
+      return;
+    }
     const here = this.address();
     this.page.setUrl(`${here}${FLOOR}`, "replace");
     this.page.whenAt(FLOOR, () => this.page.setUrl(here, "push"));
@@ -176,6 +222,21 @@ export class PageRoute {
       return;
     }
     const url = withoutHash(raw);
+    const marker = levelOf(raw);
+    if (move === "open") {
+      // An earlier load's entry (a reload keeps them): none of its pages is open in this load.
+      this.level = 0;
+      this.ownMoves = 0;
+      if (marker > 0) {
+        // One of settings' pages: on back to settings' own entry, which is what this load shows.
+        this.page.go(-1);
+        return;
+      }
+    } else if ((marker > 0 || this.level > 0 || this.ownMoves > 0) && sameQuery(new URL(url), this.url())) {
+      // Between the entries of the dialog's pages: no screen of the address changes.
+      this.toLevel(marker);
+      return;
+    }
     if (move === "back" && this.selfBack) {
       this.selfBack = false;
       this.land(url);
@@ -191,6 +252,60 @@ export class PageRoute {
     }
     if (move === "open") this.stack = [new URL(url).search];
     this.land(url);
+  }
+
+  /**
+   * How deep each dialog the address carries is, the bottom one first: settings under its list (a
+   * tab, a section of it), then the endpoint editor over it under its first page (a connector's
+   * form, a model's page). A page opened (a press) gets an entry after the one showing;
+   * a page the app stepped out of itself (‹, ✕, Escape) is gone back over. A dialog that closed
+   * took its pages' entries with its own (NSH goes back over them), so nothing of ours moves.
+   */
+  levels(next: readonly number[]): void {
+    let before = total(this.layers);
+    if (next.length < this.layers.length) {
+      before = total(this.layers.slice(0, next.length));
+      this.level = Math.min(this.level, before);
+    }
+    this.layers = [...next];
+    const now = total(next);
+    // Only a page opened writes an entry: never what a Back stepped out of, which counts down.
+    if (now > before && now > this.level) {
+      this.level = now;
+      this.page.setUrl(`${this.address()}${LEVEL}${now}`, "push");
+      return;
+    }
+    if (now < this.level) {
+      const delta = now - this.level;
+      this.level = now;
+      // One move at a time: one on its way goes on from where it lands (`toLevel`).
+      if (this.ownMoves === 0) this.travel(delta);
+    }
+  }
+
+  private travel(delta: number): void {
+    this.ownMoves += 1;
+    this.page.go(delta);
+  }
+
+  /** The page landed on the entry of the dialog's page `marker` deep. */
+  private toLevel(marker: number): void {
+    if (this.ownMoves > 0) {
+      this.ownMoves -= 1;
+      // Pages stepped out of while it was on its way: on to where the app is now.
+      if (this.ownMoves === 0 && marker !== this.level) this.travel(this.level - marker);
+      return;
+    }
+    if (marker > this.level) {
+      // Forward onto a page the app has closed since: back to the one showing.
+      this.travel(this.level - marker);
+      return;
+    }
+    // Back: out of as many pages as the entry is under the one showing, counted before the first
+    // step, as each step reports the levels again.
+    const steps = this.level - marker;
+    this.level = marker;
+    for (let i = 0; i < steps; i++) this.chainOf()?.stepOutOfDialog?.();
   }
 
   private land(url: string): void {

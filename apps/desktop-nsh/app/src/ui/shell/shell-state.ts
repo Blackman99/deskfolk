@@ -40,6 +40,7 @@ import { isWorkbenchSurface, NARROW_MAX_WIDTH, sidebarFolds } from "../../m/work
 import { closeChatSide, settingsSide, toggleChatSide } from "../../m/workbench/pane-open.ts";
 import type { GroupDetailDraft } from "../../m/panels/group-edit.ts";
 import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
+import type { SettingsModalHandle as SettingsHandle } from "../settings/SettingsModal";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
 import { setLook } from "../../platform/appearance";
 import { widthAtMost } from "../../platform/viewport";
@@ -254,7 +255,7 @@ export function createShellState() {
   const profileFailed = signal(false);
   const mobileSettingsDetail = signal(false);
   const paneMobileDetail = signal(false);
-  let settingsHandle: { backWithinSettings(): boolean; backFromProviderEditor(): void } | null = null;
+  let settingsHandle: SettingsHandle | null = null;
   let profilePane: { backFromEditor(): boolean } | null = null;
   const settingsEverOpened = signal(false);
   effect(() => {
@@ -737,7 +738,7 @@ export function createShellState() {
     profileFailed,
     mobileSettingsDetail,
     paneMobileDetail,
-    setSettingsHandle: (h: { backWithinSettings(): boolean; backFromProviderEditor(): void } | null) => (settingsHandle = h),
+    setSettingsHandle: (h: SettingsHandle | null) => (settingsHandle = h),
     setProfilePane: (h: { backFromEditor(): boolean } | null) => (profilePane = h),
     settingsEverOpened,
     groupDetail,
@@ -768,6 +769,8 @@ export function createShellState() {
     mobileNavigationVisible,
     backMobileLayer,
     backFromFloor,
+    // The phone's page: Back between the entries of settings' pages (`page-route.ts`).
+    stepOutOfDialog: () => settingsHandle?.stepOutOfSettings(),
     escape,
     openCreateBot: () => runtime.openCreateBot(),
     openCreateGroup: () => runtime.openCreateGroup(),

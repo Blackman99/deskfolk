@@ -6,7 +6,8 @@
  * confirmation wear it; each dialog's contents stay in its own component.
  *
  * It is nsh/base's `Dialog` underneath, so Escape, the phone's Back and a press on the scrim are
- * close attempts NSH reports; all of them call `onClose`, unless `busy` holds the dialog open.
+ * close attempts NSH reports; all of them call `onDismiss` when given, else `onClose`, unless `busy`
+ * holds the dialog open.
  *
  * `pageOnPhone` is the messenger's `page-on-phone`: in a window 680 wide or less the dialog is the
  * whole page, its ✕ a back chevron, and only the foot's first action (full width) shows.
@@ -37,6 +38,12 @@ export function Modal(props: {
   /** The ✕'s name (`t.common.close`). */
   closeLabel: string;
   onClose: () => void;
+  /**
+   * What Escape, Back and the scrim do when the dialog closes itself on them (default `onClose`):
+   * the endpoint editor's `onClose` steps out of a page of its own, which a dialog closing anyway
+   * must not do first.
+   */
+  onDismiss?: () => void;
   /** A confirmation's role: screen readers say it asks something. */
   alert?: boolean;
   /** While true nothing closes it (an action is running). */
@@ -77,6 +84,9 @@ export function Modal(props: {
   const close = () => {
     if (!props.busy) props.onClose();
   };
+  const dismiss = () => {
+    if (!props.busy) (props.onDismiss ?? props.onClose)();
+  };
   const cardWidth = () => (narrowWindow() ? windowSize().width - (page() ? 0 : 32) : Math.min(props.width ?? 520, windowSize().width - 48));
   const cardMaxHeight = () => (page() ? windowSize().height : Math.round(windowSize().height * (props.maxHeight ?? 0.86)));
   const cardHeight = () => (page() ? windowSize().height : props.fill ? Math.min(cardMaxHeight(), windowSize().height - 48) : undefined);
@@ -90,10 +100,10 @@ export function Modal(props: {
       onCancel={() => {
         // The dialog reads `closeOnEscape` as soon as this returns: a step now could make it true.
         if (props.stepsBack) queueMicrotask(close);
-        else close();
+        else dismiss();
       }}
       onOpenChange={(e) => {
-        if (!e.open) close();
+        if (!e.open) dismiss();
       }}
       backdropClass={page() ? "bg-pane" : "bg-modal-backdrop"}
       class={`m-auto bg-pane overflow-hidden ${page() ? "" : "rounded-(--radius-xl) border border-line"}`}

@@ -7,7 +7,9 @@
  * browser: paste the code, compare the fingerprint, submit; approve on the Mac (the development
  * stand-in for Touch ID); then the app's shell on a phone's width: the roster, the projects tab
  * with every picture drawn (Claude's logo among them, which WebKit once refused), Back stepping out
- * of settings and a Bot's settings one level at a time, a conversation over
+ * of settings and a Bot's settings one level at a time (in Chromium the browser's own Back, which
+ * passes over entries written with nothing pressed, and in settings Back after Back with nothing
+ * pressed between, as on a phone, the page staying), a conversation over
  * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
@@ -35,7 +37,7 @@ import { join, resolve } from "node:path";
 // the package's `@playwright/test` symlink for a relative import, so its `export * from
 // "playwright/test"` resolves to nothing from here. The browsers come from this package's
 // `@playwright/test` at run time (Bun follows the symlink), below.
-import type { Browser, BrowserType, Page } from "../../../node_modules/.pnpm/node_modules/playwright-core";
+import type { Browser, BrowserContext, BrowserType, Page, Worker } from "../../../node_modules/.pnpm/node_modules/playwright-core";
 import { devSocketPath } from "../../daemon/src/remote/dev-setup";
 import { ulid } from "../../daemon/src/ids";
 import { hostSigningFingerprint } from "../app/src/m/remote/fingerprint.ts";
@@ -238,6 +240,7 @@ const widthOf = async (page: Page, testID: string) => (await testid(page, testID
 
 let failed = false;
 let browser: Browser | undefined;
+let persistent: BrowserContext | undefined;
 /** What the page shows and said, once something failed. */
 let onFailure: () => Promise<void> = async () => {};
 try {
@@ -294,10 +297,32 @@ try {
   const { chromium, webkit } = (await import("../node_modules/@playwright/test/index.mjs")) as { chromium: BrowserType; webkit: BrowserType };
   // The edge's certificate is made for the run: Chromium fetches a service worker's script only from
   // an origin whose certificate it trusts, whatever the context ignores.
-  browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true, args: engine === "webkit" ? [] : ["--ignore-certificate-errors"] });
   // A phone's screen: touches, which NSH's web runtime scrolls natively (without them its lists
   // scroll as a desktop browser's do).
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN", hasTouch: true });
+  const screen = { ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN", hasTouch: true };
+  // Chromium's Back is the browser's own, as a phone's Back button or gesture is: it passes over the
+  // entries a page added with no tap since the last Back (Chromium's history intervention), where
+  // `page.goBack()` goes to the previous entry whatever it is. Only an extension's
+  // `chrome.tabs.goBack` reaches that Back here, and an extension needs the full Chromium, launched
+  // with a profile of its own.
+  let context: BrowserContext;
+  let backWorker: Worker | undefined;
+  if (engine === "webkit") {
+    browser = await webkit.launch({ headless: true });
+    context = await browser.newContext(screen);
+  } else {
+    const extension = join(work, "browser-back");
+    mkdirSync(extension);
+    writeFileSync(join(extension, "manifest.json"), JSON.stringify({ manifest_version: 3, name: "browser-back", version: "1", background: { service_worker: "back.js" } }));
+    writeFileSync(join(extension, "back.js"), "self.browserBack = async () => { const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); await chrome.tabs.goBack(tab.id); };\n");
+    context = persistent = await chromium.launchPersistentContext(join(work, "profile"), {
+      ...screen,
+      channel: "chromium",
+      headless: true,
+      args: ["--ignore-certificate-errors", `--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    });
+    backWorker = context.serviceWorkers().find((w) => w.url().startsWith("chrome-extension:")) ?? (await context.waitForEvent("serviceworker", { predicate: (w) => w.url().startsWith("chrome-extension:") }));
+  }
   // A fetch of a `blob:` address breaks the policy (`connect-src` names none) and was seen twice in
   // 2026-11-18's runs without its caller: say who asked, beside the refusal.
   await context.addInitScript(() => {
@@ -313,6 +338,24 @@ try {
     document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP violation: ${e.effectiveDirective} ${e.blockedURI}`));
   });
   const page = await context.newPage();
+  /**
+   * The browser's Back (Chromium: its own, through the extension; WebKit: the previous entry). With
+   * nothing of the page's left to go back to, a phone's Back leaves the page, or the installed app;
+   * here the entry before the page shows it.
+   */
+  const back = async () => {
+    if (!backWorker) {
+      await page.goBack();
+      return;
+    }
+    const went = await backWorker.evaluate(() => (self as unknown as { browserBack(): Promise<void> }).browserBack()).then(
+      () => null,
+      (error: Error) => error.message.split("\n")[0],
+    );
+    if (went) throw new Error(`the browser's Back has nowhere to go: a phone's would close the page (${went})`);
+    await Bun.sleep(150);
+    if (!page.url().startsWith(origin)) throw new Error(`the browser's Back left the page for ${page.url()}: the page's entries were all ones it wrote with no tap`);
+  };
   const problems: string[] = [];
   const localOnly: string[] = [];
   page.on("request", (r) => {
@@ -347,6 +390,10 @@ try {
     console.log(`page console:\n  ${problems.slice(-30).join("\n  ") || "(nothing)"}`);
   };
 
+  // One tab (the extension's Back goes to the active one), and an entry before the page: where a
+  // Back that leaves it lands.
+  for (const other of context.pages()) if (other !== page) await other.close();
+  await page.goto("data:text/html,<title>before the page</title>");
   await page.goto(`${origin}/`);
   await testid(page, "pairing-screen").waitFor({ timeout: 30_000 });
   step("the page shows the pairing screen");
@@ -641,8 +688,10 @@ try {
   // it, a try fails as unreachable and waits for Retry, which is pressed here, and said. A phone
   // and its Mac are two addresses, and a page loaded that often is what the limit is for.
   let retried = 0;
+  let reloadedAt = 0;
   const showingAfterLoad = (id: string) => {
     let pressedAt = 0;
+    let pressed = 0;
     return until(`${id} after a new load`, 45_000, async () => {
       if ((await testid(page, id).count()) > 0) return true;
       // Once the try has failed, and not again while the next one is under way.
@@ -650,9 +699,12 @@ try {
       if (Date.now() - pressedAt > 8_000 && (await retry.count())) {
         pressedAt = Date.now();
         retried += 1;
+        pressed += 1;
         await retry.first().click().catch(() => {});
       }
       return false;
+    }).catch((error: Error) => {
+      throw new Error(`${error.message} (Retry pressed ${pressed}× for this load; the page is at ${here()})`);
     });
   };
   const sheetEntry = () => until("the sheet's history entry", 5_000, () => page.evaluate(() => ((history.state as { nsh?: number } | null)?.nsh ?? 0) >= 1));
@@ -661,7 +713,7 @@ try {
   await row.click();
   await showing("conversation");
   await expectAt("a conversation", writerAt);
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await expectAt("Back to the roster", "/");
   await page.goForward();
@@ -680,10 +732,10 @@ try {
   await testid(page, "top-more").click();
   await showing("mobile-actions-menu");
   await sheetEntry();
-  await page.goBack();
+  await back();
   await putAway("mobile-actions-menu");
   if (!(await testid(page, "conversation").count())) throw new Error("Back closed the conversation with the sheet");
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await expectAt("Back after the sheet", "/");
   step("Back closes the conversation's sheet first, then the conversation");
@@ -704,10 +756,10 @@ try {
     await showingAfterLoad("trace-pane");
     await expectAt("the reloaded flow page", flowAt);
   }
-  await page.goBack();
+  await back();
   await putAway("trace-pane");
   await expectAt("Back from the flow page", writerAt);
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await expectAt("Back to the roster", "/");
   step(`the flow page has its address${withJob ? " with its job, which a reload comes back to" : ""}: Back to the conversation, then to the roster`);
@@ -716,7 +768,7 @@ try {
   await showing("settings-modal");
   await expectAt("settings", "/?o=settings");
   await sheetEntry();
-  await page.goBack();
+  await back();
   await putAway("settings-modal");
   await expectAt("Back from settings", "/");
   await row.waitFor({ timeout: 5_000 });
@@ -739,57 +791,236 @@ try {
   await row.waitFor({ timeout: 5_000 });
   await row.click();
   await showing("conversation");
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await row.waitFor({ timeout: 5_000 });
   await expectAt("Back after leaving settings by the bar", "/");
   step("settings is one of the bottom bar's places: no head over its list, the bar under it; the bar leaves it, and Back stays on the page");
 
-  // Settings on a phone drills down: the list of tabs, a tab, a section of it. The browser's Back
-  // steps out one level at a time, as the page's own ‹ does, and only off the list closes settings.
+  // Settings on a phone drills down: the list of tabs, a tab, a section of it. Each page opened
+  // has an entry of its own, settings' address with `#l<depth>`, so the browser's Back steps out
+  // one level at a time, as the page's own ‹ does, and only off the list closes settings.
   await testid(page, "nav-settings").click();
   await showing("settings-modal");
   await expectAt("settings", "/?o=settings");
   await sheetEntry();
   await testid(page, "settings-tab-models").click();
   await showing("section-endpoints");
+  await expectAt("a tab of settings", "/?o=settings#l1");
   await testid(page, "section-endpoints").click();
   await showing("models-panel");
+  await expectAt("a section of a tab", "/?o=settings#l2");
   // The endpoint editor is a page over it with pages of its own: the connector tiles, a
   // connector's form. Back steps out of the form to the tiles, then closes the editor.
   const depth = (at: number) => until(`history at depth ${at}`, 5_000, () => page.evaluate((n) => ((history.state as { nsh?: number } | null)?.nsh ?? 0) === n, at));
-  const deep = await page.evaluate(() => history.length);
   await testid(page, "provider-add").click();
   await showing("connector-pick-custom");
   await depth(2);
   await testid(page, "connector-pick-custom").click();
   await putAway("connector-pick-custom");
-  await page.goBack();
+  await expectAt("a connector's form", "/?o=settings#l3");
+  const deep = await page.evaluate(() => history.length);
+  await back();
   await showing("connector-pick-custom");
   await depth(2);
-  await page.goBack();
+  await expectAt("Back to the connector tiles", "/?o=settings#l2");
+  await back();
   await putAway("provider-editor");
   await showing("models-panel");
-  await expectAt("Back out of the endpoint editor", "/?o=settings");
+  await expectAt("Back out of the endpoint editor", "/?o=settings#l2");
   await depth(1);
-  await page.goBack();
+  await back();
   await putAway("models-panel");
   await showing("section-endpoints");
-  await expectAt("Back from a section", "/?o=settings");
-  await sheetEntry();
-  await page.goBack();
+  await expectAt("Back from a section", "/?o=settings#l1");
+  await back();
   await putAway("settings-models");
   await showing("settings-nav");
   await expectAt("Back from a tab", "/?o=settings");
   await sheetEntry();
-  // Each Back the dialog took as a step gets its entry again, and leaves no more behind.
+  // Back goes over the entries the presses wrote, and writes none of its own.
   const after = await page.evaluate(() => history.length);
-  if (after !== deep) throw new Error(`stepping back in settings left history at ${after} entries, from ${deep}`);
-  await page.goBack();
+  if (after !== deep) throw new Error(`stepping back in settings left history at ${after} entries, from ${deep}: a Back wrote one`);
+  await back();
   await putAway("settings-modal");
   await expectAt("Back off the list of tabs", "/");
   await row.waitFor({ timeout: 5_000 });
   step("settings steps back one level at a time: the endpoint editor's form, the editor, a section, its tab, then settings itself");
+
+  // Escape (the shell's shortcut, before any dialog's) steps the endpoint editor back a page as its ‹
+  // does, going back over that page's entry, and closes it from its first; Back then goes on from
+  // the section. On a tab it closes settings.
+  await testid(page, "nav-settings").click();
+  await showing("settings-modal");
+  await sheetEntry();
+  await testid(page, "settings-tab-models").click();
+  await testid(page, "section-endpoints").click();
+  await testid(page, "provider-add").click();
+  await showing("connector-pick-custom");
+  await depth(2);
+  await testid(page, "connector-pick-custom").click();
+  await putAway("connector-pick-custom");
+  await expectAt("a connector's form again", "/?o=settings#l3");
+  // Escape in a field only leaves it.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press("Escape");
+  await showing("connector-pick-custom");
+  await expectAt("Escape out of a connector's form", "/?o=settings#l2");
+  await depth(2);
+  await page.keyboard.press("Escape");
+  await putAway("provider-editor");
+  await showing("models-panel");
+  await expectAt("Escape out of the endpoint editor", "/?o=settings#l2");
+  await depth(1);
+  await back();
+  await showing("section-endpoints");
+  await expectAt("Back after Escape", "/?o=settings#l1");
+  await page.keyboard.press("Escape");
+  await putAway("settings-modal");
+  await row.waitFor({ timeout: 5_000 });
+  await expectAt("Escape out of settings from a tab", "/");
+  step("Escape steps the endpoint editor back a page and then closes it, Back goes on from the section, and Escape on a tab closes settings");
+
+  // The same walk as a phone does it: Back after Back, nothing pressed between. Playwright's
+  // `evaluate`, and every locator query, runs as a user gesture in Chromium (`userGesture: true`),
+  // which is a tap to the history intervention: the checks above, between their Backs, keep the
+  // page's entries from ever being passed over. Here the page is only read through a session of
+  // our own, without a gesture.
+  if (backWorker) {
+    const quiet = await context.newCDPSession(page);
+    const read = async <T>(expression: string): Promise<T> => ((await quiet.send("Runtime.evaluate", { expression, returnByValue: true })) as { result: { value: T } }).result.value;
+    const shownQuietly = (id: string) => `(() => { const el = document.querySelector('[data-testid="${id}"]'); return !!el && el.checkVisibility() && el.getBoundingClientRect().width > 0; })()`;
+    const goneQuietly = (id: string) => `!document.querySelector('[data-testid="${id}"]')`;
+    const nshDepth = "(history.state?.nsh ?? 0)";
+    /** Back after Back, each to the screen `there` says, read with no gesture. */
+    const walkBack = async (name: string, walk: Array<[string, string]>) => {
+      // Whatever NSH writes a turn after the last press: as a person's first Back would come.
+      await Bun.sleep(400);
+      for (const [what, there] of walk) {
+        await back();
+        await until(`Back to ${what}`, 10_000, () => read<boolean>(there)).catch((error: Error) => {
+          throw new Error(`${error.message} (${name}, Back after Back with nothing pressed between): the page is at ${here()}`);
+        });
+        await Bun.sleep(400);
+      }
+    };
+    const theList = `${shownQuietly("settings-nav")} && ${goneQuietly("settings-main")}`;
+    const theRoster = `${goneQuietly("settings-modal")} && ${shownQuietly(`session-${mac.writerDirect}`)}`;
+    const openSettings = async () => {
+      await testid(page, "nav-settings").click();
+      await showing("settings-modal");
+      await sheetEntry();
+    };
+
+    await openSettings();
+    await testid(page, "settings-tab-models").click();
+    await showing("section-endpoints");
+    await testid(page, "section-endpoints").click();
+    await showing("models-panel");
+    await testid(page, "provider-add").click();
+    await showing("connector-pick-custom");
+    await depth(2);
+    await testid(page, "connector-pick-custom").click();
+    await putAway("connector-pick-custom");
+    await walkBack("Models", [
+      ["the connector tiles", shownQuietly("connector-pick-custom")],
+      ["the editor closed", `${goneQuietly("provider-editor")} && ${shownQuietly("models-panel")} && ${nshDepth} === 1`],
+      ["Models' sections", shownQuietly("section-endpoints")],
+      ["settings' list", theList],
+      ["the roster", theRoster],
+    ]);
+    await expectAt("Back after Back out of settings", "/");
+    step("Back after Back with nothing pressed between (a phone's Back): the editor's form, the editor, a section, the tab, settings, and the page stays");
+
+    // The page's own ‹ steps out by going back over its page's entry: the next Back is the level
+    // under it, not the page again.
+    await openSettings();
+    await testid(page, "settings-tab-models").click();
+    await testid(page, "section-endpoints").click();
+    await testid(page, "provider-add").click();
+    await showing("connector-pick-custom");
+    await depth(2);
+    await testid(page, "connector-pick-custom").click();
+    await putAway("connector-pick-custom");
+    await testid(page, "modal-back").click();
+    await showing("connector-pick-custom");
+    await expectAt("the editor's ‹", "/?o=settings#l2");
+    await walkBack("‹ in the editor", [["the editor closed", `${goneQuietly("provider-editor")} && ${shownQuietly("models-panel")}`]]);
+    await testid(page, "settings-mobile-back").click();
+    await showing("section-endpoints");
+    await expectAt("settings' ‹", "/?o=settings#l1");
+    await walkBack("‹ in a section", [
+      ["settings' list", theList],
+      ["the roster", theRoster],
+    ]);
+    step("‹ goes back over its page's entry: Back after it is the level under, then settings, then the roster");
+
+    // Prompts: a group, then a prompt's editor (a dialog over settings that Back closes).
+    await openSettings();
+    await testid(page, "settings-tab-prompts").click();
+    await showing("section-turn");
+    await testid(page, "section-turn").click();
+    const promptRow = page.locator('[role="button"][data-testid^="prompt-turn"]').first();
+    await promptRow.waitFor({ timeout: 15_000 });
+    const promptId = await promptRow.getAttribute("data-testid");
+    await promptRow.click();
+    await showing("prompt-editor-page");
+    await depth(2);
+    await walkBack("Prompts", [
+      ["the group", `${goneQuietly("prompt-editor-page")} && ${shownQuietly(promptId!)}`],
+      ["Prompts' groups", shownQuietly("section-turn")],
+      ["settings' list", theList],
+      ["the roster", theRoster],
+    ]);
+    step("Prompts the same: a prompt's editor, its group, the groups, settings, the roster");
+
+    // Interface, where it shows: a section of it.
+    await openSettings();
+    if (await testid(page, "settings-tab-interface").count()) {
+      await testid(page, "settings-tab-interface").click();
+      const section = page.locator('[data-testid="settings-main"] [data-testid^="section-"]').first();
+      await section.waitFor({ timeout: 10_000 });
+      const sectionId = await section.getAttribute("data-testid");
+      await section.click();
+      await putAway(sectionId!);
+      await walkBack("Interface", [
+        ["Interface's sections", shownQuietly(sectionId!)],
+        ["settings' list", theList],
+        ["the roster", theRoster],
+      ]);
+      step("Interface the same: a section, its list, settings, the roster");
+    } else {
+      await walkBack("settings' list", [["the roster", theRoster]]);
+      step("(Interface is not among settings' tabs here)");
+    }
+    await quiet.detach();
+
+    // A reload on a section: settings come back on their list, the entry says so, and one Back closes them.
+    await openSettings();
+    await testid(page, "settings-tab-models").click();
+    await testid(page, "section-endpoints").click();
+    await showing("models-panel");
+    await expectAt("a section before the reload", "/?o=settings#l2");
+    await page.reload();
+    reloadedAt = Date.now();
+    await showingAfterLoad("settings-nav");
+    await expectAt("a section reloaded", "/?o=settings");
+    await sheetEntry();
+    await back();
+    await putAway("settings-modal");
+    await row.waitFor({ timeout: 10_000 });
+    await expectAt("Back after a reload on a section", "/");
+    // On into the earlier load's entries, as after any reload: its tab's entry is passed over to
+    // settings' own (NSH hands each over as an `open`), and the next Back is the roster's.
+    await back();
+    await showing("settings-nav");
+    await expectAt("Back onto the earlier load's settings", "/?o=settings");
+    await back();
+    await putAway("settings-modal");
+    await row.waitFor({ timeout: 10_000 });
+    await expectAt("Back past the earlier load's settings", "/");
+    step("a reload on a section opens settings' list, and Back closes it onto the roster; Back on retraces the earlier load, its settings once, not a press per page");
+  }
 
   // A Bot's settings drill down the same way: its sections, one of them; then the conversation.
   await row.click();
@@ -802,12 +1033,12 @@ try {
   await sheetEntry();
   await testid(page, "bot-tab-basics").click();
   await showing("bot-detail");
-  await page.goBack();
+  await back();
   await putAway("bot-detail");
   await showing("bot-nav");
   await expectAt("Back from a Bot's section", botSettingsAt);
   await sheetEntry();
-  await page.goBack();
+  await back();
   await putAway("session-settings-drawer");
   await showing("conversation");
   await expectAt("Back out of a Bot's settings", writerAt);
@@ -820,13 +1051,17 @@ try {
   await testid(page, "sheet-close").click();
   await putAway("session-settings-drawer");
   await expectAt("a Bot's settings closed by its ✕", writerAt);
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await expectAt("Back to the roster", "/");
   step("a Bot's settings step back one level at a time too: a section, the settings, then the conversation");
 
   // Settings as the page's first screen (a link, a bookmark): the floor and the dialog's entry
   // are laid out otherwise, and no Back may go dead on the way out.
+  // Settings the link names open on the roster instead when the page's first connection comes
+  // late (seen 2026-11-18 at about 10 s, after the section reload above); a minute after that
+  // reload the relay's handshakes are its own again.
+  if (reloadedAt) await Bun.sleep(Math.max(0, reloadedAt + 61_000 - Date.now()));
   await page.goto(`${origin}/?o=settings`);
   await showingAfterLoad("settings-nav");
   await sheetEntry();
@@ -834,16 +1069,17 @@ try {
   await showing("section-endpoints");
   await testid(page, "section-endpoints").click();
   await showing("models-panel");
-  await page.goBack();
+  await expectAt("a section of settings opened by a link", "/?o=settings#l2");
+  await back();
   await putAway("models-panel");
   await showing("section-endpoints");
-  await expectAt("Back from a section of settings opened by a link", "/?o=settings");
+  await expectAt("Back from a section of settings opened by a link", "/?o=settings#l1");
   await sheetEntry();
-  await page.goBack();
+  await back();
   await putAway("settings-models");
   await showing("settings-nav");
   await sheetEntry();
-  await page.goBack();
+  await back();
   await putAway("settings-modal");
   await row.waitFor({ timeout: 10_000 });
   await expectAt("Back off settings opened by a link", "/");
@@ -861,7 +1097,7 @@ try {
   step("a reload inside a conversation comes back to it");
   await page.goto(`${origin}${editorAt}`);
   await showingAfterLoad("conversation");
-  await page.goBack();
+  await back();
   await putAway("conversation");
   await expectAt("Back from a link's first entry", "/");
   await row.waitFor({ timeout: 5_000 });
@@ -931,6 +1167,7 @@ try {
   console.error(`FAILED: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
   await onFailure();
 } finally {
+  await persistent?.close().catch(() => {});
   await browser?.close().catch(() => {});
   for (const stop of stops.reverse()) await Promise.resolve(stop()).catch(() => {});
   rmSync(work, { recursive: true, force: true });

@@ -1414,3 +1414,59 @@ On 11-18 the user said the code they saw on the phone had no highlighting. Measu
 - **Licence.** giallo is EUPL-1.2, which earlier addenda left for the user to confirm; it now ships in the phone's page as well, and `THIRD_PARTY_NOTICES.md` says so.
 - **The e2e fails now and then in WebKit, not from this change.** After the step "settings opened by a link … the last Back lands on the roster", opening the Editor's conversation and reloading, the page starts loads of eight `blob:` addresses, which `connect-src` refuses (the violation is the main document's, with no script location, and a wrapper round the page's `fetch` never saw them; what loads them is not known), so the run fails on "the page broke the production policy". On 87c90176, without this change, run alone one after another: with touch it failed 2 runs of 2, without touch 1 of 2; run side by side it mostly passes. Not fixed here.
 - **Not done.** The dark appearance is not asserted end to end (NSH's colours in dark were measured by hand once; giallo's dark takes the same `AdaptiveColor`). The main thread's cost while a reply streams on a phone is not measured. Not seen on iOS.
+
+## 补记 2026-11-18（五十）：手机上在设置里连按返回不再退出应用 / Addendum 2026-11-18 (50): Back after Back in settings no longer leaves the app on a phone
+
+用户说手机远程端设置里「逐层进入跟逐层退出的逻辑，现在不对」，追问后是：在模型/端点、提示词、界面里按返回，退一层以后再按就退出了应用。手机是 Android Chrome。补记四十五的做法是让设置对话框拒绝关闭、在 `onCancel` 里退一层；拒绝以后 NSH 把对话框的条目重新推上（`syncHistory` 的 `pushEntry`），这一推前面没有点按。Chromium 的 history manipulation intervention 对这样的页面把它同一文档的所有条目标成可跳过（crbug 1248529：同文档的返回/前进之后，之前的点按不再算数，要等新的点按），浏览器自己的返回（Android 的返回键和手势、工具栏的 ←、扩展的 `chrome.tabs.goBack`）就跳过它们，全都可跳过时直接离开页面。端点编辑器的 `stepsBack` 也一样：从它的第一页按返回，拒绝后过一轮才关，NSH 在这之间把编辑器的条目推回去了一次（量到的：返回前后历史条数从 9 变成 8）。
+
+- **为什么一直没测出来。** 端到端用 `page.goBack()`（CDP 的 `navigateToHistoryEntry`，不跳）；更要紧的是 Playwright 在 Chromium 里的 `evaluate` 和所有定位查询都带 `userGesture: true`，两次返回之间的任何检查都等于点了一下页面，把可跳过的标记清掉了。同一个包、同一段路，换成浏览器自己的返回、两次返回之间只用不带手势的 CDP `Runtime.evaluate` 读页面，走到半路就落到了页面前面那条 `data:` 页上。
+- **做法：每一层一条历史，在点进去的那次点按里写。** 设置在手机上点进去的每一页（某一项、它的某一节，端点编辑器里连接方式的表单、某个模型的页）各有一条历史，地址是设置的地址加 `#l<层数>`（`page-route.ts` 的 `LEVEL`）。片段不发给服务器，边缘的查询规则不用改。`SettingsModal` 的 `onPageLevels` 按层报给 `page-route`（设置一层，编辑器一层；对话框自己的第一页不算，服务器和提示词的编辑器是 Back 直接关的对话框，也不算）：层数变多就 `setUrl(push)`，NSH 在同一深度上推一条；返回在这些同深度的条目之间走，NSH 发 `change(back)`，`page-route` 按落到的层数调 `stepOutOfDialog` 退几层，什么也不写。层数变少而不是返回造成的（‹、✕），`page-route` 自己 `history.go` 退过那几条；一次只走一步，走到了再看要不要接着走，两次很快的 ‹ 不会多退。对话框关了，它那几层的条目由 NSH 自己退掉（`entryAtDepth`），`page-route` 不动。只有层数真的变多才写：返回退层时层数往下数，不会触发写。
+- **手机页面上对话框不再拒绝返回。** 设置的 `backStepsWithin` 和编辑器的 `stepsBack` 在 `runtime.hosted` 时为假：返回走到对话框自己的条目，就是它的第一页，直接关；万一层数没对上（一次点按同时打开设置和更深的页，NSH 把那次 push 并进了对话框的条目），也只是关掉，不再推。NSH 自己关编辑器时（返回落到它自己的条目、滑动），手机页面上从哪一页都直接关（`Modal` 新增 `onDismiss`，编辑器在手机页面上给 `closeProviderEditor`）：先退一页再被 NSH 关掉，会多退过一条。Esc 在 web 上先到应用的快捷键（外壳的 `escape()`），不经过对话框：编辑器里退一页（同 ‹，`page-route` 退过那一页的条目），在第一页上关掉；设置从哪一层都关。这和改之前一样，没变。应用自己的窄窗口照旧逐层退。
+- **刷新。** 在某一层刷新，设置开在列表上，`armFloor` 把这条的片段换掉；之后返回落到上一次加载留下的某一层（NSH 当 `open` 交回来）时，接着往回退一条，上一次加载的设置只经过一次。
+- **检查。** `phone-web-e2e.ts` 在 Chromium 里用浏览器自己的返回（一个只调 `chrome.tabs.goBack` 的扩展，持久上下文，要完整的 Chromium），页面前面垫一条 `data:` 页，离开页面就失败。原有的一路返回现在核对每一层的 `#l<n>` 和「返回不写条目」（历史条数在返回前后一样）。新加：Esc 从编辑器的表单退到连接方式（`#l2`），再按关掉编辑器（地址仍在那一节的 `#l2`），之后返回到 `#l1`，Esc 从某一项关掉设置；中间什么都不按的连按：模型（表单、编辑器、一节、一项、列表、名单）、‹ 之后再返回、提示词（编辑器、组、组列表、列表、名单）、界面（有这一项时）；在某一节刷新后一次返回关掉设置，再返回经过上一次加载的设置一次、然后是名单。改之前模型那段走到半路就离开了页面（日志没记是第几次）；改之后每次返回历史指针正好退一格、条数不变。`page-route.test.ts` 加了同深度条目的假历史和六种情形（逐层返回不写、两次 ‹、对话框关掉不动、前进到已关的页、刷新、上一次加载的层）。WebKit 照旧用 `page.goBack()`；最后一次全程都过，之前两次每一步都过、只在最后的策略检查上红，是补记四十六、四十九记过的 `blob:` 那个老毛病。Agents 没有单走一段；真机没看过；CI 的 Linux 上还没跑过持久上下文和扩展。
+- **顺带看到的（没修）。** 从链接打开设置（`/?o=settings`），页面第一次连上要是晚了（量到约 10 秒），设置在连上的那一刻关掉、停在名单上：`page-route` 那段时间什么也没做，`SettingsModal` 也还没挂上，关的是启动和连接那条路。端到端里是那次刷新多用了中继的握手（每个地址每分钟 10 次，页面和 Mac 共用回环）造成的晚；现在刷新之后等满一分钟再打开那个链接。主线 d06515b3 上没有这次刷新，那一步照常过。
+- **还留着的（这次没改，同一个毛病）。** 量过的：Bot 的设置抽屉（`closeOnEscape={false}`，在 `onCancel` 里退一层），从某一节返回到列表没事，再返回就离开了页面。看代码推断、没量的：`page-route.moved` 里 `backMobileLayer` 之后的 `setUrl(push)`（会话里先关搜索、话题这类网址不带的层）、地板上 `backFromFloor` 之后的 push、设置从链接或刷新直接打开时 NSH 在加载时写的对话框条目：都是返回之后、或没有点按时写条目。根子在 NSH：被拒绝的返回如果 `history.forward()` 回到刚离开的那条，而不是推一条新的，就不会被跳过（没试过）。
+
+The user said that on the phone, going into and back out of settings' levels was wrong now. Asked what exactly happened, they said Back in Models and its endpoints, Prompts or Interface stepped out once and then left the app. The phone runs Android Chrome. Addendum 45 had the settings dialog refuse to close and step out one level in `onCancel`. After that refusal NSH pushed the dialog's entry again (`syncHistory`'s `pushEntry`) with nothing pressed. Chromium's history manipulation intervention then marks every entry of that document skippable: after a same-document Back or Forward, earlier presses no longer count until a new one (crbug 1248529). The browser's own Back skips such entries, and that Back is Android's Back button and gesture, the toolbar's ←, or an extension's `chrome.tabs.goBack`. With all of them skippable it leaves the page. The endpoint editor's `stepsBack` did the same: from its first page Back was refused and the editor closed a turn later, and in between NSH pushed the editor's entry back once. That was measured: history went from 9 entries to 8 over the walk.
+
+- **Why nothing caught it.** The e2e used `page.goBack()`, which is CDP's `navigateToHistoryEntry` and does not skip. More importantly, Playwright's `evaluate` and every locator query run with `userGesture: true` in Chromium, so any check between two Backs counts as a press on the page and clears the marks. With the same package and the same walk, but the browser's own Back and the page read between Backs only through a raw CDP `Runtime.evaluate` with no gesture, the walk landed partway through on the `data:` page put before the app.
+- **The way: one entry per level, written under the press that opens it.**
+  - Each page of settings opened on a phone gets an entry of its own: a tab, a section of it, the endpoint editor's connector form, a model's page. Its address is settings' with `#l<depth>` (`page-route.ts`'s `LEVEL`). A fragment never reaches the server, so the edge's query rule stays as it is.
+  - `SettingsModal`'s `onPageLevels` reports the depths to `page-route` per dialog, settings then the editor. A dialog's own first page does not count. Neither do a server's or a prompt's editor, dialogs that Back simply closes.
+  - A depth that grows is a `setUrl(push)`: NSH adds an entry at the same depth. Back moves between those same-depth entries. NSH sends a `change(back)`, `page-route` calls `stepOutOfDialog` once for each level the landed entry is under, and nothing is written.
+  - A depth that falls without a Back (‹, ✕) has `page-route` go back over those entries with `history.go`. It makes one move at a time and decides on the next once it lands, so two quick ‹ do not overshoot.
+  - A dialog that closes takes its levels' entries with its own (NSH's `entryAtDepth`), and `page-route` leaves them alone.
+  - Only a real increase writes. A Back that steps out counts down, so it never writes.
+- **On the phone's page a dialog no longer refuses Back.**
+  - Settings' `backStepsWithin` and the editor's `stepsBack` are false when `runtime.hosted`. A Back that reaches a dialog's own entry is on its first page and closes it.
+  - If the depths are ever out of step, the dialog is simply closed and nothing is pushed. That happens when one press opens settings and a deeper page together, and NSH folds that push into the dialog's entry.
+  - When NSH closes the endpoint editor itself (a Back onto its own entry, a swipe), the editor closes from any of its pages on the phone's page: `Modal` gains `onDismiss`, which the editor sets to `closeProviderEditor` there. Stepping out of a page first and then being closed by NSH would go back over one entry too many.
+  - On the web Escape reaches the app's shortcuts first (the shell's `escape()`), not the dialog. In the endpoint editor it steps back a page as ‹ does, and `page-route` goes back over that page's entry; on the editor's first page it closes the editor. Settings close from any level. This is as it was before the change.
+  - The app's own narrow window still steps.
+- **Reload.**
+  - A reload on a level opens settings on its list, and `armFloor` replaces that entry's fragment.
+  - A later Back onto a level left by the earlier load, which NSH hands over as an `open`, goes on back one entry. The earlier load's settings are passed through once.
+- **Checks.**
+  - `phone-web-e2e.ts` uses the browser's own Back in Chromium: an extension that only calls `chrome.tabs.goBack`, in a persistent context, which needs the full Chromium. A `data:` page sits before the app, and leaving the page fails the run.
+  - The existing walk now checks each level's `#l<n>`, and that Back writes no entry (history has the same length before and after the walk).
+  - New: Escape on the editor's form steps back to the connector tiles (`#l2`), and a second Escape closes the editor, with the address staying on the section's `#l2`. Back then goes on to `#l1`, and Escape on a tab closes settings.
+  - New walks press Back after Back with nothing pressed between:
+    - Models: the form, the editor, a section, the tab, the list, the roster.
+    - ‹ followed by Back.
+    - Prompts: the editor, the group, the groups, the list, the roster.
+    - Interface, where that tab shows.
+    - A reload on a section, after which one Back closes settings, the next passes through the earlier load's settings once, and the one after reaches the roster.
+  - Before the change the Models walk left the page partway; the log does not say at which Back. After it, each Back moves the history index by exactly one and the length stays the same.
+  - `page-route.test.ts` gains same-depth entries in its fake history and six cases: Back steps without writing, two ‹, a dialog closing leaves entries alone, Forward onto a closed page, a reload, an earlier load's level.
+  - WebKit keeps `page.goBack()`. The last run passed throughout. Two earlier ones passed every step but ended red on the final policy check, the old `blob:` refusal of addenda 46 and 49.
+  - Not checked: Agents has no walk of its own, no real phone was tried, and the persistent context and the extension have not run on CI's Linux yet.
+- **Seen on the way (not fixed).**
+  - Settings opened by a link (`/?o=settings`) close, leaving the roster, when the page's first connection comes late (about 10 s measured). `page-route` does nothing in that time and `SettingsModal` is not mounted yet: the close is on the start-up and connection path.
+  - In the e2e the lateness came from the section reload using up the relay's handshakes: 10 an address a minute, with the page and the Mac sharing loopback. The e2e now waits out the minute after that reload before the link. On main at d06515b3, without that reload, the step passes.
+- **Left as they were (the same fault, not changed here).**
+  - Measured: a Bot's settings drawer, which has `closeOnEscape={false}` and steps out in `onCancel`. Back from a section to its list was fine, and the next Back left the page.
+  - Read from the code, not measured, each writing an entry after a Back or with no press:
+    - the `setUrl(push)` after `backMobileLayer` in `page-route.moved`, for layers the address does not carry, such as a conversation's search or thread;
+    - the push after `backFromFloor` on the floor;
+    - the dialog entry NSH writes at load when settings open from a link or a reload.
+  - The root is in NSH: a refused Back that went `history.forward()` to the entry it had just left, instead of pushing a new one, would not be skipped. This is untested.

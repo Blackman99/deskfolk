@@ -8,7 +8,8 @@
  * only reads `providerEditor` and calls what it is given. Differences from the Svelte flyout:
  * the shell's `providerForm` ref is gone, `providerDetailModel` goes with `onProviderDetailModelChange`
  * instead of `bind:`, and the head's back chevron and ✕ are `Modal`'s own (a phone's chevron steps
- * back, a desktop's ✕ closes), not `SettingsSubpageButton`s.
+ * back, a desktop's ✕ closes), not `SettingsSubpageButton`s. In a narrow window Back steps back as
+ * the chevron does (`stepsBack`); on the phone's page it does so through history instead.
  *
  * Props: `providerEditor`; `providerDetailModel`; `onProviderDetailModelChange`; `providerSaving`;
  * `providerSavedTick`; `pendingCredentials` (the modal's block, drawn at the top); `backFromProviderEditor`;
@@ -101,7 +102,13 @@ export function ProviderEditorFlyout(props: {
         width={580}
         maxHeight={0.88}
         pageOnPhone
-        stepsBack={narrowWindow()}
+        // On the phone's page a connector's form and a model's page have history entries of their
+        // own (`SettingsModal`'s `onPageLevels`), so Back reaches the dialog only on its first page,
+        // and closes it: a dialog that took Back and stayed had NSH push its entry again unpressed.
+        stepsBack={narrowWindow() && !runtime.hosted}
+        // There, when NSH closes it itself (Back on its own entry, a swipe), it closes from any page:
+        // its pages' entries go with it, and stepping out first would go back over one more.
+        onDismiss={runtime.hosted ? props.closeProviderEditor : undefined}
         onClose={() => (narrowWindow() ? props.backFromProviderEditor() : props.closeProviderEditor())}
         headExtra={
           <If when={!narrowWindow()}>

@@ -8,8 +8,10 @@
  * It is `nsh/base`'s `Dialog` (the card is a row, the nav beside the page, so `Modal`'s head does not
  * fit): 880 by 640 on a desktop, the whole window on a phone (720 wide or less, where `SettingsNav` is
  * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up;
- * on a phone, below the list, Back and Escape (the dialog's `onCancel`, which the browser's and the
- * phone's Back reach first) and ✕ step out one level instead, as ‹ does. Where the shell has its
+ * in a narrow window, below the list, Escape (the dialog's `onCancel`) and ✕ step out one level
+ * instead, as ‹ does. On the phone's page each level has a history entry of its own, written under
+ * the press that opens it (`onPageLevels`, `platform/page-route.ts`): the browser's and the phone's
+ * Back step between those, and one that reaches the dialog closes it. Where the shell has its
  * bottom bar (`mobileNavigation`), the list is a destination of that bar: no head, the bar under it
  * (the shell's own is under the dialog, so this one is drawn in it), and no fade in or out.
  *
@@ -68,6 +70,8 @@ export type SettingsModalHandle = {
   backFromProviderEditor: () => void;
   /** Steps out of the deepest thing open on a phone; true when it did, false when settings should close. */
   backWithinSettings: () => boolean;
+  /** Out of the deepest of the levels `onPageLevels` counts; never closes settings or the endpoint editor. */
+  stepOutOfSettings: () => void;
 };
 
 type Patch = { locale?: "zh" | "en"; theme?: "system" | "light" | "dark"; launch_at_login?: boolean };
@@ -93,6 +97,12 @@ export function SettingsModal(props: {
   closeSettings: () => void;
   workbench?: boolean;
   onHandle?: (handle: SettingsModalHandle) => void;
+  /**
+   * On a phone, how many levels deep settings is under its list, then the endpoint editor under its
+   * first page when it is open (`[]` while settings is closed): the phone's page gives each level an
+   * entry of its own (`reportDialogLevels`).
+   */
+  onPageLevels?: (layers: number[]) => void;
   /** The shell's bottom bar, where it shows one under settings' list (a phone). */
   mobileNavigation?: { active: Destination; updateAvailable?: boolean; onNavigate: (destination: Destination) => void } | null;
 }) {
@@ -235,7 +245,43 @@ export function SettingsModal(props: {
     setMobileDetail(false);
     return true;
   }
-  props.onHandle?.({ backFromProviderEditor, backWithinSettings });
+
+  /**
+   * The levels Back steps out of on a phone, as `backWithinSettings` takes them: a tab's page and a
+   * section of it, then the endpoint editor's (it hears Back itself, `stepsBack`). Not the dialogs'
+   * own first pages (settings' list, the editor's tiles or the form it opened on), nor a server's or
+   * a prompt's editor, dialogs over settings that Back simply closes: their own entries do that.
+   */
+  function pageLevels(): number[] {
+    if (!runtime.settingsOpen || !phone()) return [];
+    let below = 0;
+    if (mobileDetail()) {
+      const tab = activeTab();
+      below = 1;
+      if (tab === "prompts" && promptsHandle()?.sectionTitle() != null) below += 1;
+      if (tab === "models" && modelsState.sectionTitle() !== null) below += 1;
+      if (tab === "interface" && interfaceHandle()?.sectionTitle() != null) below += 1;
+      if (tab === "agents" && agentsHandle()?.sectionTitle() != null) below += 1;
+    }
+    const editor = providerEditor();
+    if (!editor) return [below];
+    const form = editor.target === "add" && !editor.picking ? 1 : 0;
+    return [below, form + (providerEditorController.providerDetailModel ? 1 : 0)];
+  }
+  effect(() => {
+    const layers = pageLevels();
+    untracked(() => props.onPageLevels?.(layers));
+  });
+
+  function stepOutOfSettings(): void {
+    if (providerEditor()) {
+      if (providerEditorController.providerDetailModel) providerEditorController.providerDetailModel = null;
+      else providerEditorController.backToConnectorPicker();
+      return;
+    }
+    if (mobileDetail()) backWithinSettings();
+  }
+  props.onHandle?.({ backFromProviderEditor, backWithinSettings, stepOutOfSettings });
 
   /**
    * What ✕ closes: the screen it sits on, not everything under it. Deep in a section or an editor it
@@ -603,12 +649,14 @@ export function SettingsModal(props: {
   /** Neither backdrop closes while the endpoint editor or a confirmation is up over the window. */
   const closable = () => !providerEditor() && !props.confirmingProvider && !props.confirmingIndependent;
   /**
-   * On a phone, a tab's page (and whatever it opened) is above the list: Back (the browser's, the
-   * phone's, Escape) steps out of it as ‹ does instead of closing settings. The dialog reads its
-   * `closeOnEscape` right after `onCancel` returns, so the step waits a turn, or stepping out of a
-   * tab to the list would turn that into a close.
+   * In a narrow window, a tab's page (and whatever it opened) is above the list: Escape steps out
+   * of it as ‹ does instead of closing settings. The dialog reads its `closeOnEscape` right after
+   * `onCancel` returns, so the step waits a turn, or stepping out of a tab to the list would turn
+   * that into a close. Not on the phone's page: there Back steps between its pages' history entries
+   * (`onPageLevels`), and one that reaches the dialog itself closes it, as a refusal had NSH push
+   * the dialog's entry again with nothing pressed.
    */
-  const backStepsWithin = () => phone() && mobileDetail();
+  const backStepsWithin = () => phone() && mobileDetail() && !runtime.hosted;
   function cancel(): void {
     if (!closable()) return;
     if (backStepsWithin()) queueMicrotask(() => void backWithinSettings());

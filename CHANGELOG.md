@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Back in settings on the phone no longer leaves the app
+
+- On the phone's page, home-screen app included, pressing Back again and again inside settings (Models and its endpoints, Prompts, Interface) stepped out once and then left the page or closed the app. Each Back that stepped out of a page wrote a history entry with nothing pressed, and Chrome's Back skips every entry of a page that does that. Now each page of settings gets its own history entry when you open it. Back moves between those entries and writes none: from a connector's form to the connector tiles, then out of the endpoint editor, the section, the tab and the list, and then onto the roster. The page's own ‹ goes back over its page's entry, so the Back after it lands one level further up.
+- A reload on a page of settings opens their list, and one Back closes them.
+
 ### A command's output reads in light mode
 
 - In light mode a command's output under a reply, and a step's output in a working bubble, sat on a dark ground in dark text, so most of it could not be read. It sits on a light ground again, as in the old app; in dark mode on its dark one.
