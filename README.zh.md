@@ -12,7 +12,7 @@
 
 <p align="center">产物按件归好，在应用里直接播、直接看、直接批注；每一轮在做哪张任务、为什么，都画在流程图上，在哪个文件夹干的，任务地图上一步步回放；Bot 交付之后自己复盘，下次照做。<br>多天、多步、要返工的活也放心交：Bot 说做完的，应用先核过。</p>
 
-<p align="center">不一定要 API key：这台电脑上装好并登录的 <b>Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode</b>，或任何讲 ACP 的 Agent，在向导里选它就能开始，用的是你自己的登录；项目会话里则直接和 Claude Code、Codex 或 Antigravity 对话，在你自己的文件夹里，也能接着终端里开过的会话。<br>也可以接 <b>OpenAI、Anthropic、小米 MiMo、千问、DeepSeek、OpenRouter</b> 或任意 OpenAI / Anthropic 兼容地址，或本机的 <b>Ollama、LM Studio、llama.cpp</b>。</p>
+<p align="center">不一定要 API key：这台电脑上装好并登录的 <b>Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode</b>，或任何讲 ACP 的 Agent，在向导里选它就能开始，用的是你自己的登录；项目会话里则直接和 Claude Code、Codex、Antigravity 或 Grok 对话，在你自己的文件夹里，也能接着终端里开过的会话。<br>也可以接 <b>OpenAI、Anthropic、小米 MiMo、千问、DeepSeek、OpenRouter</b> 或任意 OpenAI / Anthropic 兼容地址，或本机的 <b>Ollama、LM Studio、llama.cpp</b>。</p>
 
 <p align="center">
   <a href="https://blackman99.github.io/deskfolk/zh"><b>官网</b></a> ·
@@ -55,7 +55,7 @@
 
 <p align="center">
   <img alt="项目会话：在你的文件夹里用 Claude Code，它改的页面、终端和它的任务地图，旁边是 Bot 的角色页和它们的群，在同一个窗口" src="docs/assets/app-zh-project.jpg"><br>
-  <sub>项目会话：在你的文件夹里直接用 Claude Code 或 Codex，和 Bot 在同一个窗口</sub>
+  <sub>项目会话：在你的文件夹里直接用 Claude Code、Codex、Antigravity 或 Grok，和 Bot 在同一个窗口</sub>
 </p>
 
 <p align="center">

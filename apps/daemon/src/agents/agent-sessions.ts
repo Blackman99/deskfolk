@@ -9,6 +9,7 @@ import { HttpError } from "../errors";
 import type { Store } from "../store";
 import type { AgySessions } from "./agy-sessions";
 import type { CodexSessions } from "./codex-sessions";
+import type { GrokSessions } from "./grok-sessions";
 
 /** A line of a conversation carried in: what you said or what the agent answered, at its own time. */
 export type ImportedLine = { role: "user" | "assistant"; text: string; at: string };
@@ -31,7 +32,7 @@ export type AgentSessions = {
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-export function createAgentSessions(deps: { store: Store; codex: CodexSessions; agy: AgySessions }): AgentSessions {
+export function createAgentSessions(deps: { store: Store; codex: CodexSessions; agy: AgySessions; grok: GrokSessions }): AgentSessions {
   const { store } = deps;
   return {
     async list(agent, limit) {
@@ -57,6 +58,11 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions; 
           } catch (error) {
             return { items: [], error: message(error) };
           }
+        }
+        case "grok": {
+          // Each of your Grok accounts keeps its own sessions: every one is asked, newest first across them.
+          const listed = await deps.grok.list(limit, store.knownAgentSessions(agent), store.workspacePath(), [null, ...store.agentConfigDirs("grok")]);
+          return { items: listed.items, error: listed.errors[0] ?? null };
         }
       }
     },
@@ -85,6 +91,14 @@ export function createAgentSessions(deps: { store: Store; codex: CodexSessions; 
             throw new HttpError(502, "agent_unavailable", `agy could not be asked: ${message(error)}`);
           });
           if (!read) throw new HttpError(404, "not_found", "no such Antigravity session");
+          return read;
+        }
+        case "grok": {
+          if (configDir !== null && !store.agentConfigDirs("grok").includes(configDir)) throw new HttpError(422, "invalid_args", "config_dir is not one of your Grok accounts");
+          const read = await deps.grok.read(sessionId, configDir).catch((error) => {
+            throw new HttpError(502, "agent_unavailable", `grok could not be asked: ${message(error)}`);
+          });
+          if (!read) throw new HttpError(404, "not_found", "no such Grok session");
           return read;
         }
       }

@@ -477,7 +477,7 @@ test("a Codex session's model and level reach its next turn; what it has not got
   // A thread Codex does not have cannot be carried on.
   expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", import: { session_id: "x" } })).status).toBe(404);
   expect((await h.call("POST", "/v1/project-sessions", { agent: "codex", dir: h.dir, config_dir: "/somewhere" })).status).toBe(422);
-  expect((await h.call("POST", "/v1/project-sessions", { agent: "grok", dir: h.dir })).status).toBe(422);
+  expect((await h.call("POST", "/v1/project-sessions", { agent: "opencode", dir: h.dir })).status).toBe(422);
   // The phone reaches the same route.
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "POST", path: "/v1/project-sessions", body: { agent: "codex", dir: "/tmp/x" } })).not.toThrow();
 });
@@ -548,7 +548,7 @@ test("a terminal Codex thread is listed, carried on with its lines, and branched
   expect(h.sent(3, "thread/fork")).toEqual([]);
   // The phone reaches the list too.
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/codex/sessions", query: { limit: "40" } })).not.toThrow();
-  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/grok/sessions" })).toThrow();
+  expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/opencode/sessions" })).toThrow();
 });
 
 test("/new in a carried-on Codex session starts a thread of its own, not another branch of yours", async () => {

@@ -1,5 +1,6 @@
 /**
- * The plan Claude Code asks you to approve in plan mode (ADR 0098, `ProjectPlanCard.svelte`), where a
+ * The plan the session's agent asks you to approve in plan mode (ADR 0098; Codex, Antigravity and Grok
+ * too, ADR 0099, 0111, 0115), where a
  * run's approval card goes: the plan as it wrote it, then approve (it gets to work, plan mode off) or
  * keep planning. A line you send meanwhile is what to change, so the card says to just write it
  * below. A long plan can take the whole window to be read, its buttons still under it.

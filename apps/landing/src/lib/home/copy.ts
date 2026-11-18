@@ -55,12 +55,12 @@ const zh = {
     sessions: {
       kicker: '接着终端的会话',
       title: '终端里聊到一半的，拿进来接着做',
-      body: '在终端里和 Claude Code 聊到一半？在应用里挑出那个会话接着做：应用从它开一个分支，终端里的原会话一个字不动。也可以在任意文件夹里新开 Claude Code 或 Codex 的项目会话。',
+      body: '在终端里和 Claude Code 聊到一半？在应用里挑出那个会话接着做：应用从它开一个分支，终端里的原会话一个字不动。也可以在任意文件夹里新开 Claude Code、Codex、Antigravity 或 Grok 的项目会话。',
       facts: [
         '「导入终端会话…」列出这台电脑上的 Claude Code 会话，最多 120 个',
         '带过来的是你的话和 Claude 的回复，工具调用汇成一行',
         '权限模式、模型、思考等级和停下，都在应用里点',
-        'Codex 目前只能在文件夹里新开，还不能导入'
+        'Codex、Antigravity 和 Grok 的终端会话也能导入'
       ],
       link: { label: '会话的术语', page: 'conversations' }
     },
@@ -150,7 +150,7 @@ const zh = {
       branch: '应用里的分支',
       next: { you: '好，分享图也一起换', claude: '收到，分享图也换成新标题。' },
       composer: '接着说…',
-      codex: 'Codex：在文件夹里新开',
+      codex: 'Codex、Antigravity 和 Grok 同样能新开、能导入',
       replay: '重放',
       replayLabel: '重放这一段'
     },
@@ -299,12 +299,12 @@ const en: HomeCopy = {
     sessions: {
       kicker: 'Terminal sessions',
       title: 'Halfway through in the terminal? Carry on here',
-      body: 'Halfway through a Claude Code chat in the terminal? Pick that session in the app and carry on: the app branches from it, and the terminal’s own session is left exactly as it was. Or start a new Claude Code or Codex project session in any folder.',
+      body: 'Halfway through a Claude Code chat in the terminal? Pick that session in the app and carry on: the app branches from it, and the terminal’s own session is left exactly as it was. Or start a new Claude Code, Codex, Antigravity or Grok project session in any folder.',
       facts: [
         '“Import a terminal session…” lists the Claude Code sessions on this computer, up to 120',
         'Your words and Claude’s replies come along; tool calls fold into one line',
         'Permission mode, model, thinking and Stop are a click in the app',
-        'Codex starts new sessions in a folder; it can’t be imported yet'
+        'Codex, Antigravity and Grok sessions import the same way'
       ],
       link: { label: 'Sessions glossary', page: 'conversations' }
     },
@@ -394,7 +394,7 @@ const en: HomeCopy = {
       branch: 'The app’s branch',
       next: { you: 'Yes, the share image too', claude: 'On it: the share image gets the new headline too.' },
       composer: 'Carry on…',
-      codex: 'Codex: new sessions in a folder',
+      codex: 'Codex, Antigravity and Grok start and import the same way',
       replay: 'Replay',
       replayLabel: 'Replay this scene'
     },

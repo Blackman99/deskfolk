@@ -11,6 +11,8 @@ import { readAgyReplay } from "../../agents/agy-replay";
 import { readCodexReplay } from "../../agents/codex-replay";
 import { readAgentReplay } from "../../claude-code/replay";
 import { projectAgyOf } from "../../project-runner-agy";
+import { grokCommandList, grokUpdates, projectGrokOf, withGrokAcp } from "../../agents/grok-acp";
+import { readGrokReplay, grokSubagentTrail } from "../../agents/grok-replay";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile } from "../../claude-code/sessions";
 import { HttpError } from "../../errors";
@@ -124,6 +126,11 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       return readAgyReplay(resolve, lines, { sessionId: params.id!, agentSession: project.agentSession, projectDir: project.dir })
         .catch(() => empty).then((replay) => jsonResponse(replay, 200, null));
     }
+    // Grok is asked too (ADR 0115): its records carry the times it wrote them.
+    if (project.agent === "grok") {
+      return readGrokReplay(options.projectGrok ?? projectGrokOf(store), project.configDir, { sessionId: params.id!, agentSession: project.agentSession, projectDir: project.dir, configDirs: store.allAgentConfigDirs() })
+        .catch(() => empty).then((replay) => jsonResponse(replay, 200, null));
+    }
     const configDirs = store.claudeCodeConfigDirs();
     const root = claudeSessionRoots(configDirs).find((entry) => entry.configDir === project.configDir) ?? claudeSessionRoots(configDirs)[0]!;
     const fileOf = (id: string | null) => (id ? findClaudeSessionFile(root, id) : null);
@@ -150,6 +157,11 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       case "antigravity":
         // What `agy` offered the last run in this directory: none before its first.
         return jsonResponse({ commands: options.agyCommands?.get(project.dir) ?? [], checked_at: new Date().toISOString(), error: null }, 200, null);
+      case "grok":
+        // What a run in this directory last heard, else asked of a Grok that opens no session (ADR 0115).
+        return options.grokCommands
+          ? grokCommandList(options.projectGrok ?? projectGrokOf(store), options.grokCommands, project.dir, project.configDir).then((list) => jsonResponse(list, 200, null))
+          : none();
       default:
         return unknownAgent(project.agent);
     }
@@ -244,6 +256,16 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
           const thread = codex?.ok ? await withCodexAppServer(codex, project.dir, (rpc) => readThread(rpc, task.id)).catch(() => null) : null;
           const trail = thread ? codexSubagentTrail(thread) : { prompt: null, model: null, steps: [] };
           const detail: AgentTaskDetail = { task, output: null, output_bytes: null, ...trail };
+          return jsonResponse(detail, 200, null);
+        })();
+      }
+      // A Grok subagent is a session of its own, read through Grok (ADR 0115).
+      if (project?.agent === "grok") {
+        const resolve = options.projectGrok ?? projectGrokOf(store);
+        return (async () => {
+          const grok = await resolve(project.configDir).catch(() => null);
+          const records = grok?.ok ? await withGrokAcp(grok, project.dir, (rpc) => grokUpdates(rpc, task.id, project.dir)).catch(() => []) : [];
+          const detail: AgentTaskDetail = { task, output: null, output_bytes: null, ...grokSubagentTrail(records) };
           return jsonResponse(detail, 200, null);
         })();
       }

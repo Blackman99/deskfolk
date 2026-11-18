@@ -38,7 +38,7 @@ async function openOther(app: App) {
   await app.waitFor("id:project-dir");
 }
 
-test("the project sheet offers all three agents, Claude Code first and chosen", async () => {
+test("the project sheet offers all four agents, Claude Code first and chosen", async () => {
   const { app } = await story();
   await app.press("id:story-open-project");
   await app.waitFor("id:project-session-sheet");
@@ -46,6 +46,7 @@ test("the project sheet offers all three agents, Claude Code first and chosen", 
   await app.waitFor("id:project-agent-claude_code");
   expect(app.shows("id:project-agent-codex")).toBe(true);
   expect(app.shows("id:project-agent-antigravity")).toBe(true);
+  expect(app.shows("id:project-agent-grok")).toBe(true);
   await app.waitFor("id:project-dirs");
   // The typed directory can always be started from.
   await openOther(app);
@@ -63,7 +64,7 @@ test("it opens on the agent whose new session was chosen", async () => {
   await app.waitFor("id:project-dirs");
 });
 
-test("an agent that cannot ask first says so under the directory field, and Claude Code does not", async () => {
+test("an agent that cannot ask first says so under the directory field, and Claude Code and Grok do not", async () => {
   const { app } = await story();
   await app.press("id:story-open-antigravity");
   await app.waitFor("id:project-agent-antigravity");
@@ -73,6 +74,12 @@ test("an agent that cannot ask first says so under the directory field, and Clau
   await app.press("id:project-agent-claude_code");
   await app.waitFor("id:project-dirs");
   await openOther(app);
+  expect(app.count("id:asks-after")).toBe(0);
+  // Grok's calls wait on the app's hook before they run: nothing to warn of.
+  await app.press("id:project-agent-grok");
+  await app.waitFor("id:project-dirs");
+  await openOther(app);
+  expect(app.texts()).toContain("Grok 在这个目录里工作，读它的 AGENTS.md（和 CLAUDE.md）、你的 Grok 设置和 skill。");
   expect(app.count("id:asks-after")).toBe(0);
 });
 
@@ -112,9 +119,10 @@ test("carrying a terminal session on: both agents, directories that have session
   await app.waitFor("id:project-session-sheet");
   expect(app.texts()).toContain("导入终端会话");
   await app.waitFor("id:project-agent-claude_code");
-  // Codex's and Antigravity's terminal sessions can be carried on too.
+  // Codex's, Antigravity's and Grok's terminal sessions can be carried on too.
   expect(app.shows("id:project-agent-codex")).toBe(true);
   expect(app.shows("id:project-agent-antigravity")).toBe(true);
+  expect(app.shows("id:project-agent-grok")).toBe(true);
   await app.waitFor("id:project-dirs");
   // No typed directory in this errand.
   expect(app.shows("id:picker-other")).toBe(false);
@@ -139,5 +147,19 @@ test("the import sheet lists both agents; each lists its own terminal sessions",
   await app.waitFor("id:import-row-x1");
   expect(app.shows("id:import-row-c1")).toBe(false);
   await app.press("id:import-row-x1");
+  await app.waitFor("id:import-form");
+});
+
+test("Grok's terminal sessions are listed under its own tile, to carry on as a branch", async () => {
+  const { app } = await story(undefined, { fakeSessions: true });
+  await app.press("id:story-open-import");
+  await app.waitFor("id:project-agent-grok");
+  await app.press("id:project-agent-grok");
+  await app.waitFor("id:picker-head-/Users/a/proj");
+  await app.press("id:picker-head-/Users/a/proj");
+  await app.waitFor("id:import-row-g1");
+  expect(app.shows("id:import-row-c1")).toBe(false);
+  expect(app.shows("id:import-row-x1")).toBe(false);
+  await app.press("id:import-row-g1");
   await app.waitFor("id:import-form");
 });

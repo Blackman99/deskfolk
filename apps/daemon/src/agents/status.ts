@@ -326,6 +326,6 @@ function firstLine(text: string): string | null {
   return line ? line.slice(0, 200) : null;
 }
 
-function shellQuote(word: string): string {
+export function shellQuote(word: string): string {
   return /^[A-Za-z0-9_./:=@%+~-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
 }

@@ -30,11 +30,22 @@ export const AGENT_PRICES: Readonly<Record<string, ModelPricing>> = {
   "claude-sonnet-4-6": { input: 3, cached_input: 0.3, output: 15 },
   // https://platform.claude.com/docs/en/about-claude/pricing (read 2026-11-17)
   "claude-opus-4-6": { input: 5, cached_input: 0.5, output: 25 },
+  // https://docs.x.ai/docs/pricing (read 2026-11-18), the rate below 200K prompt tokens. Grok reports
+  // most turns' price itself; these are for a turn it leaves out (`usageIsIncomplete`).
+  "grok-4.7": { input: 2, cached_input: 0.5, output: 6 },
+  "grok-4.6": { input: 2, cached_input: 0.5, output: 6 },
+  "grok-4.5": { input: 2, cached_input: 0.3, output: 6 },
+  // "Grok 4.7 Fast pricing (Cursor and Grok Build only)" on the same page: 2x the standard rate.
+  "grok-4.7-build-fast": { input: 4, cached_input: 1, output: 12 },
 };
 
-/** Lower-case, and drop agy's thinking-level suffix so one model has one entry. */
+/**
+ * Lower-case, and drop agy's thinking-level suffix so one model has one entry; Grok names the
+ * standard-speed model a turn ran on `grok-4.7-build` in its usage (measured 2026-11-18), the one
+ * its public price is for.
+ */
 export function normalizeAgentModel(id: string): string {
-  return id.trim().toLowerCase().replace(/-(high|medium|low|thinking)$/, "");
+  return id.trim().toLowerCase().replace(/-(high|medium|low|thinking)$/, "").replace(/^(grok-[\d.]+)-build$/, "$1");
 }
 
 export function agentModelPricing(model: string | null | undefined): ModelPricing | null {

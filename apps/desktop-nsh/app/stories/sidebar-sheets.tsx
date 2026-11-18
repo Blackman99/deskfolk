@@ -26,9 +26,9 @@ if (slowCreate > 0) {
 }
 
 /**
- * `host.params.fakeSessions`: both agents' terminal sessions are made up, so the import sheet has
- * something to list (the isolated runtime has no terminal sessions of its own). Claude Code's `c1`
- * and Codex's `x1` ran in the same directory.
+ * `host.params.fakeSessions`: the agents' terminal sessions are made up, so the import sheet has
+ * something to list (the isolated runtime has no terminal sessions of its own). Claude Code's `c1`,
+ * Codex's `x1` and Grok's `g1` ran in the same directory; Antigravity has none.
  */
 const fakeSessions = Boolean((host.params as { fakeSessions?: boolean }).fakeSessions);
 function fakeAgentSessions() {
@@ -39,7 +39,13 @@ function fakeAgentSessions() {
   });
   Object.defineProperty(api, "agentSessions", {
     configurable: true,
-    value: async (agent: string) => ({ items: agent === "antigravity" ? [] : [agent === "codex" ? listing("x1", "codex", "Codex thread") : listing("c1", "claude_code", "Claude thread")], error: null }),
+    value: async (agent: string) => ({
+      items: agent === "antigravity" ? []
+        : agent === "codex" ? [listing("x1", "codex", "Codex thread")]
+        : agent === "grok" ? [listing("g1", "grok", "Grok session")]
+        : [listing("c1", "claude_code", "Claude thread")],
+      error: null,
+    }),
   });
 }
 
@@ -75,6 +81,7 @@ export default function SidebarSheets() {
         <StoryButton id="story-open-project" label="new project" onPress={() => runtime.openCreateProject("new", "claude_code")} />
         <StoryButton id="story-open-codex" label="new codex project" onPress={() => runtime.openCreateProject("new", "codex")} />
         <StoryButton id="story-open-antigravity" label="new antigravity project" onPress={() => runtime.openCreateProject("new", "antigravity")} />
+        <StoryButton id="story-open-grok" label="new grok project" onPress={() => runtime.openCreateProject("new", "grok")} />
         <StoryButton id="story-open-import" label="carry on" onPress={() => (fakeAgentSessions(), runtime.openCreateProject("import", "claude_code"))} />
         <StoryButton id="story-read" label="read" onPress={() => void refresh()} />
         <Text testID="story-open" class="text-[12px] text-ink-muted">

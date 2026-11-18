@@ -5,8 +5,8 @@
  */
 import type { ClaudeCodeSessionListing, ClaudeEffort } from "./bots.ts";
 
-/** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099, ADR 0111). */
-export const PROJECT_AGENTS = ["claude_code", "codex", "antigravity"] as const;
+/** The agents a project session can run, in the order a new session offers them (ADR 0095, ADR 0099, ADR 0111, ADR 0115). */
+export const PROJECT_AGENTS = ["claude_code", "codex", "antigravity", "grok"] as const;
 export type ProjectAgent = (typeof PROJECT_AGENTS)[number];
 
 /** Who a project session's agent lines are by: no Bot, the session's agent. */
@@ -36,6 +36,7 @@ export const PROJECT_AGENT_CAPS: Record<ProjectAgent, ProjectAgentCaps> = {
   claude_code: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: true, asksFirst: true },
   codex: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: false, asksFirst: true },
   antigravity: { plan: true, commands: true, accounts: false, importable: true, branches: false, replay: true, tasks: true, stopsTask: false, asksFirst: false },
+  grok: { plan: true, commands: true, accounts: true, importable: true, branches: true, replay: true, tasks: true, stopsTask: true, asksFirst: true },
 };
 
 /**

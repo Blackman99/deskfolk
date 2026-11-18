@@ -33,7 +33,7 @@ _Avoid_: 统计第一名自动任命, Bot 自封负责人, 负责人替你解除
 _Avoid_: 把几件不相干的事混成一条协作私聊, 用户是 Bot↔Bot 私聊发言者, 所有私聊发言必叫醒对方
 
 **项目会话（Project session）**：
-你和本机的一个 Agent（Claude Code、Codex 或 Antigravity）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，还能接着你在终端里开过的 Claude Code、Codex 或 Antigravity 会话（Claude Code 和 Codex 从原会话开分支，原会话不变；Antigravity 不能开分支，在同一个会话里接着）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill，Antigravity 的是它自己给的），Claude Code 的还有账号；计划模式和放到后台的命令、监视与子代理（Claude Code、Codex 有，Antigravity 有计划模式和后台命令）（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。项目目录里的文件可以批注，一批发出是你的一句话。侧栏「项目」一段按目录分组。额度用完时，Claude Code 会话自己换到你另一个套餐账号接着做，都用完就到重置时间自己接着做（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) [ADR 0099](docs/adr/0099-codex-in-project-sessions.md) 和 [ADR 0111](docs/adr/0111-antigravity-in-project-sessions.md)。
+你和本机的一个 Agent（Claude Code、Codex、Antigravity 或 Grok）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，还能接着你在终端里开过的 Claude Code、Codex、Antigravity 或 Grok 会话（Claude Code、Codex 和 Grok 从原会话开分支，原会话不变；Antigravity 不能开分支，在同一个会话里接着）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill，Antigravity 和 Grok 的是它们自己给的），Claude Code、Codex 和 Grok 的还有账号；计划模式和放到后台的命令、监视与子代理（Claude Code、Codex、Grok 有，Antigravity 有计划模式和后台命令）（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。项目目录里的文件可以批注，一批发出是你的一句话。侧栏「项目」一段按目录分组。额度用完时，Claude Code、Codex 和 Grok 的会话自己换到你另一个同类账号接着做，都用完就到重置时间（Grok 是账期结束）自己接着做（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) [ADR 0099](docs/adr/0099-codex-in-project-sessions.md)、[ADR 0111](docs/adr/0111-antigravity-in-project-sessions.md) 和 [ADR 0115](docs/adr/0115-grok-in-project-sessions.md)。
 _Avoid_: 把项目会话叫成 Bot, 给项目会话开工作或流程图, 打「停下」当 Stop, 改写终端里的原会话
 
 **任务地图（Task map）**：
@@ -271,7 +271,7 @@ _Avoid_: Claude Code 引擎（品牌名不当功能名）, 用订阅令牌直连
 _Avoid_: 把 Agent 当补全端点, 在应用里登录 Agent, 改写 Agent 的配置文件, 读 Agent 的令牌, Bot 自己切换运行方式, 拿不到工具时假装交付
 
 **向导**：
-设置的空态：工作区路径，加上一个能用的端点（URL 和已有密钥，本机地址不要密钥），或者本机已登录的 Agent（内置调用都选了这个 Agent 的模型，ADR 0078、ADR 0079），即完成。名册还空时多一步：选一种工作方式（引擎）和第一批 Bot（Bot 模板），两个以上还建一个用这个引擎的群（ADR 0085）；这台电脑上有终端里的 Claude Code 或 Codex 会话时，这一步也能改成挑一个接着聊，导入成项目会话（ADR 0095）；这一步能跳过。没有单独路由；滑出只盖侧栏，不抢主转录。
+设置的空态：工作区路径，加上一个能用的端点（URL 和已有密钥，本机地址不要密钥），或者本机已登录的 Agent（内置调用都选了这个 Agent 的模型，ADR 0078、ADR 0079），即完成。名册还空时多一步：选一种工作方式（引擎）和第一批 Bot（Bot 模板），两个以上还建一个用这个引擎的群（ADR 0085）；这台电脑上有终端里的 Claude Code、Codex、Antigravity 或 Grok 会话时，这一步也能改成挑一个接着聊，导入成项目会话（ADR 0095）；这一步能跳过。没有单独路由；滑出只盖侧栏，不抢主转录。
 _Avoid_: /setup, 全屏 onboarding, 把设置做成主转录
 
 **MCP**：

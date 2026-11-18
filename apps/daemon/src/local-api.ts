@@ -12,6 +12,8 @@ import { createCodexSessions } from "./agents/codex-sessions";
 import { createAgySessions } from "./agents/agy-sessions";
 import { createCommandMemory } from "./project-acp";
 import { projectAgyOf } from "./project-runner-agy";
+import { projectGrokOf } from "./agents/grok-acp";
+import { createGrokSessions } from "./agents/grok-sessions";
 import { createClaudeCommandList } from "./claude-code/commands";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
@@ -77,10 +79,12 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
   options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
   options.agyCommands ??= createCommandMemory();
+  options.grokCommands ??= createCommandMemory();
   options.agentSessions ??= createAgentSessions({
     store: options.store,
     codex: createCodexSessions({ resolve: options.projectCodex ?? projectCodexOf(options.store) }),
     agy: createAgySessions({ resolve: options.projectAgy ?? projectAgyOf(options.store) }),
+    grok: createGrokSessions({ resolve: options.projectGrok ?? projectGrokOf(options.store) }),
   });
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
@@ -282,7 +286,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     ...(options.projectCodex ? { resolveCodex: options.projectCodex } : {}),
     ...(options.projectAgy ? { resolveAgy: options.projectAgy } : {}),
     ...(options.projectAgyVersion ? { agyVersion: options.projectAgyVersion } : {}),
-    agyCommands: options.agyCommands });
+    ...(options.projectGrok ? { resolveGrok: options.projectGrok } : {}),
+    ...(options.projectGrokHoldMs !== undefined ? { grokHoldMs: options.projectGrokHoldMs } : {}),
+    ...(options.projectGrokBilling ? { grokBilling: options.projectGrokBilling } : {}),
+    agyCommands: options.agyCommands, grokCommands: options.grokCommands });
 
   options.beforeScheduler?.(engine);
   const scheduler =

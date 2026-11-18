@@ -90,6 +90,7 @@ test("the add menu offers a new session of each agent, then import; its choice c
   expect(app.shows("id:project-add-new-claude_code")).toBe(true);
   expect(app.shows("id:project-add-new-codex")).toBe(true);
   expect(app.shows("id:project-add-new-antigravity")).toBe(true);
+  expect(app.shows("id:project-add-new-grok")).toBe(true);
   expect(app.shows("id:project-add-import")).toBe(true);
   expect(app.count("id:project-add-open-dir")).toBe(0);
   // A folder is picked after, so each "new" says so.

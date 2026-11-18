@@ -5,7 +5,8 @@ import type { MessengerApi } from "../messenger-api.ts";
 /**
  * A project session's slash commands (ADR 0098), for its composer's `/`: Claude Code's own and the
  * account's and directory's commands and skills, as the Mac asks them of it; in a Codex session the
- * commands the app carries out for Codex and the directory's skills (ADR 0099). Asked once a page per
+ * commands the app carries out for Codex and the directory's skills (ADR 0099); in an Antigravity or
+ * Grok session what the agent itself offered in the directory (ADR 0111, 0115). Asked once a page per
  * session, the first time you type `/`; a list that could not be had is asked again the next time.
  */
 export type ProjectCommandsState = ClaudeCodeCommand[] | "loading" | "failed";

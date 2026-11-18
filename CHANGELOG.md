@@ -6,6 +6,17 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Project sessions can run Grok, new or carried on from a terminal
+
+- Pick Grok in the New sheet, the + menu or a directory's + to talk to your own Grok Build in that folder, as in its terminal: each run starts `grok agent --no-leader stdio` there, with your Grok settings, AGENTS.md, skills and MCP servers, and nothing added by the app. Later lines resume its session.
+- Grok asks before nothing under your settings, so the app holds every call it makes, its subagents' too, through a hook Grok runs before each one: reads, commands and changes go by the permission mode, ask first puts up a card before the step runs, and the agents' credentials are refused. Grok waits on a hook ten minutes at most; a card left that long tells Grok the step waits for you, and approving it later lets its next try through.
+- Plan mode, Shift+Tab and the plan card work as for Claude Code: a line you send while the plan waits goes back as the change; approved, Grok carries it out in the same turn. Its questions are cards it waits on.
+- Commands, monitors and subagents it sends to the background are tasks, each of which can be stopped alone; what it says when one comes back is posted. A subagent opens onto its own steps.
+- `/` lists the commands Grok offers in the directory; `/always-approve`, `/loop`, `/goal` and `/workflow` are not sent, since a project session's Grok ends with its run.
+- Carry on a session from a terminal through the import sheet or the wizard: it is branched, and your terminal's session is left as it was. Its lines come in at the times they were said.
+- A session runs on one of your Grok accounts (`GROK_HOME`), picked in the box. When the plan is used up it moves to another account and goes on there, told the conversation so far; with none left it picks up when the billing period ends.
+- Each turn's spend is the price Grok reports, under "Grok", counted toward the daily cap; a turn it gives no price for is estimated from xAI's public prices. The task map replays Grok sessions at their real times.
+
 ### Grok can have several accounts
 
 - Grok's card in Settings › Agents now takes other accounts' directories, as Codex's does: each is a `GROK_HOME`, signed in with `GROK_HOME=<dir> grok login`, and the card says which are signed in. A Bot running on Grok picks in its panel whose plan it spends; one left alone uses the default `~/.grok`.

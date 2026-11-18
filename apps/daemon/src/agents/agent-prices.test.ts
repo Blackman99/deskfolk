@@ -25,6 +25,14 @@ describe("agent prices", () => {
     expect(estimateAgentCost("nope", { inputTokens: 1, outputTokens: 1, cachedTokens: 0 })).toBeNull();
   });
 
+  test("Grok's models are priced, its build names by the model they run", () => {
+    expect(agentModelPricing("grok-4.7")).toEqual({ input: 2, cached_input: 0.5, output: 6 });
+    expect(agentModelPricing("grok-4.7-build")).toEqual(agentModelPricing("grok-4.7"));
+    expect(agentModelPricing("grok-4.6-build")).toEqual(agentModelPricing("grok-4.6"));
+    expect(agentModelPricing("grok-4.7-build-fast")).toEqual({ input: 4, cached_input: 1, output: 12 });
+    expect(agentModelPricing("grok-4.5")?.cached_input).toBe(0.3);
+  });
+
   test("estimate by hand", () => {
     // gpt-5.6-terra: 600k fresh * $2 + 400k cached * $0.20 + 100k out * $12 per 1M
     // = 1.20 + 0.08 + 1.20 = $2.48; one USD is 1e10 ticks.

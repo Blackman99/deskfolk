@@ -37,6 +37,8 @@ const askAnswers = signal<Record<string, { selected: string[]; custom: string | 
 /** The running run's first subagent has ended. */
 const subagentDone = signal(false);
 const planMode = signal(false);
+/** The project session's agent: Claude Code, or another whose composer the caps shape (`story-agent-*`). */
+const projectAgent = signal<"claude_code" | "codex" | "grok">("claude_code");
 const projectLines = signal<Message[]>([]);
 /** The batch of annotations in the project session (ADR 0095 decision 28), and each card's status. */
 const annotated = signal(false);
@@ -89,7 +91,7 @@ function botDmSession(): SessionSummary | null {
 function projectSession(): SessionSummary | null {
   const base = realSessions().find((s) => classifySession(s) === "group");
   return base
-    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: "claude_code", project_mode: planMode() ? "plan" : null } as unknown as SessionSummary)
+    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: projectAgent(), project_mode: planMode() ? "plan" : null } as unknown as SessionSummary)
     : null;
 }
 
@@ -425,6 +427,8 @@ export default function ChatStageStory() {
             {button("show-none", "none", () => which.set("none"))}
             {button("show-project", "project", () => which.set("project"))}
             {button("story-run", "run", () => runOn.set("running"))}
+            {button("story-agent-grok", "grok", () => projectAgent.set("grok"))}
+            {button("story-agent-codex", "codex", () => projectAgent.set("codex"))}
             {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {

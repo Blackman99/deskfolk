@@ -1,7 +1,7 @@
 /**
  * Project sessions' agents (ADR 0095, ADR 0099): each session runs the agent it was started with,
- * Claude Code (`project-runner.ts`), Codex (`project-runner-codex.ts`) or Antigravity
- * (`project-runner-agy.ts`). This only sends a line,
+ * Claude Code (`project-runner.ts`), Codex (`project-runner-codex.ts`), Antigravity
+ * (`project-runner-agy.ts`) or Grok (`project-runner-grok.ts`). This only sends a line,
  * an answer, a Stop or a change to the runner of the session's agent. Every agent has a runner of
  * its own: no session falls through to another agent's.
  */
@@ -9,6 +9,8 @@ import type { ProjectAgent } from "@real-bot/protocol";
 import type { ResolvedAgent } from "./agents/runtime";
 import type { CommandMemory } from "./project-acp";
 import { createAgyProjectRunner } from "./project-runner-agy";
+import { createGrokProjectRunner } from "./project-runner-grok";
+import type { RpcPeer } from "./engine/agent/jsonrpc";
 import { createCodexProjectRunner } from "./project-runner-codex";
 import { createProjectRunner, type ProjectRunner, type ProjectRunnerDeps } from "./project-runner";
 
@@ -20,6 +22,11 @@ export type ProjectRunnersDeps = ProjectRunnerDeps & {
   agyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;
   /** The commands `agy` offered in each directory, kept for the `/` list. */
   agyCommands?: CommandMemory;
+  /** The Grok a Grok session's run starts on an account (ADR 0115), how long a call waits on a card, its billing, and its `/` commands; a test brings stand-ins. */
+  resolveGrok?: (configDir: string | null) => Promise<ResolvedAgent>;
+  grokHoldMs?: number;
+  grokBilling?: (rpc: RpcPeer) => Promise<{ percent: number | null; end: number | null }>;
+  grokCommands?: CommandMemory;
 };
 
 export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
@@ -30,6 +37,11 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
     antigravity: createAgyProjectRunner({
       store, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveAgy ? { resolve: deps.resolveAgy } : {}),
       ...(deps.agyVersion ? { version: deps.agyVersion } : {}), ...(deps.agyCommands ? { commands: deps.agyCommands } : {}),
+    }),
+    grok: createGrokProjectRunner({
+      store, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveGrok ? { resolve: deps.resolveGrok } : {}),
+      ...(deps.grokHoldMs !== undefined ? { holdMs: deps.grokHoldMs } : {}), ...(deps.grokBilling ? { billing: deps.grokBilling } : {}),
+      ...(deps.grokCommands ? { commands: deps.grokCommands } : {}),
     }),
   };
   const all = Object.values(runners);

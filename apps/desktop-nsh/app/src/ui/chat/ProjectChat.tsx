@@ -4,7 +4,8 @@
  * lines on the right, the agent's on the left as Markdown, the app's centred. The run going on is a
  * Bot's working bubble at the end with the approval it waits on under it; Stop is in the composer.
  * Pictures and files go with a line; Plan mode is a switch in the composer (Shift+Tab); typing `/`
- * lists the agent's commands (ADR 0098); a Codex session (ADR 0099) has no plan mode and no account.
+ * lists the agent's commands (ADR 0098); what each agent has besides (accounts, plan mode, stopping one
+ * task alone) is `PROJECT_AGENT_CAPS` (ADR 0099, 0111, 0115).
  * What it runs in the background and its subagents read as a Bot's work does. The header is the
  * pane's or the page's own.
  *

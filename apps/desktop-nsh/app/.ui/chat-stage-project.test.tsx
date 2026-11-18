@@ -120,6 +120,26 @@ test("the plan switch in the box tunes the session's mode", async () => {
   await app.waitUntil(() => app.texts().includes("plan-mode:off"), { timeout: 10_000 });
 });
 
+test("a Grok session's box has the plan switch, and with work going its Stop ends one task alone; Codex's only all of it", async () => {
+  const app = await project();
+  await app.press("id:story-agent-grok");
+  await app.waitFor("id:project-plan");
+  await app.press("id:project-plan");
+  await app.waitUntil(() => app.texts().includes("plan-mode:on"), { timeout: 10_000 });
+  await app.press("id:project-plan");
+  await app.waitUntil(() => app.texts().includes("plan-mode:off"), { timeout: 10_000 });
+  await app.press("id:story-run");
+  await app.waitFor("id:stop-menu", { timeout: 10_000 });
+  await app.press("id:stop-menu");
+  await app.waitFor("id:stop-item-run");
+  expect(app.shows("id:stop-item-task:cmd-b")).toBe(true);
+  expect(app.shows("id:stop-item-task:sub-b")).toBe(true);
+  await app.keyboard.press("escape");
+  // Codex cannot end one task alone: no menu, Stop is for the whole run.
+  await app.press("id:story-agent-codex");
+  await app.waitFor("id:stop-menu", { state: "gone", timeout: 10_000 });
+});
+
 test("a batch of annotations sent in a project session shows as cards under your line: they open the file, and you mark them handled", async () => {
   const app = await project();
   await app.press("id:story-annotated");
