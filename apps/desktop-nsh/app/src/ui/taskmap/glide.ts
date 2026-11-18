@@ -2,9 +2,11 @@
  * Values that glide to where they are asked (the CSS `transition` the Svelte map leaned on): the
  * town's camera and a character's walk. `glide(target, ms)` gives a reader that follows `target()`
  * over `ms()` milliseconds on the map's curve, at once when `ms()` is 0 (a drag, a turn) or on its
- * first value.
+ * first value. As with a transition, being asked again for where it is already going keeps its
+ * course: a replay draws the town anew every frame, and starting over from where it had got to
+ * each time stretched a walk to more than twice its length.
  */
-import { effect, signal, untracked } from "nsh";
+import { cleanup, effect, signal, untracked } from "nsh";
 
 /** CSS `cubic-bezier(x1, y1, x2, y2)` as a function of time 0..1. */
 export function bezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
@@ -35,15 +37,21 @@ export function bezier(x1: number, y1: number, x2: number, y2: number): (t: numb
 /** The map's curve (`cubic-bezier(.3, .7, .3, 1)`). */
 export const MAP_EASE = bezier(0.3, 0.7, 0.3, 1);
 
+const same = (a: readonly number[], b: readonly number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+
 export function glide(target: () => readonly number[], ms: () => number): () => readonly number[] {
   const shown = signal<readonly number[] | null>(null);
+  /** Where it is going: a glide under way runs on while it is asked for the same place. */
+  let goal: readonly number[] | null = null;
   let raf = 0;
   effect(() => {
     const to = target();
     const dur = ms();
+    if (goal && same(goal, to)) return;
+    goal = to;
     const from = untracked(shown);
     cancelAnimationFrame(raf);
-    if (!from || dur <= 0 || from.length !== to.length || from.every((v, i) => v === to[i])) {
+    if (!from || dur <= 0 || from.length !== to.length || same(from, to)) {
       shown.set(to);
       return;
     }
@@ -51,12 +59,16 @@ export function glide(target: () => readonly number[], ms: () => number): () => 
     const start = [...from];
     const step = (now: number) => {
       const u = Math.min(1, (now - t0) / dur);
+      if (u >= 1) {
+        shown.set(to);
+        return;
+      }
       const e = MAP_EASE(u);
       shown.set(to.map((v, i) => start[i]! + (v - start[i]!) * e));
-      if (u < 1) raf = requestAnimationFrame(step);
+      raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
   });
+  cleanup(() => cancelAnimationFrame(raf));
   return () => shown() ?? target();
 }
