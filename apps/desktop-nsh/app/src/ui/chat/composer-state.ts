@@ -4,6 +4,7 @@
  * what to type, what the editor's description says, whether Send is the main button, and what the
  * ✨ button does. `Composer.tsx` calls them inside its reactive reads.
  */
+import { readFile } from "fs/promises";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { Copy } from "../../m/copy";
 import { composerAction, lockedReason, type ComposerAction } from "../../m/chat/composer-mode";
@@ -193,7 +194,7 @@ export async function filesFromUris(uris: readonly string[]): Promise<File[]> {
     const name = nameOfUri(uri);
     try {
       const path = pathOfFileUri(uri);
-      const bytes = path ? await (await import("fs/promises")).readFile(path) : new Uint8Array(await (await fetch(uri)).arrayBuffer());
+      const bytes = path ? await readFile(path) : new Uint8Array(await (await fetch(uri)).arrayBuffer());
       files.push(new File([bytes as Uint8Array<ArrayBuffer>], name, { type: mimeOfName(name) }));
     } catch {
       // Not readable here: nothing to stage.

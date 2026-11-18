@@ -1,7 +1,8 @@
 /**
  * The window: the messenger's shell (`ui/shell/Shell.tsx`) on the runtime (`src/runtime.ts`).
  * The hosted build (`Hosted.tsx`, the phone's page) shows the pairing screen until this device is
- * enrolled, as the messenger's `+page.svelte` does, then the same shell on the remote client.
+ * enrolled, as the messenger's `+page.svelte` does, then the same shell on the remote client; over
+ * either, the notice of a newer build on the relay (`platform/page-build.ts`).
  *
  * As there too, the shell waits for the first connection behind `ConnectionScreen` (connecting, or
  * unreachable with a Retry): before it the snapshot is the empty one, whose settings say the
@@ -16,10 +17,12 @@ import { effect, platform, signal, View } from "nsh";
 import { initialPane, initialSession, windowId } from "./launch";
 import { appBanners } from "./platform/app-banners";
 import { installLinuxTray } from "./platform/linux-tray";
+import { pageBuildUpdates, reloadPage } from "./platform/page-build";
 import { linuxWheelProps } from "./platform/wheel";
 import { installWindowLife } from "./platform/window-life";
 import { runtime } from "./runtime";
 import { PdfPane, TerminalPane } from "./Tools";
+import { BuildUpdateNotice } from "./ui/BuildUpdateNotice";
 import { PairingScreen } from "./ui/remote/PairingScreen";
 import { ConnectionScreen } from "./ui/shell/ConnectionScreen";
 import { Shell } from "./ui/shell/Shell";
@@ -84,10 +87,20 @@ export function Main() {
   if (runtime.hosted) {
     // Not enrolled is not a connection problem: this device has nothing to connect with yet.
     const pairing = () => runtime.connection !== "connected" && !runtime.enrolled;
-    return (
+    const page = (
       <If when={pairing()} else={shell}>
         <PairingScreen />
       </If>
+    );
+    // The phone keeps the page open for days: a newer build on the relay is offered, never forced.
+    const updates = pageBuildUpdates();
+    if (!updates) return page;
+    updates.start();
+    return (
+      <View class="flex-1">
+        {page}
+        <BuildUpdateNotice updates={updates} onReload={reloadPage} />
+      </View>
     );
   }
   return shell;
