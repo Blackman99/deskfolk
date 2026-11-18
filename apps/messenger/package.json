@@ -8,15 +8,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "bun scripts/dev.ts",
-    "build": "vite build",
-    "build:hosted": "REAL_BOT_HOSTED=1 vite build",
-    "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
-    "test": "bun test --conditions browser src/lib tests/uno-utilities.test.ts tests/icon-button-titles.test.ts",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:visual": "playwright test",
-    "test:visual:update": "playwright test --update-snapshots"
+    "test": "bun test --conditions browser src/lib",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "1.3.0",

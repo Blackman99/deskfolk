@@ -85,11 +85,6 @@ jobs:
       - name: Build shared remote package and browser fixture
         run: pnpm --filter @real-bot/remote build && pnpm --filter @real-bot/remote build:browser
 
-      # The messenger's page as the relay serves it to phones (the only build of it anything
-      # ships now).
-      - name: Build messenger
-        run: pnpm --filter @real-bot/messenger build:hosted
-
       - name: Build landing
         run: pnpm --filter @real-bot/landing build
 

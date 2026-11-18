@@ -73,9 +73,6 @@ jobs:
       - name: Remote screen helper tests
         run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml
 
-      - name: Build messenger
-        run: pnpm --filter @real-bot/messenger build:hosted
-
   # The native app's own checks on macOS (nsh-desktop.yml runs them on Windows and Linux).
   verify-nsh:
     name: Verify the native app on macOS

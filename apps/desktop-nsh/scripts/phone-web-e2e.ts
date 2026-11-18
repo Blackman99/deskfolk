@@ -19,13 +19,11 @@
  * headers and its content security policy: a policy violation fails the run, as does a request for
  * the chunks only a local window runs. A newer build put up while the page is open is offered, and
  * its reload keeps the device. `--edge caddy` serves through Caddy running the production
- * `deploy/remote/Caddyfile` (`CADDY_BIN`) instead of the script's own edge. `--from-svelte` pairs
- * on the messenger's hosted page (`build:hosted`) first, as a phone paired before the switch did,
- * then swaps the edge to the NSH page and reloads: the device is still enrolled. `--host localhost`
+ * `deploy/remote/Caddyfile` (`CADDY_BIN`) instead of the script's own edge. `--host localhost`
  * puts the page at an origin its meta policy does not name, as the relay's domain is not.
  *
  *   bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <dir>]
- *                                                 [--edge bun|caddy] [--from-svelte] [--host localhost]
+ *                                                 [--edge bun|caddy] [--host localhost]
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -56,8 +54,6 @@ const engine = flag("browser") ?? "chromium";
 const shots = resolve(flag("shots") ?? join(root, "build", "phone-shots"));
 const site = join(PHONE_OUT, RELEASE_APP_NAME);
 const edgeKind = flag("edge") ?? "bun";
-const fromSvelte = process.argv.includes("--from-svelte");
-const svelteSite = join(repo, "apps", "messenger", "build");
 const RELAY_ID = "phone-e2e";
 
 const work = mkdtempSync(join(tmpdir(), "deskfolk-phone-e2e-"));
@@ -79,11 +75,9 @@ async function until<T>(what: string, ms: number, probe: () => Promise<T | undef
   }
 }
 
-/** The hosted package, as the relay serves it; with `--from-svelte`, the messenger's hosted page too. */
+/** The hosted package, as the relay serves it. */
 function build(): void {
   buildPhoneSite();
-  // `node --run`, not `pnpm --filter`: pnpm refuses a worktree whose node_modules is a link.
-  if (fromSvelte) run(["node", "--run", "build:hosted"], join(repo, "apps", "messenger"));
 }
 
 /** Lines of a child's stdout, kept for when something fails, and a way to wait for one. */
@@ -248,8 +242,6 @@ let onFailure: () => Promise<void> = async () => {};
 try {
   if (!process.argv.includes("--no-build")) build();
   if (!existsSync(join(site, "index.html"))) throw new Error(`no package at ${site}: run without --no-build`);
-  if (fromSvelte && !existsSync(join(svelteSite, "index.html"))) throw new Error(`no hosted messenger at ${svelteSite}: run without --no-build`);
-  if (fromSvelte && edgeKind !== "bun") throw new Error("--from-svelte swaps the page under the script's own edge: leave --edge out");
   mkdirSync(shots, { recursive: true });
   const shot = (name: string) => join(shots, `${engine}-${name}.png`);
 
@@ -264,15 +256,13 @@ try {
   const bootstrap = base64url(randomBytes(32));
   await startRelay(origin, relayPort, bootstrap);
   let bounceEdge: ((meanwhile: () => Promise<void>) => Promise<void>) | null = null;
-  // What the edge serves: the messenger's page first with --from-svelte, until the switch below.
-  let serving = fromSvelte ? svelteSite : site;
   if (edgeKind === "caddy") {
     let httpPort = await freePort();
     while (httpPort === relayPort || httpPort === edgePort) httpPort = await freePort();
     const caddy = await startCaddyEdge({ port: edgePort, httpPort, relayPort, site, tls, dir: work });
     stops.push(() => caddy.stop());
   } else if (edgeKind === "bun") {
-    let edge = startEdge({ port: edgePort, relayPort, site: () => serving, tls });
+    let edge = startEdge({ port: edgePort, relayPort, site: () => site, tls });
     stops.push(() => {
       edge.stop(true);
     });
@@ -282,11 +272,11 @@ try {
       try {
         await meanwhile();
       } finally {
-        edge = startEdge({ port: edgePort, relayPort, site: () => serving, tls });
+        edge = startEdge({ port: edgePort, relayPort, site: () => site, tls });
       }
     };
   } else throw new Error(`--edge ${edgeKind}: bun or caddy`);
-  step(`relay on 127.0.0.1:${relayPort}, its origin and the ${fromSvelte ? "messenger's" : "NSH"} page at ${origin} (${edgeKind === "caddy" ? "Caddy, the production Caddyfile" : "the script's edge, the production headers"})`);
+  step(`relay on 127.0.0.1:${relayPort}, its origin and the NSH page at ${origin} (${edgeKind === "caddy" ? "Caddy, the production Caddyfile" : "the script's edge, the production headers"})`);
 
   const mac = await startMac(tls.certPath);
   step(`the Mac on ${mac.origin} (${mac.dataDir})`);
@@ -345,32 +335,19 @@ try {
   };
 
   await page.goto(`${origin}/`);
-  if (fromSvelte) {
-    // A phone paired before the switch: the messenger's page, its own pairing screen.
-    const box = page.locator("textarea#pairing-qr");
-    await box.waitFor({ timeout: 30_000 });
-    step("the messenger's page shows its pairing screen");
-    await box.fill(code);
-    const printed = await testid(page, "host-fingerprint").innerText({ timeout: 10_000 });
-    if (printed.replace(/\s/g, "") !== fingerprint) throw new Error(`fingerprint on the phone ${printed} is not the Mac's ${fingerprint}`);
-    await page.screenshot({ path: shot("0-svelte-pairing") });
-    await page.locator("main.pairing-screen .modal-foot button.btn-primary").click();
-    step("submitted on the messenger's page; the phone waits for the Mac");
-  } else {
-    await testid(page, "pairing-screen").waitFor({ timeout: 30_000 });
-    step("the page shows the pairing screen");
-    await (await field(page, "pairing-qr")).fill(code);
-    const printed = await testid(page, "host-fingerprint").innerText({ timeout: 10_000 });
-    if (printed.replace(/\s/g, "") !== fingerprint) throw new Error(`fingerprint on the phone ${printed} is not the Mac's ${fingerprint}`);
-    const pageOrigin = await testid(page, "pairing-origin").innerText();
-    if (pageOrigin.trim() !== origin) throw new Error(`the phone reads the relay as ${pageOrigin}, not ${origin}`);
-    await page.screenshot({ path: shot("1-pairing") });
-    step("the code reads: the relay is the page's origin and the fingerprint is the Mac's");
+  await testid(page, "pairing-screen").waitFor({ timeout: 30_000 });
+  step("the page shows the pairing screen");
+  await (await field(page, "pairing-qr")).fill(code);
+  const printed = await testid(page, "host-fingerprint").innerText({ timeout: 10_000 });
+  if (printed.replace(/\s/g, "") !== fingerprint) throw new Error(`fingerprint on the phone ${printed} is not the Mac's ${fingerprint}`);
+  const pageOrigin = await testid(page, "pairing-origin").innerText();
+  if (pageOrigin.trim() !== origin) throw new Error(`the phone reads the relay as ${pageOrigin}, not ${origin}`);
+  await page.screenshot({ path: shot("1-pairing") });
+  step("the code reads: the relay is the page's origin and the fingerprint is the Mac's");
 
-    await testid(page, "pairing-submit").click();
-    await testid(page, "pairing-waiting").waitFor({ timeout: 15_000 });
-    step("submitted; the phone waits for the Mac");
-  }
+  await testid(page, "pairing-submit").click();
+  await testid(page, "pairing-waiting").waitFor({ timeout: 15_000 });
+  step("submitted; the phone waits for the Mac");
   const prepared = await until("the device at the Mac", 30_000, async () => {
     const answer = (await setup({ operation: "prepare_pair", pairingId: qr.pairingId })) as { pending?: true; challenge?: string; name?: string; fingerprint?: string };
     return answer.pending ? null : (answer as { challenge: string; name: string; fingerprint: string });
@@ -380,23 +357,6 @@ try {
   const { proof } = (await setup({ operation: "dev_authenticate", challenge: prepared.challenge })) as { proof: string };
   await setup({ operation: "confirm_pair", pairingId: qr.pairingId, proof });
   step("approved on the Mac");
-
-  if (fromSvelte) {
-    await until("the messenger's page past pairing", 40_000, async () => (await page.locator("main.pairing-screen").count()) === 0);
-    await Bun.sleep(1500);
-    await page.screenshot({ path: shot("0-svelte-paired") });
-    const stores = await page.evaluate(async () => ((await indexedDB.databases?.()) ?? []).map((d) => d.name));
-    step(`paired on the messenger's page (its stores: ${stores.join(", ")})`);
-    // The deploy: the relay's site is the NSH page from now on. The open page polls the version the
-    // relay serves (`_app/version.json`, which the NSH package keeps writing), offers the reload,
-    // and the reload loads the NSH page.
-    serving = site;
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await testid(page, "build-update").waitFor({ timeout: 35_000 });
-    await page.screenshot({ path: shot("0-svelte-offers-reload") });
-    await Promise.all([page.waitForEvent("load"), page.locator(".build-update-reload").click()]);
-    step("the relay serves the NSH page now: the messenger's page offered a reload, and the phone took it");
-  }
 
   // A phone's width: the shell's roster fills the window, the bottom bar under it, no workbench.
   const row = testid(page, `session-${mac.writerDirect}`);
