@@ -556,6 +556,7 @@ export function Sidebar(props: {
           open={dirMenuOpen()}
           onOpenChange={(open) => dirMenuOpen.set(open)}
           label={dirMenuFor() ? t().project.newHere(dirMenuFor()!.label) : t().project.add}
+          title={dirMenuFor()?.label}
           picksFolder={false}
           onNew={(agent) => {
             const dir = dirMenuFor()?.dir;

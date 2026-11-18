@@ -15,7 +15,8 @@
  * arriving live, a file pressed in a message covering the conversation (and Back putting only the
  * file away), Back to the roster, the terminal page reattaching to a shell the Mac already holds
  * (none started beside it; the key bar's Return reaches it; Back leaves it running), the workspace with a file picked in it that stays while the Mac
- * moves on, a project's folder over its conversation, a reload that is still enrolled and under the service worker
+ * moves on, a project's folder over its conversation (from its row's menu, and from its directory's +, a sheet from the
+ * bottom that Back puts away first), a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
  * page that keeps the reader's place when a line comes into another conversation and when the relay
  * goes out of reach and the link comes back to the snapshot; a reload on the terminal page's address
@@ -765,9 +766,45 @@ try {
   }
   await until("the project's conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
   if (!page.url().startsWith(origin)) throw new Error(`Back after Back from a project's folder left the page for ${page.url()}`);
+  step("a project's folder from its row's menu covers its conversation; Back puts the folder away, then the conversation");
+
+  // The directory's + asks in a sheet from the bottom, as the row's menu does, not in a desktop's
+  // menu hanging off the +. The sheet has an entry of its own: Back puts it away and the list stays.
+  // Its folder entry covers the conversation and the sheet goes; Back puts the folder away and the
+  // page stays. Not walked further: the conversation was open a moment ago, so selecting it again
+  // is instant and its address and the folder's land as one entry, which one Back puts away whole.
+  // The row's menu does the same the second time (ADR 0107 addendum 59); it is not the sheet's.
+  const dirAdd = page.locator('[data-testid^="project-dir-add:"]:visible').first();
+  const dirSheet = async () => {
+    await dirAdd.tap();
+    await testid(page, "project-add-menu").waitFor({ timeout: 10_000 });
+    const height = page.viewportSize()!.height;
+    await until("the directory's sheet at the bottom of the screen", 5_000, async () => {
+      const box = await testid(page, "bottom-sheet-panel").boundingBox();
+      return box !== null && Math.abs(box.y + box.height - height) <= 2;
+    });
+  };
+  await dirSheet();
+  for (const entry of ["project-add-new-claude_code", "project-add-open-dir", "project-add-open-terminal"]) {
+    if (!(await page.locator(`[data-testid="bottom-sheet-panel"] [data-testid="${entry}"]`).count())) throw new Error(`the directory's sheet has no ${entry}`);
+  }
+  await page.screenshot({ path: shot("3e-project-dir-add") });
+  await until("the sheet's history entry", 5_000, () => page.evaluate(() => ((history.state as { nsh?: number } | null)?.nsh ?? 0) >= 1));
+  await back();
+  await until("the directory's sheet put away by Back", 10_000, async () => (await testid(page, "project-add-menu").count()) === 0);
+  if (!(await dirAdd.isVisible())) throw new Error("Back from the directory's sheet took the projects list with it");
+  await dirSheet();
+  await testid(page, "project-add-open-dir").tap();
+  await until("the directory over its conversation", 15_000, () => onTop(page, "preview-sheet"));
+  if (await testid(page, "project-add-menu").count()) throw new Error("the directory's sheet stayed over its folder");
+  await back();
+  await until("the directory's folder put away by Back", 10_000, async () => (await testid(page, "preview-sheet").count()) === 0);
+  if (!page.url().startsWith(origin)) throw new Error(`Back from a folder opened by its +'s sheet left the page for ${page.url()}`);
+  if (await testid(page, "conversation").count()) await testid(page, "top-back").click();
+  await until("the directory's conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
   await testid(page, "nav-sessions").tap();
   await row.waitFor({ timeout: 10_000 });
-  step("a project's folder from its row's menu covers its conversation; Back puts the folder away, then the conversation");
+  step("a project directory's + is a sheet from the bottom: Back puts it away and the list stays; its folder entry covers the conversation, and Back puts the folder away");
 
   // The terminal page reattaches to the shell the Mac already holds (as a desktop tab would), with
   // its screen read back over the relay; it starts none beside it, the bar's Return reaches it, and

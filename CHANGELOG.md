@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On the phone, a project folder's + opens a sheet from the bottom
+
+- On the phone's Projects page, the + on a project folder's row opened a small desktop-style menu hanging under it. It now opens a sheet from the bottom of the screen, named after the folder, as a conversation's long-press menu and the floating create button do: a new session of each agent in that folder, Open project folder and Open terminal in project folder, in rows sized for a thumb. The ✕, a tap outside it or the phone's Back put it away. A desktop window keeps the menu under the +.
+
 ### Move files by dragging them in the file tree, and drop into a folder at any depth
 
 - Drag a file or folder in a file tree onto another folder's row to move it there; onto a file's row, into that file's folder; onto the space around the rows, to the top. Every tree does it: the workspace's, a project's folder, a Bot's artifact panel and the tree beside an opened file. Rows picked with ⌘ or Shift go together; a picked folder takes the rows picked inside it along. Nothing is overwritten: a name already taken leaves that item where it is, and a notice says so; a folder can't go inside itself. The notice after a move has Undo, which puts them back. The file on screen goes along and stays shown; if it has unsaved edits, the drag moves nothing until it is saved. A moved file is no longer where links and annotations in messages point, as with the Trash.
