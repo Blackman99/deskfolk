@@ -82,17 +82,7 @@ define_class!(
             }
             crate::wheel::install(mtm);
             crate::press::install(mtm);
-            crate::notify::setup(|click_ref| {
-                // A click brings the newest window forward and leaves the intent for the messenger.
-                let state = crate::notification_loop::state();
-                crate::notification_loop::on_click(state, &click_ref, || {
-                    DispatchQueue::main().exec_async(|| {
-                        if let Some(mtm) = MainThreadMarker::new() {
-                            show(mtm);
-                        }
-                    });
-                });
-            });
+            crate::notify::setup(notification_clicked);
             if let Some(endpoint) = CONFIG.with(|c| c.get().map(|config| config.endpoint.clone())) {
                 crate::notification_loop::start(endpoint);
             }
@@ -283,8 +273,32 @@ fn show(mtm: MainThreadMarker) {
     if !crate::window::focus_newest() {
         new_window(mtm);
     }
-    NSApplication::sharedApplication(mtm).activate();
+    // A check beside the person's own work (`--background`) never takes the focus, here either.
+    if !background() {
+        NSApplication::sharedApplication(mtm).activate();
+    }
 }
+
+/// A banner was clicked (`notify.rs`; the `notification-click` request runs the same): the intent
+/// waits for the messenger, the newest window comes forward and is told at once
+/// (`app/src/platform/notification-click.ts`), so it opens the conversation now. Untold, it looked
+/// only on its five-second beat or as a Bot's chat came to the front: a window already in front, or
+/// one showing a project session, kept you waiting. A window the click had to open is not
+/// listening yet; it takes the intent once it has the runtime's snapshot.
+fn notification_clicked(click_ref: String) {
+    let state = crate::notification_loop::state();
+    crate::notification_loop::on_click(state, &click_ref, || {
+        DispatchQueue::main().exec_async(|| {
+            if let Some(mtm) = MainThreadMarker::new() {
+                show(mtm);
+                crate::window::send_to_newest(NOTIFICATION_CLICK_EVENT, serde_json::Value::Null);
+            }
+        });
+    });
+}
+
+/// What the window brought forward by a banner's click hears (`host.on`).
+const NOTIFICATION_CLICK_EVENT: &str = "shell.notification-click";
 
 pub fn open_url(url: &str) {
     if let Some(url) = NSURL::URLWithString(&NSString::from_str(url)) {
@@ -493,6 +507,7 @@ fn watch_bundle(path: PathBuf) {
 
 /// Development checks: `<dir>/request` asks the shell for something, by its first line: empty for
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
+/// `notification-click <click_ref>` (what a click on a banner carrying it does),
 /// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
 /// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`, `menu <title>`,
 /// `quit`.
@@ -531,6 +546,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                             log::warn!("notify: {why}");
                         }
                     }
+                    ("notification-click", click_ref) => notification_clicked(click_ref.to_owned()),
                     (other, _) => log::warn!("unknown request {other}"),
                 }
                 log::info!("request done: {line}");

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On a Mac, clicking a notification opens its conversation at once
+
+- After you clicked a system notification, the window came forward at once, but its conversation often took a second or two to open, and up to five. It happened most when the window was already in front, or a project session was open. The window only looked for a clicked notification on a five-second check, or when a Bot's chat came to the front, and it waited for a permission query first. Now the shell tells the window as it brings it forward, and the conversation opens right away.
+
 ### Characters on the task map get where they go
 
 - Played back, a character going back and forth between two places seemed to sway on the spot. The town is drawn anew every frame, and each time a character's hop started over from where it had got to, so a 480 ms hop dragged on for over a second; and at every speed but 1× the next step came before a hop could end, so the character was sent on halfway and never got anywhere. A hop now takes 0.3 s at most and, while playing, no more than seven tenths of the shortest step at that speed: the character gets there before it goes on.

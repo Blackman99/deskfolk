@@ -20,6 +20,7 @@ import { effect, platform, signal, View } from "nsh";
 import { initialPane, initialSession, windowId } from "./launch";
 import { appBanners } from "./platform/app-banners";
 import { installLinuxTray } from "./platform/linux-tray";
+import { installNotificationClick } from "./platform/notification-click";
 import { pageBuildUpdates, reloadPage } from "./platform/page-build";
 import { pageRoute } from "./platform/page-route-install";
 import { linuxWheelProps } from "./platform/wheel";
@@ -50,6 +51,9 @@ export function Main() {
     banners.onPressed(() => void runtime.pollDesktopNativeState());
     banners.start();
   }
+  // macOS: the shell tells the window it brings forward for a clicked banner, which opens the
+  // conversation now (`platform/notification-click.ts`).
+  installNotificationClick(runtime);
   // Windows and Linux: the close button puts the window away, the tray's Quit ends the app
   // (`platform/window-life.ts`), as in 0.4.0.
   if (windowId <= 1) installWindowLife();

@@ -2,7 +2,8 @@
 //! `notifications.rs` with the framework types taken out: every 2 s the runtime is polled for the
 //! attention count (the Dock badge), the delivered banners are reconciled when the cleanup
 //! revision moves, and one notification is claimed, revalidated, posted and reported. A click
-//! stores an intent (`clickRef`) the messenger takes. The window's own facts come from
+//! stores an intent (`clickRef`) the messenger takes; the window it brings forward is told at once
+//! (`app.rs` `notification_clicked`). The window's own facts come from
 //! `window.rs`; the runtime's address from `Config.endpoint`.
 //!
 //! Left out on purpose: the 0.4.0 shell's `TrustedNotificationCaller` document check and its cold
