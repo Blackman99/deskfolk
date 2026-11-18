@@ -65,7 +65,10 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
   return page;
 }
 
-function fakeRuntime(): RouteRuntime & { selected: string[] } {
+/** The runtime as the tests drive it: what the route only reads, a test sets. */
+type FakeRuntime = { -readonly [K in keyof RouteRuntime]: RouteRuntime[K] } & { selected: string[] };
+
+function fakeRuntime(): FakeRuntime {
   const rt = {
     selected: [] as string[],
     selectedId: null as string | null,

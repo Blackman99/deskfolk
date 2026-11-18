@@ -1263,7 +1263,7 @@ The user said that on the phone page, going into settings, then one of its items
 - **`mobileNavigation` 不跟着 `settingsOpen`。** 跟着的话，点底栏离开时它先变空，对话框会淡出、顶栏冒出来一下。
 - **顺带修的：应用自己关掉对话框时的网址。** 点底栏离开设置时网址停在 `/?o=settings`。量下来：`page-route` 的 `write` 自己 `history.back()` 了一次，正好用掉对话框的条目；popstate 到时对话框已经没了，NSH 当它是一次被应用拒绝的返回，用 `replaceState` 把 `/?o=settings` 写回了下面那条；我们的 `selfBack` 一直等不到 `change`。✕ 关设置走的是同一条路，线上一直如此。现在网址里带着的对话框（设置、会话的设置）由应用关掉时，`write` 不再后退，只 `setUrl(replace)`：NSH 自己 `history.go` 退过对话框的条目，再把这一轮设的地址放到落地的那条上。
 - **检查。** `phone-web-e2e.ts`：从底栏进设置，列表没有顶栏、只有一条底栏，点「项目」离开、网址回到 `/`，之后打开会话再返回仍在页面里；Bot 的设置用它自己的 ✕ 关掉，网址回到会话。WebKit 和 Chromium 都过。`.ui` 的 `shell.test` 加一条 420 宽的：列表没有顶栏、底栏一条，某一项里没有底栏，返回列表又有，点「项目」离开设置。`page-route.test.ts` 加两条：设置由应用关掉、群设置里打开的 Bot 由应用关掉，网址都落在 NSH 退到的那条上。
-- **没解释的一次。** 18 日 15 点多的两次 WebKit 运行里，页面去 `fetch` 了几个 `blob:` 地址，被 `connect-src` 拒绝；之后带改动的六次、不带改动的三次都没有；其中装了记录器的三次，一次 `blob:` 请求都没有。端到端现在给每个 frame 装一个记录器，再出现时失败信息里带着调用栈。
+- **没解释的一次。** 18 日 15 点多的两次 WebKit 运行里，页面对几个 `blob:` 地址的请求被 `connect-src` 拒绝；之后带改动的六次、不带改动的三次都没有；其中装了记录器的三次，一次 `blob:` 请求都没有。另一个会话在只有 87c90176 的代码上连跑四次，三次一样失败，看到的是主文档里已释放的 `blob:` 图片加载，没有脚本位置：这在这次改动之前就有，也未必是 `fetch`。端到端现在给每个 frame 装一个记录器，是 `fetch` 的话失败信息里带着调用栈。
 
 The user said that on a phone, settings should have no head and keep the main bottom bar. Settings was already one of the phone bar's three places (`mobileDestination`), and the shell's `mobileNavigationVisible` already called for the bar on settings' list. But settings is an NSH dialog that fills the window: it covered the shell's bar, and what is under a dialog takes no presses (`inert`). The Svelte page's settings list had a head too, with the title and ✕.
 
@@ -1285,8 +1285,9 @@ The user said that on a phone, settings should have no head and keep the main bo
   - `.ui`'s `shell.test` gains a case at 420 wide: the list has no head and one bar, a tab has no bar, the list has it again, and Projects leaves settings.
   - `page-route.test.ts` gains two cases: settings closed by the app, and a Bot opened from a group's settings closed by the app. In both the address lands on the entry NSH went back to.
 - **One thing left unexplained.**
-  - In two WebKit runs around 15:30 on the 18th, the page fetched a few `blob:` addresses, which `connect-src` refused. Six later runs with the change and three without showed none, and the three of them that ran the logger saw no `blob:` fetch at all.
-  - The e2e now puts a logger in every frame, so if it happens again the failure carries the caller's stack.
+  - In two WebKit runs around 15:30 on the 18th, `connect-src` refused the page's requests for a few `blob:` addresses. Six later runs with the change and three without showed none, and the three of them that ran the logger saw no `blob:` fetch at all.
+  - Another session ran 87c90176 alone four times, and three failed the same way. It saw loads of released `blob:` images in the main document, with no script location. So this predates the change here, and may not be a `fetch` at all.
+  - The e2e now puts a logger in every frame: if the request is a `fetch`, the failure carries the caller's stack.
 
 ## 补记 2026-11-18（四十七）：手机上的动画为什么卡 / Addendum 2026-11-18 (47): why animations stuttered on the phone
 
