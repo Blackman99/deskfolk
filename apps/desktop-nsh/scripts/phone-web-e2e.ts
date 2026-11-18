@@ -8,7 +8,8 @@
  * stand-in for Touch ID); then the app's shell on a phone's width: the roster, the projects tab
  * with every picture drawn (Claude's logo among them, which WebKit once refused), Back stepping out
  * of settings and a Bot's settings one level at a time, a conversation over
- * it, a line sent from the phone (read back from the Mac's database), a line written on the Mac
+ * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
+ * conversation, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own); and the same page at a
  * tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
@@ -294,7 +295,9 @@ try {
   // The edge's certificate is made for the run: Chromium fetches a service worker's script only from
   // an origin whose certificate it trusts, whatever the context ignores.
   browser = await (engine === "webkit" ? webkit : chromium).launch({ headless: true, args: engine === "webkit" ? [] : ["--ignore-certificate-errors"] });
-  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN" });
+  // A phone's screen: touches, which NSH's web runtime scrolls natively (without them its lists
+  // scroll as a desktop browser's do).
+  const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: "zh-CN", hasTouch: true });
   // Every frame says what the policy refused: the browsers' own console lines differ, this does not.
   await context.addInitScript(() => {
     document.addEventListener("securitypolicyviolation", (e) => console.error(`CSP violation: ${e.effectiveDirective} ${e.blockedURI}`));
@@ -393,6 +396,68 @@ try {
   await testid(page, "top-back").waitFor({ timeout: 5_000 });
   await until("the Writer's reply in the conversation", 15_000, () => shownIn(page, "conversation", "这是摘要"));
   step("opened the Writer's conversation over the roster: its history came over the relay");
+
+  // The reply's code block and table are wider than a phone: each scrolls sideways in a scroll view
+  // of its own. A vertical swipe that starts on one still scrolls the conversation (NSH's
+  // `overscroll-behavior: contain` kept it there, and the conversation stood still), a sideways one
+  // the block (`PAGE_STYLE`). Chromium swipes by touch (DevTools' gestures); WebKit here has no
+  // touch scrolling to drive, so there the rule itself is checked.
+  const sideways = '[data-testid="conversation"] .nsh-scroll.nsh-ox';
+  const wideViews = await until("the reply's code block and table, wider than the phone", 10_000, async () => {
+    const seen = await page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((el) => el.scrollWidth > el.clientWidth + 4).map((el) => getComputedStyle(el).overscrollBehaviorY), sideways);
+    return seen.length >= 2 ? seen : undefined;
+  });
+  if (wideViews.some((v) => v !== "auto")) throw new Error(`a sideways scroll view keeps vertical swipes (overscroll-behavior-y ${wideViews.join(", ")})`);
+  if (engine === "chromium") {
+    const cdp = await context.newCDPSession(page);
+    const transcript = () =>
+      page.evaluate(() => {
+        const list = [...document.querySelectorAll('[data-testid="conversation"] .nsh-scroll.nsh-oy')].find((el) => el.scrollHeight > el.clientHeight + 4);
+        return list ? list.scrollTop : null;
+      });
+    await until("the conversation's history taller than the phone", 10_000, async () => (await transcript()) !== null).catch(async (error: Error) => {
+      const lists = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-testid="conversation"] .nsh-scroll')].map((el) => `${String((el as HTMLElement).className)} ${el.scrollHeight}/${el.clientHeight} ${el.scrollWidth}/${el.clientWidth}`),
+      );
+      throw new Error(`${error.message}: its scroll views ${lists.join(" | ")}`);
+    });
+    /** Puts the `n`th sideways view a third of the way down the conversation; its middle, to swipe on. */
+    const bring = async (n: number) => {
+      await page.evaluate(
+        ([sel, i]) => {
+          const list = [...document.querySelectorAll('[data-testid="conversation"] .nsh-scroll.nsh-oy')].find((el) => el.scrollHeight > el.clientHeight + 4);
+          const view = [...document.querySelectorAll(sel as string)].filter((el) => el.scrollWidth > el.clientWidth + 4)[i as number];
+          if (list && view) list.scrollTop += view.getBoundingClientRect().top - (list.getBoundingClientRect().top + list.clientHeight / 3);
+        },
+        [sideways, n],
+      );
+      await Bun.sleep(400);
+      return page.evaluate(
+        ([sel, i]) => {
+          const r = [...document.querySelectorAll(sel as string)].filter((el) => el.scrollWidth > el.clientWidth + 4)[i as number]!.getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        },
+        [sideways, n],
+      );
+    };
+    for (const [n, what] of [[0, "code block"], [1, "table"]] as const) {
+      const { x, y } = await bring(n);
+      const before = await transcript();
+      if (before === null) throw new Error("the conversation has nothing to scroll: the reply's history did not fill it");
+      await cdp.send("Input.synthesizeScrollGesture", { x, y, yDistance: 200, gestureSourceType: "touch", speed: 800 });
+      await Bun.sleep(400);
+      const after = (await transcript())!;
+      if (Math.abs(after - before) < 100) throw new Error(`a vertical swipe on the reply's ${what} moved the conversation ${Math.round(after - before)} px`);
+    }
+    const { x, y } = await bring(0);
+    const left = () => page.evaluate((sel) => [...document.querySelectorAll(sel)].filter((el) => el.scrollWidth > el.clientWidth + 4)[0]!.scrollLeft, sideways);
+    const leftBefore = await left();
+    await cdp.send("Input.synthesizeScrollGesture", { x, y, xDistance: -200, gestureSourceType: "touch", speed: 800 });
+    await Bun.sleep(400);
+    if ((await left()) - leftBefore < 100) throw new Error(`a sideways swipe on the code block moved it ${Math.round((await left()) - leftBefore)} px`);
+    await cdp.detach();
+  }
+  step(`the reply's code block and table scroll sideways; a vertical swipe on them scrolls the conversation${engine === "chromium" ? " (touch swipes)" : " (the page's rule; no touch swipes in WebKit here)"}`);
 
   const stamp = Date.now().toString(36);
   const fromPhone = `phone-${stamp}`;

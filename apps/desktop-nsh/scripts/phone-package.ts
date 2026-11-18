@@ -16,6 +16,8 @@
  * - The build's version, one digest of what the package serves: in `_app/version.json`, which an
  *   open page polls (`BuildUpdateNotice`), and in the page's params (`#nsh-params`,
  *   `host.params.build`), so the page knows which build it is.
+ * - A rule of the page's own over the NSH runtime's sheet (`PAGE_STYLE`): a scroll view that only
+ *   scrolls sideways passes a vertical swipe on to the conversation around it.
  *
  * NSH writes a `.br` / `.gz` beside each file for a server that sends them precompressed (Caddy's
  * `precompressed`, nginx's `gzip_static`), so the files changed here get theirs again.
@@ -51,6 +53,17 @@ const ICONS = [
 ];
 
 const TOUCH_ICON = '<link rel="apple-touch-icon" href="apple-touch-icon.png">';
+
+/**
+ * The page's own rule over the NSH runtime's sheet. NSH gives every scroll view `overscroll-behavior:
+ * contain` on both axes, so one that only scrolls sideways (a code block, a table in a reply) keeps a
+ * vertical swipe too: Chrome latches the swipe on it, it cannot move that way, and the conversation
+ * around it stays put. Its vertical axis goes back to `auto`, so the swipe passes on to the
+ * conversation; sideways it still keeps its own. Three classes, over the runtime's one, wherever its
+ * sheet sits in the cascade.
+ */
+export const PAGE_STYLE = '<style id="deskfolk-page">.nsh-scroll.nsh-ox.nsh-ox { overscroll-behavior-y: auto; }</style>';
+const PAGE_STYLE_TAG = /<style id="deskfolk-page">[^<]*<\/style>\n?/;
 const PARAMS = /\n?<script type="application\/json" id="nsh-params">[^<]*<\/script>/;
 const APP_CONFIG = /<script type="application\/json" id="nsh-app">([^<]*)<\/script>/;
 
@@ -116,6 +129,11 @@ export function addPhoneStatic(site: string, from: string = PHONE_ASSETS): void 
     const at = manifestLink.index + manifestLink[0].length;
     index = `${index.slice(0, at)}\n${TOUCH_ICON}${index.slice(at)}`;
   }
+  // Last in the head, after NSH's page sheet; again on a second run, as this file has it now.
+  index = index.replace(PAGE_STYLE_TAG, "");
+  const head = index.indexOf("</head>");
+  if (head === -1) throw new Error(`no </head> in ${indexPath}: nsh package wrote another page than this expects`);
+  index = `${index.slice(0, head)}${PAGE_STYLE}\n${index.slice(head)}`;
   // The version covers the page as it is served, so it is worked out once the page is otherwise
   // done; the params go right after the app's config, before the start script reads both.
   index = index.replace(PARAMS, "");

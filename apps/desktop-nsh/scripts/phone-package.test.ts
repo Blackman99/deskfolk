@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, brotliDecompressSync, gunzipSync, gzipSync } from "node:zlib";
-import { addPhoneStatic, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
+import { addPhoneStatic, PAGE_STYLE, PHONE_ASSETS, PHONE_STATIC, siteVersion, VERSION_FILE } from "./phone-package";
 
 const CONFIG = { id: "com.real-bot.desktop", code: "app.0123456789.js", chunks: { "Main.js": "Main.0123456789.js", "local-api.js": "local-api.1111111111.js", "local-discovery.js": "local-discovery.2222222222.js" } };
 
@@ -113,6 +113,25 @@ describe("the phone's package", () => {
       const second = params(read(dir, "index.html")).build;
       expect(second).not.toBe(first);
       expect(JSON.parse(read(dir, VERSION_FILE))).toEqual({ version: second });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a sideways-only scroll view hands a vertical swipe on: the page's own rule, last in the head, once", () => {
+    const dir = site();
+    try {
+      addPhoneStatic(dir);
+      const index = read(dir, "index.html");
+      expect(PAGE_STYLE).toContain(".nsh-scroll.nsh-ox.nsh-ox { overscroll-behavior-y: auto; }");
+      expect(index).toContain(`${PAGE_STYLE}\n</head>`);
+      // After what NSH put in the head.
+      expect(index.indexOf("<style></style>")).toBeLessThan(index.indexOf(PAGE_STYLE));
+      expect(gunzipSync(readFileSync(join(dir, "index.html.gz"))).toString()).toBe(index);
+
+      addPhoneStatic(dir);
+      expect(read(dir, "index.html").match(/id="deskfolk-page"/g)).toHaveLength(1);
+      expect(read(dir, "index.html")).toContain(`${PAGE_STYLE}\n</head>`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -81,6 +81,9 @@ if (import.meta.main) {
     const store = handle.store;
     const writer = store.createBot({ name: "Writer", duties: "写东西、改东西", boundaries: "只在工作区里动手", model: "fixture" });
     const editor = store.createBot({ name: "Editor", duties: "审稿", boundaries: "只读", model: "fixture" });
+    // History that fills more than a phone's screen, so the conversation scrolls; the reply below has
+    // a code block and a table wider than the phone, each scrolling sideways in it.
+    for (let n = 1; n <= 24; n++) store.postMessage(writer.direct_session.id, { body: `早先的第 ${n} 行` });
     const ask = store.postMessage(writer.direct_session.id, { body: "帮我写个摘要" });
     const turn = store.createTurn({ sessionId: writer.direct_session.id, botId: writer.bot.id, triggerMessageId: ask.id });
     store.insertMessage({
@@ -88,7 +91,9 @@ if (import.meta.main) {
       turnId: turn.id,
       kind: "bot",
       author: writer.bot.id,
-      body: "好的，这是摘要：\n\n- 第一点\n- **第二点**\n\n```ts\nconst x = 1;\n```",
+      body:
+        "好的，这是摘要：\n\n- 第一点\n- **第二点**\n\n```ts\nconst x = 1;\nexport function summarize(items: string[], options: { limit: number; separator: string }): string { return items.slice(0, options.limit).join(options.separator); }\n```\n\n" +
+        "| 项目 | 负责人 | 开始 | 结束 | 状态 | 备注 |\n|---|---|---|---|---|---|\n| 周报整理 | Writer | 11-01 | 11-07 | 完成 | 第一版已经交给审稿 |\n| 摘要改写 | Editor | 11-08 | 11-14 | 进行中 | 等第二轮意见回来再合并 |\n\n收尾一行。",
     });
     store.setTurnStatus(turn.id, "completed");
     const group = (await api("POST", "/v1/sessions", { name: "周报小组", members: [writer.bot.id, editor.bot.id] })) as { id: string };

@@ -79,7 +79,7 @@ bun apps/desktop-nsh/scripts/dev.ts            # 起开发运行时（没起的�
 bun apps/desktop-nsh/scripts/dev.ts --seed-from-stable   # 空数据目录时从稳定版的库拷一份快照（只读拷贝；Bot 仍指向你真实的工作区）
 bun apps/desktop-nsh/scripts/dev.ts --stable-instance    # 当日常用的版本：顶替稳定版，用你自己的对话、设置和远程控制（见上面）
 bun apps/desktop-nsh/scripts/web-dev.ts        # 编 web 包（app/native 编成 wasm）并在 http://127.0.0.1:17991/ 提供，连开发运行时
-bun apps/desktop-nsh/scripts/phone-package.ts --build   # 手机页面：以正式名字 nsh package Hosted.tsx --target web，再加 `assets/phone/` 里的 /sw.js（推送、点通知、远程媒体）和主屏幕图标，清单沿用页面最初安装时的身份（id "./"），去掉只有本机窗口要的块，写进版本号（页面参数 + _app/version.json）；中继提供的就是 build/phone/Deskfolk
+bun apps/desktop-nsh/scripts/phone-package.ts --build   # 手机页面：以正式名字 nsh package Hosted.tsx --target web，再加 `assets/phone/` 里的 /sw.js（推送、点通知、远程媒体）和主屏幕图标，清单沿用页面最初安装时的身份（id "./"），去掉只有本机窗口要的块，写进版本号（页面参数 + _app/version.json），加一条页面自己的样式（只左右滚动的区域把上下滑动交给会话）；中继提供的就是 build/phone/Deskfolk
 bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--edge caddy] [--browser webkit]   # 手机页面端到端，带生产的头和 CSP；--edge caddy 走生产 Caddyfile
 bun apps/desktop-nsh/scripts/package.ts --sign developer-id [--notarize <notarytool profile>] [--measure 3]   # 开发版的 .app（Deskfolk Dev）
 bun apps/desktop-nsh/scripts/package.ts --release --sign developer-id --notarize env [--smoke]          # 正式版，见上面「正式版」
@@ -94,7 +94,7 @@ cd apps/desktop-nsh/app && nsh check App.tsx && nsh test # 类型检查（不含
 bun apps/desktop-nsh/scripts/ui-tests.ts [名字] [--retry] # 界面测试（--retry：失败的文件再跑一次，按第二次算，并点名），连一个隔离的真运行时（不是开发实例，也不是稳定版）；终端标签的测试要起真 shell，找不到 pty helper 就跳过（REAL_BOT_PTY_HELPER 指向别处的构建）
 bun apps/desktop-nsh/scripts/ci-smoke.ts <宿主可执行文件> apps/desktop-nsh/build/app/bundle.js   # 宿主打开、界面跑起来、拿到开发运行时的第一份快照
 bun apps/desktop-nsh/scripts/e2e-live.ts                # 无头连真实开发运行时：列表、打开、实时事件
-bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <目录>]   # 手机版全程，全在本机：自己的中继（TLS 边缘同源提供页面）、隔离的 Mac（REAL_BOT_DEV_REMOTE=1）、无头浏览器配对，再在外壳里走手机宽度的名单、项目页（图片都画得出来，含 Claude 的标志）、打开、发送、实时更新、返回（设置和 Bot 的设置里逐层退）、重载仍登记，和平板宽度的一栏加一页；截图按浏览器命名
+bun apps/desktop-nsh/scripts/phone-web-e2e.ts [--no-build] [--browser chromium|webkit] [--shots <目录>]   # 手机版全程，全在本机：自己的中继（TLS 边缘同源提供页面）、隔离的 Mac（REAL_BOT_DEV_REMOTE=1）、无头浏览器配对，再在外壳里走手机宽度的名单、项目页（图片都画得出来，含 Claude 的标志）、打开（回复里的代码块和表格左右滚动，在它们上面上下滑动滚的是会话；Chromium 用触摸手势）、发送、实时更新、返回（设置和 Bot 的设置里逐层退）、重载仍登记，和平板宽度的一栏加一页；截图按浏览器命名
 bun apps/desktop-nsh/scripts/terminal-probe.ts          # 终端：颜色、宽字符、吞吐、vim、top（要开发版开着终端面板和截图）
 ```
 
