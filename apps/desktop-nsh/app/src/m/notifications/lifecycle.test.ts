@@ -48,7 +48,9 @@ describe("Notifications Production Lifecycle", () => {
         enabled: true,
         start: "23:00",
         end: "07:00",
-        time_zone: "Asia/Shanghai",
+        // UTC: the app's engine knows the device's zone, UTC and offsets, so a named zone would
+        // hold only on a machine set to it.
+        time_zone: "UTC",
       },
     };
 
