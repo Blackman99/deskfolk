@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Characters on the task map get where they go
+
+- Played back, a character going back and forth between two places seemed to sway on the spot. The town is drawn anew every frame, and each time a character's hop started over from where it had got to, so a 480 ms hop dragged on for over a second; and at every speed but 1× the next step came before a hop could end, so the character was sent on halfway and never got anywhere. A hop now takes 0.3 s at most and, while playing, no more than seven tenths of the shortest step at that speed: the character gets there before it goes on.
+
 ### An open preview follows its file
 
 - After a Bot, another editor or `git` changed a file, opening it again still showed the old content: pressing the same file in the same preview did not read it again, and a picture the app window shows by its path stayed as it first opened for as long as the app ran. An open preview now asks about every second whether its file changed (about every three on a phone) and shows the new content when it did, with no loading notice. The source view stays where it was scrolled to and takes the change as one edit that ⌘Z undoes; a player, a PDF or an Office file opens again; a changed picture is shown from the file's content.

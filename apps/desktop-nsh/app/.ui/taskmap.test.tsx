@@ -79,6 +79,31 @@ test("play runs the clock to the newest step, a speed is a press, and a line you
   expect(app.shows("id:taskmap-play")).toBe(true);
 });
 
+test("played, a character gets where it goes within the shortest step, though the town is drawn anew every frame", async () => {
+  const app = await opened();
+  // From the first step at 1×, where the shortest step is 450 ms; the subagent is sent out 6.7 s in.
+  // (A press on play returns once the app has played a while, so it starts well before that.)
+  await app.press("id:taskmap-speed-1");
+  await app.press("id:taskmap-quest-0");
+  await app.waitUntil(() => app.viewStyle("id:taskmap-actor-1")?.opacity === 0);
+  await app.press("id:taskmap-play");
+  expect(app.viewStyle("id:taskmap-actor-1")?.opacity).toBe(0);
+  // It fades in as it walks out (its opacity glides with its place), and is all there before the next step can come:
+  // a glide that started over on every frame took 1.1 s, a 480 ms one was cut short at every speed but 1×.
+  let since = 0;
+  let there = 0;
+  await app.waitUntil(
+    () => {
+      const o = app.viewStyle("id:taskmap-actor-1")?.opacity ?? 0;
+      if (!since && o > 0) since = performance.now();
+      if (since && o >= 1) there = performance.now();
+      return there > 0;
+    },
+    { timeout: 15_000 },
+  );
+  expect(there - since).toBeLessThan(450);
+});
+
 test("the controls turn and zoom the town, and following a character shows its chip until you stop", async () => {
   const app = await opened();
   expect(app.texts()).toContain("0°");

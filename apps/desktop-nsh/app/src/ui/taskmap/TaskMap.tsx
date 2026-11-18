@@ -444,6 +444,7 @@ export function TaskMap(props: {
           zoom: cam().k,
           now: performance.now(),
           speed: speed(),
+          playing: playing(),
           light: light(),
           cache,
           walk,
@@ -455,7 +456,7 @@ export function TaskMap(props: {
         })
       : null,
   );
-  const walkMs = () => (turning() ? 0 : walkMsAt(speed()));
+  const walkMs = () => (turning() ? 0 : walkMsAt(speed(), playing()));
 
   // A followed character keeps the camera on it, gliding as long as its own hop.
   effect(() => {

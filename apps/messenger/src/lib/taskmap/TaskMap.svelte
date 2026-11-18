@@ -385,10 +385,10 @@
 	const light = $derived.by(() => { const d = new Date(at); return lightAt(d.getHours() + d.getMinutes() / 60); });
 	const frame = $derived(
 		data && tl && districts
-			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined, tops: figures.map((f) => f.top) })
+			? buildFrame({ data, map: districts, tl, v: shown, rest, phi, zoom: cam.k, now: performance.now(), speed, playing, light, cache, walk, hover, sel, t: tm, names: bots ? looks.map((l) => l.name) : undefined, tops: figures.map((f) => f.top) })
 			: null
 	);
-	const walkMs = $derived(turning ? 0 : walkMsAt(speed));
+	const walkMs = $derived(turning ? 0 : walkMsAt(speed, playing));
 
 	// A followed character keeps the camera on it, gliding as long as its own hop.
 	$effect(() => {

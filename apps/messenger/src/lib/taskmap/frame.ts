@@ -9,7 +9,7 @@ import {
 } from "./scene/draw.ts";
 import { A, axes, depth, HMAX, HMIN, LIFT, mix, NIGHT, plot, proj, SHADE, BX, BY, type Vec2 } from "./scene/geometry.ts";
 import { assignBadges, layoutPlates } from "./scene/layout.ts";
-import type { Timeline } from "./timeline.ts";
+import { STEP, type Timeline } from "./timeline.ts";
 
 type T = Copy["taskmap"];
 
@@ -123,6 +123,8 @@ export type FrameInput = {
   zoom: number;
   now: number;
   speed: number;
+  /** Whether the replay plays: a hop then fits in its shortest step (`walkMsAt`). */
+  playing?: boolean;
   /** The hour's light (`lightAt`); a bare level keeps the prototype's fixed sun and no sun or moon in the sky. */
   light: Lighting & { readonly name?: LightName; readonly body?: SkyBody };
   cache: ModelCache;
@@ -244,8 +246,19 @@ export function skyBody(body: SkyBody, dir: readonly number[], phi: number, warm
   };
 }
 
-/** How long a character's hop between places takes at the replay's `speed`, in milliseconds. */
-export const walkMsAt = (speed: number): number => (speed >= 16 ? 220 : 480);
+/** A character's hop between places, live or with the replay paused or scrubbed, in milliseconds. */
+export const WALK_MS = 300;
+
+/**
+ * How long a character's hop between places takes, in milliseconds: `WALK_MS`, and while the replay
+ * plays no longer than seven tenths of its shortest step at that `speed` (`STEP` seconds of its clock),
+ * so the character is there before its next step can send it on. A hop of 480 ms used to be cut short
+ * by the next step at every speed but 1×, and a character going back and forth between two places
+ * swayed between them without getting to either.
+ */
+export function walkMsAt(speed: number, playing: boolean): number {
+  return playing && speed > 0 ? Math.min(WALK_MS, Math.round((STEP * 1000 * 0.7) / speed)) : WALK_MS;
+}
 
 const MOTION: Readonly<Record<CharacterStatus, FolkMotion>> = {
   work: "running", walk: "running", idle: "idle", fail: "failed", back: "idle", none: "idle",
@@ -261,7 +274,7 @@ export function buildFrame(input: FrameInput): Frame {
   const calls = data.calls;
   const D = map.districts;
   const ax = axes(phi);
-  const walkMs = walkMsAt(speed);
+  const walkMs = walkMsAt(speed, input.playing === true);
   const idx = lastLE(tl.v, v, (x) => x);
   const at = Math.max(timeAt(data, tl, v), input.rest ?? 0);
 

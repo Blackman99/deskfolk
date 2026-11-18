@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import type { AgentReplay, AgentReplayCall, AgentToolPlace, SessionReplay, ToolFrame } from "@real-bot/protocol";
 import { copyFor } from "../copy.ts";
 import { buildDistricts } from "./districts.ts";
-import { buildFrame, placeName, statusText } from "./frame.ts";
+import { buildFrame, placeName, statusText, WALK_MS, walkMsAt } from "./frame.ts";
 import { AgentCallLog } from "./live.svelte.ts";
 import { fromAgentReplay, fromSessionReplay, mergeLive } from "./map-data.ts";
 import { modelFamily, modelLabel } from "./model-label.ts";
 import { momentText } from "./moment-text.ts";
 import { lightAt } from "./scene/draw.ts";
-import { LONG_GAP, buildTimeline } from "./timeline.ts";
+import { LONG_GAP, STEP, buildTimeline } from "./timeline.ts";
 
 const T0 = Date.parse("2026-10-20T01:00:00.000Z");
 const iso = (s: number) => new Date(T0 + s * 1000).toISOString();
@@ -246,6 +246,34 @@ test("Bots working at one door stand in a row, each in front of the one on its r
   expect(row.map((a) => a.status)).toEqual(["work", "work", "work"]);
   expect(row[0]!.z).toBeGreaterThan(row[1]!.z);
   expect(row[1]!.z).toBeGreaterThan(row[2]!.z);
+});
+
+test("played, a hop is over before the next step can come, at every speed; live, paused or scrubbed it takes WALK_MS", () => {
+  for (const speed of [1, 4, 8, 32]) {
+    const hop = walkMsAt(speed, true);
+    expect(hop).toBeGreaterThan(0);
+    expect(hop).toBeLessThanOrEqual(WALK_MS);
+    // The shortest step: two calls at the same moment, STEP seconds of the replay's clock apart.
+    expect(hop).toBeLessThan((STEP * 1000) / speed);
+    expect(walkMsAt(speed, false)).toBe(WALK_MS);
+  }
+  expect(walkMsAt(1, true)).toBe(WALK_MS);
+});
+
+test("a character walks for as long as its hop takes, from the frame that moved it", () => {
+  const data = fromAgentReplay(aReplay([aCall({ s: 0 }), aCall({ s: 1, tool: "Bash", place: { zone: "check", check: "test" } })]));
+  const map = buildDistricts(data.calls.map((c) => c.place));
+  const tl = buildTimeline(data, map);
+  expect(tl.placeOf[0]).not.toBe(tl.placeOf[1]);
+  const t = copyFor("zh").taskmap;
+  const walk = { lastTile: [] as number[], until: [] as number[] };
+  const frameAt = (v: number, now: number) =>
+    buildFrame({ data, map, tl, v, phi: 0, zoom: 1, now, speed: 4, playing: true, light: { w: 0, n: 0 } as never, cache: new Map(), walk, hover: -1, sel: -1, t });
+  expect(frameAt(0, 0).actors[0]!.status).toBe("work");
+  const hop = walkMsAt(4, true);
+  expect(frameAt(tl.v[1]!, 1000).actors[0]!.status).toBe("walk");
+  expect(frameAt(tl.v[1]!, 1000 + hop - 1).actors[0]!.status).toBe("walk");
+  expect(frameAt(tl.v[1]!, 1000 + hop).actors[0]!.status).toBe("work");
 });
 
 test("a plate nobody is at is its dot and count, until it is picked or the map is zoomed in", () => {
