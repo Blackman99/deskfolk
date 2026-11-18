@@ -15,7 +15,7 @@
  * Differences from the Svelte one are `ChatStage`'s: the composer sits under the list, the active
  * tick is read from the rows viewable.
  */
-import { List, signal, Text, View } from "nsh";
+import { computed, List, signal, Text, View } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { isDifferentDay } from "../../m/chat/chat-view.ts";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
@@ -31,6 +31,7 @@ import { EarlierLine, ProjectLine, ProjectTasksEnd, type ProjectRow } from "./pr
 import { ProjectComposer } from "./project-chat-composer";
 import type { ReadUris } from "./composer-drop";
 import { createProjectState } from "./project-chat-state";
+import { createProjectRowKeeper, sameRows } from "./project-rows";
 import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
@@ -74,7 +75,9 @@ export function ProjectChat(props: {
     if (state.run() && state.live()) out.push({ id: "working", kind: "working" });
     return out;
   };
-  const inverted = () => rows().slice().reverse();
+  /** Newest first, each row the object it was while it shows the same, and the same list while no row changed (`project-rows.ts`). */
+  const keepRows = createProjectRowKeeper();
+  const inverted = computed(() => keepRows(rows().slice().reverse()), { equals: sameRows });
 
   /** The message index: a tick for each line, yours in the accent. Every line is a row, so a press only scrolls. */
   const indexMarks = () => messageIndexMarks(lines().map((message) => ({ type: "message" as const, message })));

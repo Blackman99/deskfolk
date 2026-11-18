@@ -6,9 +6,13 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On the phone, a project session you read back in stays put while other conversations move
+
+- Scrolled back in a project session on the phone, the view often jumped towards the newest line, all the way down in a short conversation, with no lost link to explain it. A new line anywhere, in another conversation too, or an agent at work made the session's rows anew, many times over for one change, and the phone page's list measured every row again: the transcript's height fell to rough estimates and came back within a frame, and the browser, which cannot scroll above the top, kept only part of the way there and back. The rows now stay the same while they show the same, as in a Bot's conversation, so you stay where you were reading. This also takes away the shift of a line or a few that was left when the link drops.
+
 ### Reading back on the phone no longer jumps to the newest line when the link comes back
 
-- On the phone, scrolled back in a conversation, a project session above all, the view often jumped to the newest line by itself. The phone's link to the Mac drops and comes back often, and when the Mac cannot replay what was missed, the page takes the Mac's snapshot again, which holds each conversation's last line only. The open conversation shrank to that line until its history was read again, and the lines you had scrolled back to were dropped. Now the conversation on screen keeps its lines through it, and the history read again joins what is already there: you stay among the lines you were reading, and scrolling back carries on from there. The view can still shift by a line or a few as the link drops; that is not fixed yet. Bot conversations get it too, and so does the desktop app when its runtime restarts.
+- On the phone, scrolled back in a conversation, a project session above all, the view often jumped to the newest line by itself. The phone's link to the Mac drops and comes back often, and when the Mac cannot replay what was missed, the page takes the Mac's snapshot again, which holds each conversation's last line only. The open conversation shrank to that line until its history was read again, and the lines you had scrolled back to were dropped. Now the conversation on screen keeps its lines through it, and the history read again joins what is already there: you stay among the lines you were reading, and scrolling back carries on from there. Bot conversations get it too, and so does the desktop app when its runtime restarts.
 
 ### Drag files into a conversation or onto the file tree
 

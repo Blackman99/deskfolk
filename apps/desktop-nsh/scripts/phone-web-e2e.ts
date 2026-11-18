@@ -14,8 +14,8 @@
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, Back to the roster, a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
- * page that keeps the reader's place when the relay goes out of reach and the link comes back to
- * the snapshot; and the same page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
+ * page that keeps the reader's place when a line comes into another conversation and when the relay
+ * goes out of reach and the link comes back to the snapshot; and the same page at a tablet's width (the roster's column beside one page, no workbench). Screenshots go to `--shots`,
  * named after the browser. Stops everything it started. Never the stable or the dev instance,
  * never a remote host.
  *
@@ -1173,6 +1173,22 @@ try {
     });
     await Bun.sleep(1000);
     const settledBefore = (await reading())!;
+    /** Whether the reader is where they were: the same line at the top of the view, as far down it and from the newest line. */
+    const held = (was: NonNullable<Awaited<ReturnType<typeof reading>>>, now: NonNullable<Awaited<ReturnType<typeof reading>>>) =>
+      Boolean(was.first && now.first && was.first.line === now.first.line && Math.abs(was.first.top - now.first.top) <= 40 && Math.abs(was.fromEnd - now.fromEnd) <= 40);
+    // A line written on the Mac into another conversation (the Writer's; its turn fails at once
+    // against the fixture's endpoint) leaves the reader where they are. The project's rows were made
+    // anew on every change of the snapshot's lines and handed to the list many times over, and NSH's
+    // list measured every row again: on the web the transcript's height fell to its estimates and
+    // came back within a frame, and the browser, which cannot scroll above the top, kept only part of
+    // the way there and back. The reader was moved towards the newest line.
+    await mac.api("POST", `/v1/sessions/${mac.writerDirect}/messages`, { body: `elsewhere-${Date.now().toString(36)}` });
+    await Bun.sleep(3000);
+    const elsewhere = (await reading())!;
+    if (!held(settledBefore, elsewhere)) {
+      throw new Error(`a line in another conversation moved the reader: ${JSON.stringify(settledBefore)} → ${JSON.stringify(elsewhere)}`);
+    }
+    step(`reading back in a project session, a line written into another conversation leaves the reader where they are (\`${elsewhere.first?.line}\` at the top, ${elsewhere.fromEnd} px from the newest line)`);
     const writerBot = (await mac.api<{ items: Array<{ id: string; name: string }> }>("GET", "/v1/bots")).items.find((bot) => bot.name === "Writer")!;
     await bounceEdge(async () => {
       await until("the lost link said over the conversation", 30_000, async () => (await testid(page, "connecting").count()) + (await testid(page, "unreachable").count()) > 0);
@@ -1193,12 +1209,12 @@ try {
     await Bun.sleep(4000);
     const after = (await reading())!;
     await cdp.detach();
-    // Still as far from the newest line, among the lines the second page brought.
-    if (!after.paged || !after.first || lineNumber(after.first.line) > 20 || Math.abs(after.fromEnd - settledBefore.fromEnd) > 60) {
-      throw new Error(`the reader lost their place when the link came back: ${JSON.stringify(settledBefore)} → ${JSON.stringify(after)} (first reached ${JSON.stringify(before)})`);
+    // Where they were, among the lines the second page brought.
+    if (!after.paged || !held(elsewhere, after)) {
+      throw new Error(`the reader lost their place when the link came back: ${JSON.stringify(elsewhere)} → ${JSON.stringify(after)} (first reached ${JSON.stringify(before)})`);
     }
     await page.screenshot({ path: shot("3a-project-read-back") });
-    step(`reading back in a project session survives a link that came back to the snapshot: ${settledBefore.fromEnd} px from its newest line before, ${after.fromEnd} after, \`${after.first.line}\` at the top`);
+    step(`reading back in a project session survives a link that came back to the snapshot: \`${after.first?.line}\` still at the top, ${elsewhere.fromEnd} px from the newest line before, ${after.fromEnd} after`);
     await testid(page, "top-back").click();
     await until("the project session put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
     await testid(page, "nav-sessions").click();
