@@ -1,23 +1,26 @@
 version: 2
+# npm is not here: taze bumps it weekly in one commit (`.github/workflows/deps.yml`). What stays
+# comes as one grouped PR per ecosystem, not one per package.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns: ["*"]
 
   - package-ecosystem: cargo
     directory: /apps/desktop-nsh
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
     # NSH's crates are pinned to one commit together with the CLI that builds the bundles
     # (`apps/desktop-nsh/Cargo.toml`); they move by hand, all at once.
     ignore:
       - dependency-name: "nsh-*"
+      # The line `windows` 0.62 uses (`apps/desktop-nsh/host/Cargo.toml`); it moves with `windows`
+      # by hand. No PR check builds the Windows host, so a mismatch would come up green.
+      - dependency-name: "windows-future"
+    groups:
+      cargo:
+        patterns: ["*"]
