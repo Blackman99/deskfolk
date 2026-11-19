@@ -140,8 +140,8 @@ importers:
         specifier: 0.13.0
         version: 0.13.0(@xterm/xterm@5.5.0)
       '@xterm/addon-unicode11':
-        specifier: 0.8.0
-        version: 0.8.0(@xterm/xterm@5.5.0)
+        specifier: 0.9.0
+        version: 0.9.0
       '@xterm/headless':
         specifier: 5.5.0
         version: 5.5.0
@@ -639,10 +639,8 @@ packages:
     peerDependencies:
       '@xterm/xterm': ^5.0.0
 
-  '@xterm/addon-unicode11@0.8.0':
-    resolution: {integrity: sha512-LxinXu8SC4OmVa6FhgwsVCBZbr8WoSGzBl2+vqe8WcQ6hb1r6Gj9P99qTNdPiFPh4Ceiu2pC8xukZ6+2nnh49Q==}
-    peerDependencies:
-      '@xterm/xterm': ^5.0.0
+  '@xterm/addon-unicode11@0.9.0':
+    resolution: {integrity: sha512-FxDnYcyuXhNl+XSqGZL/t0U9eiNb/q3EWT5rYkQT/zuig8Gz/VagnQANKHdDWFM2lTMk9ly0EFQxxxtZUoRetw==}
 
   '@xterm/headless@5.5.0':
     resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
@@ -1816,9 +1814,7 @@ snapshots:
     dependencies:
       '@xterm/xterm': 5.5.0
 
-  '@xterm/addon-unicode11@0.8.0(@xterm/xterm@5.5.0)':
-    dependencies:
-      '@xterm/xterm': 5.5.0
+  '@xterm/addon-unicode11@0.9.0': {}
 
   '@xterm/headless@5.5.0': {}
 
