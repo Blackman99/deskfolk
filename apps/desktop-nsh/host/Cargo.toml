@@ -18,7 +18,7 @@ ghostty = ["deskfolk-app-native/ghostty"]
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-base64 = "0.22"
+base64 = "0.23"
 # The update check (`updates.rs`), on every desktop; the installer downloads with it too.
 ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 semver = "1"

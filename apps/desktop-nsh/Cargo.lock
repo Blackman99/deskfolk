@@ -1185,7 +1185,7 @@ name = "deskfolk-app-native"
 version = "0.0.0"
 dependencies = [
  "aes",
- "base64 0.22.1",
+ "base64 0.23.1",
  "calamine",
  "chrono",
  "des",
@@ -1227,7 +1227,7 @@ name = "deskfolk-native-terminal"
 version = "0.0.0"
 dependencies = [
  "alacritty_terminal",
- "base64 0.22.1",
+ "base64 0.23.1",
  "dispatch2",
  "log",
  "nsh-core",
@@ -1245,7 +1245,7 @@ dependencies = [
 name = "deskfolk-nsh"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "block2",
  "cpal",
  "deskfolk-app-native",
