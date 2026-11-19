@@ -68,7 +68,7 @@ jobs:
       # ~30-minute release build.
       - name: Restore the nsh CLI of that commit
         id: nsh-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -92,7 +92,7 @@ jobs:
 
       - name: Save the nsh CLI of that commit
         if: steps.nsh-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
