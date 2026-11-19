@@ -214,7 +214,10 @@ test("a rung moves by its grip's arrow keys, and a rung let go where it started 
 test("a rung dragged by its grip lands where it is let go", async () => {
   const app = await openPart("ladder");
   await app.waitFor("id:ladder-grip-light", { timeout: 15_000 });
-  await app.drag("id:ladder-grip-light", { y: 130 });
+  // Past the last rung's middle however tall the test engine lays a line out: at 130 it was just
+  // past it until NSH's headless text took a line's own height (longbridge/nsh#2358, rungs got
+  // taller and 130 lands between the other two); 160 is the edge there.
+  await app.drag("id:ladder-grip-light", { y: 200 });
   await app.waitUntil(() => app.texts().some((t) => t.startsWith("ladder:[") && t.includes("light") && t !== 'ladder:["light","mid","other"]' && t !== "ladder:[]"), { timeout: 10_000 });
   expect(app.texts().some((t) => t === 'ladder:["mid","other","light"]')).toBe(true);
 });
