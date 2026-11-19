@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An input method's candidates stay under the line you type on Windows
+
+- On Windows, typing Chinese with an input method (Microsoft Pinyin) into the message box moved the candidate window down about a line with every letter, until it sat on the taskbar or jumped above the box. It now stays under the line being typed, as in any Windows text box. The fix is NSH's (longbridge/nsh#2497), and the app now builds on an NSH that has it.
+
 ### Files dropped from File Explorer are added on Windows
 
 - On Windows, every file dropped on the box (or copied in File Explorer and pasted) was turned away with "These files couldn't be read and were not added"; dropping on a file tree to copy into the workspace failed too. The drop names `file:///C:/…` and the app read it as `/C:/…`, which Windows does not take for a path. It now reads `C:\…`.
