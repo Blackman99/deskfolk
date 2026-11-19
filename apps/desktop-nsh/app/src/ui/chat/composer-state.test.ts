@@ -10,3 +10,10 @@ test("a dropped file's URL gives its path, name and type", () => {
   expect(mimeOfName("unknown.xyz")).toBe("");
   expect(pathOfFileUri("https://example.com/a.png")).toBe(null);
 });
+
+test("a file dropped on Windows gives a path Windows reads", () => {
+  const uri = "file:///C:/Users/me/Desktop/%E5%91%A8%E6%8A%A5%20draft.docx";
+  expect(pathOfFileUri(uri)).toBe("C:\\Users\\me\\Desktop\\周报 draft.docx");
+  expect(nameOfUri(uri)).toBe("周报 draft.docx");
+  expect(pathOfFileUri("file:///D:/")).toBe("D:\\");
+});

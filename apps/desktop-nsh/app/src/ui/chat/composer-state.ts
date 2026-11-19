@@ -9,6 +9,7 @@ import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { Copy } from "../../m/copy";
 import { composerAction, lockedReason, type ComposerAction } from "../../m/chat/composer-mode";
 import { isLiveStatus } from "../../m/chat/transcript";
+import { isWindowsHostPath } from "../../m/paths";
 import type { MessengerRuntime } from "../../m/runtime.svelte";
 import type { SessionView } from "../../m/session-view.svelte";
 import { classifySession, isFileDropSession, presentBotIds, youBotPeer } from "../../m/sidebar/session-groups";
@@ -173,11 +174,17 @@ export function mimeOfName(name: string): string {
   return MIME_BY_EXTENSION[ext] ?? "";
 }
 
-/** A `file:` URL's path on this machine. */
+/**
+ * A `file:` URL's path on this machine. A Windows drop names `file:///C:/Users/…`, whose URL path
+ * is `/C:/Users/…`: not an absolute path on Windows, so reading it was refused and every dropped
+ * file was 「读不到」. It becomes `C:\Users\…`, decided by the path's own shape as `m/paths.ts` does.
+ */
 export function pathOfFileUri(uri: string): string | null {
   if (!uri.startsWith("file:")) return null;
   try {
-    return decodeURIComponent(new URL(uri).pathname);
+    const path = decodeURIComponent(new URL(uri).pathname);
+    const drive = path.slice(1);
+    return path.startsWith("/") && isWindowsHostPath(drive) ? drive.replaceAll("/", "\\") : path;
   } catch {
     return null;
   }

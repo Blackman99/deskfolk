@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Files dropped from File Explorer are added on Windows
+
+- On Windows, every file dropped on the box (or copied in File Explorer and pasted) was turned away with "These files couldn't be read and were not added"; dropping on a file tree to copy into the workspace failed too. The drop names `file:///C:/…` and the app read it as `/C:/…`, which Windows does not take for a path. It now reads `C:\…`.
+
 ### The first-launch wizard no longer says only Claude Code sessions can be carried on
 
 - The wizard's "Carry on a terminal session" step lists every agent's terminal sessions, but its words named Claude Code only. They now name the agents, and say which branch a session (Claude Code, Codex, Grok) and which goes on in the same one (Antigravity).
