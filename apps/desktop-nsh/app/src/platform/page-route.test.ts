@@ -43,6 +43,12 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
     whenAt(_hash, then) {
       later.push(then);
     },
+    whenThere(ready, then) {
+      later.push(() => {
+        if (!ready()) throw new Error("waited for an address the page is not at");
+        then();
+      });
+    },
     onAddress(next) {
       listener = next;
       return () => (listener = null);
@@ -156,6 +162,58 @@ test("a conversation opened pushes its address, and closing it walks back to the
   expect(path(route.address())).toBe("/");
   expect(route.stack).toEqual([""]);
   expect(rt.selectedId).toBe(null);
+});
+
+test("a conversation opened from the roster has its entry before it shows, and showing it writes nothing more", async () => {
+  const { page, rt, route, write } = setup();
+  const entry = route.entryFirst(A);
+  expect(entry).not.toBe(null);
+  // The entry is there while the roster still shows: the picture of the roster's entry is the roster.
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`]);
+  expect(rt.selectedId).toBe(null);
+  page.flush();
+  await entry;
+  rt.selectedId = A;
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`]);
+  expect(path(route.address())).toBe(`/?s=${A}`);
+  expect(route.stack).toEqual(["", `?s=${A}`]);
+  // Back puts it down onto the roster.
+  page.press();
+  expect(rt.selectedId).toBe(null);
+  write();
+  expect(page.entries.length).toBe(3);
+  expect(page.at()).toBe(1);
+});
+
+test("a conversation's entry first only from the roster as it stands: nothing is written over a conversation, a page or settings", () => {
+  const { page, rt, route, write } = setup();
+  rt.selectedId = A;
+  write();
+  expect(route.entryFirst(B)).toBe(null);
+  rt.selectedId = null;
+  write();
+  page.flush();
+  rt.applyOverlay({ kind: "usage" });
+  write();
+  expect(route.entryFirst(A)).toBe(null);
+  rt.applyOverlay({ kind: "none" });
+  write();
+  page.flush();
+  rt.applyOverlay({ kind: "settings" });
+  write();
+  const before = [...page.entries];
+  expect(route.entryFirst(A)).toBe(null);
+  expect(page.entries).toEqual(before);
+});
+
+test("a conversation whose address the page is at already (Back, Forward, a link) has nothing to wait for", () => {
+  const { page, rt, route } = setup(`${ORIGIN}/?s=${A}`);
+  // Seeded from the address; as a selection not applied yet, the address alone says it.
+  rt.selectedId = null;
+  const before = [...page.entries];
+  expect(route.entryFirst(A)).toBe(null);
+  expect(page.entries).toEqual(before);
 });
 
 test("the browser's Back off a conversation closes it, and its Forward opens it again", () => {

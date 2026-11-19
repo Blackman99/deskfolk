@@ -5,7 +5,7 @@
  */
 import { cleanup, effect, signal, untracked, UrlScheme } from "nsh";
 import { runtime } from "../runtime";
-import { PageRoute, provideRoute, viewOf, withoutHash, type PageHistory } from "./page-route";
+import { ENTRY_WAIT_MS, PageRoute, provideRoute, viewOf, withoutHash, type PageHistory } from "./page-route";
 
 type PageWindow = {
   location: { href: string; hash: string };
@@ -29,6 +29,15 @@ export const browserHistory: PageHistory = {
       else setTimeout(look, 16);
     };
     look();
+  },
+  whenThere(ready, then) {
+    // NSH writes it on a timer of its own, set when the address was: the first look comes after it.
+    const until = Date.now() + ENTRY_WAIT_MS;
+    const look = () => {
+      if (ready() || Date.now() >= until) then();
+      else setTimeout(look, 4);
+    };
+    setTimeout(look, 0);
   },
   onAddress(listener) {
     const changes = UrlScheme.on("change", (change) => listener(change.url, change.reason));

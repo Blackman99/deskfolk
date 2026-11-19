@@ -38,6 +38,9 @@ export const FLOOR = "#floor";
 /** A page inside the dialog the address carries: its entry is the dialog's address with this fragment and how deep the page is. */
 export const LEVEL = "#l";
 
+/** How long a conversation opened from the roster waits for its entry (`PageRoute.entryFirst`) before it opens anyway. */
+export const ENTRY_WAIT_MS = 250;
+
 /** How deep `url`'s fragment says its page is inside the dialog the address carries (0: the dialog itself, or none). */
 export function levelOf(url: string): number {
   const match = /#l(\d+)$/.exec(url);
@@ -60,6 +63,8 @@ export interface PageHistory {
   go(delta: number): void;
   /** Runs `then` once the page is at `href`'s fragment `hash` (a replace lands a turn later). */
   whenAt(hash: string, then: () => void): void;
+  /** Runs `then` once `ready()` holds (an address set lands a turn later), or after `ENTRY_WAIT_MS` without it. */
+  whenThere(ready: () => boolean, then: () => void): void;
   onAddress(listener: (url: string, move: AddressMove) => void): () => void;
 }
 
@@ -123,6 +128,11 @@ export function provideRoute(route: PageRoute): () => void {
 /** How deep each dialog the address carries is, the bottom one first (`PageRoute.levels`). Nothing without a page (the desktop). */
 export function reportDialogLevels(layers: readonly number[]): void {
   live?.levels(layers);
+}
+
+/** `PageRoute.entryFirst` on the page's route: null without a page (the desktop), or with nothing to wait for. */
+export function entryFirst(id: string): Promise<void> | null {
+  return live?.entryFirst(id) ?? null;
 }
 
 const total = (layers: readonly number[]) => layers.reduce((sum, n) => sum + n, 0);
@@ -374,6 +384,30 @@ export class PageRoute {
       snapshotReady: this.rt.connection === "connected",
     });
     if (next.action === "set") this.rt.applyOverlay(next.overlay);
+  }
+
+  /**
+   * A conversation opened from the roster: its entry first, the conversation once the page is
+   * there. Chrome on Android pictures an entry as the page leaves it and slides the page off that
+   * picture under a back swipe. NSH writes the app's address a turn after the press, when the
+   * browser has drawn what the press opened already, so the roster's entry was pictured with the
+   * conversation over it and the swipe back showed the conversation under itself. Written before
+   * anything changes, the roster is what the browser drew last; `write` then finds the page there.
+   * Only from the roster as it stands (nothing open): what else opens keeps its own way. Null when
+   * there is nothing to wait for, the address naming the conversation already among it.
+   */
+  entryFirst(id: string): Promise<void> | null {
+    if (this.onFloor) return null;
+    const view = viewOf(this.rt);
+    if (view.selectedId || view.previewRelpath || view.previewAttachmentId || view.overlay.kind !== "none") return null;
+    const current = this.url();
+    const target = sessionUrl(current, { ...view, selectedId: id }, true);
+    if (!target) return null;
+    const next = new URL(target, current);
+    const there = () => sameQuery(new URL(withoutHash(this.page.href())), next);
+    if (there()) return null;
+    this.page.setUrl(next.href, "push");
+    return new Promise((resolve) => this.page.whenThere(there, resolve));
   }
 
   /** What is open moved (a row, a page, a pane, a close): the address follows (`+page.svelte`'s write effect). */

@@ -10,7 +10,8 @@
  * of settings and a Bot's settings one level at a time (in Chromium the browser's own Back, which
  * passes over entries written with nothing pressed, and in settings Back after Back with nothing
  * pressed between, as on a phone, the page staying), a conversation over
- * it, its code block and table scrolling sideways while a vertical swipe on them still scrolls the
+ * it (its entry written while the roster still shows: Chrome on Android shows the entry's picture
+ * under a back swipe), its code block and table scrolling sideways while a vertical swipe on them still scrolls the
  * conversation, its code and a command's output in GitHub's colours, a line sent from the phone (read back from the Mac's database), a line written on the Mac
  * arriving live, a file pressed in a message covering the conversation (and Back putting only the
  * file away), Back to the roster, the terminal page reattaching to a shell the Mac already holds
@@ -458,11 +459,31 @@ try {
   await testid(page, "nav-sessions").click();
   await row.waitFor({ timeout: 10_000 });
 
+  // Chrome on Android pictures an entry as the page leaves it, and slides the page off that picture
+  // under a back swipe: the conversation's entry must be written while the roster still shows, or
+  // the swipe back from the conversation shows the conversation under itself (`PageRoute.entryFirst`).
+  await page.evaluate(() => {
+    const pushes: string[] = [];
+    const push = history.pushState.bind(history);
+    const w = window as unknown as { conversationPushes: string[]; restorePush: () => void };
+    w.conversationPushes = pushes;
+    w.restorePush = () => (history.pushState = push);
+    history.pushState = (state: unknown, title: string, url?: string | URL | null) => {
+      if (url != null && new URL(String(url), location.href).searchParams.has("s")) pushes.push(document.querySelector('[data-testid="conversation"]') ? "over the conversation" : "over the roster");
+      push(state, title, url);
+    };
+  });
   await row.click();
   await testid(page, "conversation").waitFor({ timeout: 10_000 });
   await testid(page, "top-back").waitFor({ timeout: 5_000 });
   await until("the Writer's reply in the conversation", 15_000, () => shownIn(page, "conversation", "这是摘要"));
-  step("opened the Writer's conversation over the roster: its history came over the relay");
+  const conversationPushes = await page.evaluate(() => {
+    const w = window as unknown as { conversationPushes: string[]; restorePush: () => void };
+    w.restorePush();
+    return w.conversationPushes;
+  });
+  if (conversationPushes.join() !== "over the roster") throw new Error(`the conversation's entry was written ${conversationPushes.join(", ") || "never"}: a back swipe would show it under itself`);
+  step("opened the Writer's conversation over the roster: its entry was written while the roster showed, and its history came over the relay");
 
   // The reply's code block and table are wider than a phone: each scrolls sideways in a scroll view
   // of its own. A vertical swipe that starts on one still scrolls the conversation (NSH's

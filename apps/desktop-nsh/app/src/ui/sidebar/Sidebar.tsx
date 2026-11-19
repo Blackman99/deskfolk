@@ -44,6 +44,7 @@ import { CreateFab } from "./CreateFab";
 import { FocusToggle } from "./FocusToggle";
 import { HoldsBar } from "./HoldsBar";
 import { MobileArchivedHead } from "./MobileArchivedHead";
+import { openFromRoster } from "./open-from-roster";
 import { PinnedRoster } from "./PinnedRoster";
 import { ProjectAddMenu } from "./ProjectAddMenu";
 import type { MenuAt } from "./SessionRow";
@@ -333,7 +334,7 @@ export function Sidebar(props: {
     previewOf,
     elsewhereOf,
     botStatusOf,
-    onSelect: (session) => void runtime.selectSession(session.id),
+    onSelect: (session) => void openFromRoster(session.id),
     onOpenContextMenu: (at, session) => props.onOpenContextMenu(at, session),
     get onTogglePin() {
       return props.onTogglePin;
