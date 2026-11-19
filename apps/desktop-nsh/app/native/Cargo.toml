@@ -10,7 +10,7 @@ publish.workspace = true
 nsh-core.workspace = true
 # `term`: NSH's own `Terminal` and its emulator, which `RuntimeTerminals` hands its terminals.
 nsh-base = { workspace = true, features = ["term"] }
-base64 = "0.22"
+base64 = "0.23"
 hayro = { version = "0.9", features = ["embed-fonts"] }
 # The top-level blocks of a Markdown file (`src/markdown/blocks.rs`): the parser NSH's `TextView` uses.
 markdown = "1.0.0"
