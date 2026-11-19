@@ -135,6 +135,13 @@ export function entryFirst(id: string): Promise<void> | null {
   return live?.entryFirst(id) ?? null;
 }
 
+/** `PageRoute.afterEntry` on the page's route; false without a page (the desktop), where nothing waits. */
+export function afterEntry(then: () => void): boolean {
+  if (!live) return false;
+  live.afterEntry(then);
+  return true;
+}
+
 const total = (layers: readonly number[]) => layers.reduce((sum, n) => sum + n, 0);
 
 /** `url` without its fragment. */
@@ -408,6 +415,17 @@ export class PageRoute {
     if (there()) return null;
     this.page.setUrl(next.href, "push");
     return new Promise((resolve) => this.page.whenThere(there, resolve));
+  }
+
+  /**
+   * Runs `then` once the page is at the address the app is at, which NSH writes a turn or more
+   * after the app moved there (at most `ENTRY_WAIT_MS` later). A view that covers the screen under
+   * it (a file's preview, settings, a conversation's settings) shows from then (`revealOnEntry`),
+   * so the frame the browser draws before the entry exists is the screen under it: what Chrome on
+   * Android pictures as the entry left (see `entryFirst`).
+   */
+  afterEntry(then: () => void): void {
+    this.page.whenThere(() => sameQuery(new URL(withoutHash(this.page.href())), this.url()), then);
   }
 
   /** What is open moved (a row, a page, a pane, a close): the address follows (`+page.svelte`'s write effect). */

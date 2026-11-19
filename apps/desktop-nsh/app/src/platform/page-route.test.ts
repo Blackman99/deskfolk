@@ -15,13 +15,20 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
   const entries = [start];
   let index = 0;
   const later: Array<() => void> = [];
+  /** Addresses set while `lagging`, written at the next `flush` (NSH writes them a turn later). */
+  const unwritten: Array<() => void> = [];
   let listener: ((url: string, move: AddressMove) => void) | null = null;
-  const page: PageHistory & { entries: string[]; at(): number; nshGo(delta: number): void; flush(): void; press(): void; forward(): void; reload(): void } = {
+  const page: PageHistory & { entries: string[]; lagging: boolean; at(): number; nshGo(delta: number): void; flush(): void; press(): void; forward(): void; reload(): void } = {
     entries,
+    lagging: false,
     at: () => index,
     href: () => entries[index]!,
     navigation: () => navigation,
     setUrl(url, history) {
+      if (page.lagging) {
+        unwritten.push(() => page.setUrl(url, history));
+        return;
+      }
       if (history === "push") {
         entries.length = index + 1;
         entries.push(url);
@@ -58,6 +65,10 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
       index += delta;
     },
     flush() {
+      const lagging = page.lagging;
+      page.lagging = false;
+      for (const write of unwritten.splice(0)) write();
+      page.lagging = lagging;
       while (later.length) later.shift()!();
     },
     press() {
@@ -213,6 +224,31 @@ test("a conversation whose address the page is at already (Back, Forward, a link
   rt.selectedId = null;
   const before = [...page.entries];
   expect(route.entryFirst(A)).toBe(null);
+  expect(page.entries).toEqual(before);
+});
+
+test("a view the address carries shows once the page is at its address, which NSH writes a turn later", () => {
+  const { page, rt, route, write } = setup();
+  page.lagging = true;
+  let shown = false;
+  // As the view mounts, before the effect that writes the address.
+  route.afterEntry(() => (shown = true));
+  rt.applyOverlay({ kind: "settings" });
+  write();
+  expect(path(page.href())).toBe("/");
+  expect(shown).toBe(false);
+  page.flush();
+  expect(path(page.href())).toBe("/?o=settings");
+  expect(shown).toBe(true);
+});
+
+test("a view whose address the page is at already shows with nothing written", () => {
+  const { page, route } = setup();
+  const before = [...page.entries];
+  let shown = false;
+  route.afterEntry(() => (shown = true));
+  page.flush();
+  expect(shown).toBe(true);
   expect(page.entries).toEqual(before);
 });
 

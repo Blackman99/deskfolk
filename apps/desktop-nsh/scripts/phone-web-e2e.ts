@@ -367,6 +367,45 @@ try {
     await Bun.sleep(150);
     if (!page.url().startsWith(origin)) throw new Error(`the browser's Back left the page for ${page.url()}: the page's entries were all ones it wrote with no tap`);
   };
+  /**
+   * Chrome on Android pictures an entry as the page leaves it, and slides the page off that picture
+   * under a back swipe: a page's entry has to be written while what it opens over still shows, or
+   * the swipe back from it shows the page under itself (`PageRoute.entryFirst`, `revealOnEntry`).
+   * Runs `open`, and fails unless the first entry written meanwhile came while `inside` (a testID in
+   * the new page) was absent or unseen.
+   */
+  const entryBeforeShown = async (what: string, inside: string, open: () => Promise<void>) => {
+    await page.evaluate((id) => {
+      const seen = (el: Element) => {
+        const box = el.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) return false;
+        for (let at: Element | null = el; at; at = at.parentElement) {
+          const style = getComputedStyle(at);
+          if (style.opacity === "0" || style.visibility === "hidden" || style.display === "none") return false;
+        }
+        return true;
+      };
+      const push = history.pushState.bind(history);
+      const w = window as unknown as { entryPushes: string[]; restorePush: () => void };
+      w.entryPushes = [];
+      w.restorePush = () => (history.pushState = push);
+      history.pushState = (state: unknown, title: string, url?: string | URL | null) => {
+        w.entryPushes.push([...document.querySelectorAll(`[data-testid="${id}"]`)].some(seen) ? "with it seen" : "unseen");
+        push(state, title, url);
+      };
+    }, inside);
+    let pushes: string[] = [];
+    try {
+      await open();
+    } finally {
+      pushes = await page.evaluate(() => {
+        const w = window as unknown as { entryPushes: string[]; restorePush: () => void };
+        w.restorePush();
+        return w.entryPushes;
+      });
+    }
+    if (pushes[0] !== "unseen") throw new Error(`${what}: its entry was written ${pushes[0] ?? "never"}: a back swipe would show it under itself`);
+  };
   const problems: string[] = [];
   const localOnly: string[] = [];
   page.on("request", (r) => {
@@ -459,30 +498,12 @@ try {
   await testid(page, "nav-sessions").click();
   await row.waitFor({ timeout: 10_000 });
 
-  // Chrome on Android pictures an entry as the page leaves it, and slides the page off that picture
-  // under a back swipe: the conversation's entry must be written while the roster still shows, or
-  // the swipe back from the conversation shows the conversation under itself (`PageRoute.entryFirst`).
-  await page.evaluate(() => {
-    const pushes: string[] = [];
-    const push = history.pushState.bind(history);
-    const w = window as unknown as { conversationPushes: string[]; restorePush: () => void };
-    w.conversationPushes = pushes;
-    w.restorePush = () => (history.pushState = push);
-    history.pushState = (state: unknown, title: string, url?: string | URL | null) => {
-      if (url != null && new URL(String(url), location.href).searchParams.has("s")) pushes.push(document.querySelector('[data-testid="conversation"]') ? "over the conversation" : "over the roster");
-      push(state, title, url);
-    };
+  await entryBeforeShown("the conversation", "conversation", async () => {
+    await row.click();
+    await testid(page, "conversation").waitFor({ timeout: 10_000 });
+    await testid(page, "top-back").waitFor({ timeout: 5_000 });
   });
-  await row.click();
-  await testid(page, "conversation").waitFor({ timeout: 10_000 });
-  await testid(page, "top-back").waitFor({ timeout: 5_000 });
   await until("the Writer's reply in the conversation", 15_000, () => shownIn(page, "conversation", "这是摘要"));
-  const conversationPushes = await page.evaluate(() => {
-    const w = window as unknown as { conversationPushes: string[]; restorePush: () => void };
-    w.restorePush();
-    return w.conversationPushes;
-  });
-  if (conversationPushes.join() !== "over the roster") throw new Error(`the conversation's entry was written ${conversationPushes.join(", ") || "never"}: a back swipe would show it under itself`);
   step("opened the Writer's conversation over the roster: its entry was written while the roster showed, and its history came over the relay");
 
   // The reply's code block and table are wider than a phone: each scrolls sideways in a scroll view
@@ -648,8 +669,11 @@ try {
   for (let i = 1; i <= 60; i += 1) writeFileSync(join(workspace, "many", `item-${String(i).padStart(2, "0")}.md`), `# ${i}\n`);
   await mac.api("POST",`/v1/sessions/${mac.writerDirect}/messages`, { body: "看这个文件 [report.md](out/report.md)" });
   await until("the file's link on the phone", 20_000, () => shownIn(page, "conversation", "看这个文件"));
-  await page.getByText("report.md", { exact: true }).last().tap();
-  await until("the file over the conversation", 15_000, () => onTop(page, "preview-sheet"));
+  await entryBeforeShown("the file", "artifact-preview", async () => {
+    await page.getByText("report.md", { exact: true }).last().tap();
+    await until("the file over the conversation", 15_000, () => onTop(page, "preview-sheet"));
+    await until("the file's entry", 10_000, async () => new URL(page.url()).searchParams.has("a"));
+  });
   await until("the file's text", 20_000, () => shownIn(page, "preview-sheet", "正文一行"));
   await page.screenshot({ path: shot("3b-file") });
   // In Chromium, Back after Back as a phone does it: nothing pressed between, the page read only
@@ -1027,10 +1051,12 @@ try {
   await expectAt("Back to the roster", "/");
   step(`the flow page has its address${withJob ? " with its job, which a reload comes back to" : ""}: Back to the conversation, then to the roster`);
 
-  await testid(page, "nav-settings").click();
-  await showing("settings-modal");
-  await expectAt("settings", "/?o=settings");
-  await sheetEntry();
+  await entryBeforeShown("settings", "settings-modal", async () => {
+    await testid(page, "nav-settings").click();
+    await showing("settings-modal");
+    await expectAt("settings", "/?o=settings");
+    await sheetEntry();
+  });
   await back();
   await putAway("settings-modal");
   await expectAt("Back from settings", "/");
@@ -1312,10 +1338,12 @@ try {
   await showing("conversation");
   await testid(page, "top-more").click();
   await showing("mobile-actions-menu");
-  await testid(page, "mobile-settings").click();
-  await showing("bot-nav");
+  await entryBeforeShown("a Bot's settings", "bot-nav", async () => {
+    await testid(page, "mobile-settings").click();
+    await showing("bot-nav");
+    await sheetEntry();
+  });
   const botSettingsAt = here();
-  await sheetEntry();
   await testid(page, "bot-tab-basics").click();
   await showing("bot-detail");
   await back();

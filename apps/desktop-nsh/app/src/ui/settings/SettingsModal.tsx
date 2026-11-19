@@ -62,6 +62,7 @@ import { ProvidersTab } from "./ProvidersTab";
 import { PromptsSettings, type PromptsSettingsApi } from "./PromptsSettings";
 import { RemoteTab } from "./RemoteTab";
 import { SettingsNav, type SettingsTab } from "./SettingsNav";
+import { revealOnEntry } from "../../platform/reveal-on-entry";
 import { widthAtMost } from "../../platform/viewport";
 import { WheelLayer } from "../../platform/wheel-layer";
 
@@ -668,6 +669,11 @@ export function SettingsModal(props: {
   return (
     <>
       <If when={runtime.settingsOpen}>
+        {() => {
+          // On the phone's page, seen once its history entry is written (`revealOnEntry`): drawn at
+          // once (no fade there), it was the picture of the entry under it.
+          const shown = revealOnEntry();
+          return (
         <Dialog
           open
           animation={props.mobileNavigation ? "none" : "fade"}
@@ -677,16 +683,16 @@ export function SettingsModal(props: {
           onOpenChange={(e) => {
             if (!e.open && closable()) props.closeSettings();
           }}
-          backdropClass={phone() ? "bg-pane" : "bg-modal-backdrop"}
-          class={`m-auto bg-pane overflow-hidden ${phone() ? "" : "rounded-(--radius-xl) border border-line"}`}
+          backdropClass={!shown() ? "bg-transparent" : phone() ? "bg-pane" : "bg-modal-backdrop"}
+          class={`m-auto ${shown() ? "bg-pane" : ""} overflow-hidden ${phone() ? "" : "rounded-(--radius-xl) border border-line"}`}
           style={{
             width: width(),
             height: height(),
-            boxShadow: phone() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+            boxShadow: phone() || !shown() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
           }}
         >
           <WheelLayer>
-            <View testID="settings-modal" role="group" accessibilityLabel={t().settings.title} class="flex-1 min-h-0 flex-row">
+            <View testID="settings-modal" role="group" accessibilityLabel={t().settings.title} class="flex-1 min-h-0 flex-row" style={{ opacity: shown() ? 1 : 0 }}>
               <If when={phone()} else={<>{nav()}{main()}</>}>
                 <If
                   when={mobileDetail()}
@@ -705,6 +711,8 @@ export function SettingsModal(props: {
             </View>
           </WheelLayer>
         </Dialog>
+          );
+        }}
       </If>
       <ProviderEditorFlyout
         providerEditor={providerEditor()}

@@ -25,6 +25,7 @@ import { shadow } from "../styles";
 import { GroupPane } from "./GroupPane";
 import { ProfilePane, type ProfilePaneApi } from "./ProfilePane";
 import { SettingsHead } from "./SettingsHead";
+import { revealOnEntry } from "../../platform/reveal-on-entry";
 import { WheelLayer } from "../../platform/wheel-layer";
 
 export type SessionSettingsDrawerProps = {
@@ -163,7 +164,10 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
     else runtime.closeSessionSettings();
   };
 
-  const Drawer = () => (
+  const Drawer = () => {
+    // On the phone's page, seen once its history entry is written (`revealOnEntry`).
+    const shown = revealOnEntry();
+    return (
     <Dialog
       open
       testID="session-settings-drawer"
@@ -175,7 +179,7 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
       style={{ width: windowSize().width, height: windowSize().height }}
     >
       <WheelLayer>
-        <View class="flex-1 flex-row">
+        <View class="flex-1 flex-row" style={{ opacity: shown() ? 1 : 0 }}>
           <If when={!props.narrow}>
             <View
               testID="profile-backdrop"
@@ -242,7 +246,8 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
         </View>
       </WheelLayer>
     </Dialog>
-  );
+    );
+  };
 
   return (
     <If when={props.beside} else={<If when={runtime.sessionSettingsOpen && props.selected}><Drawer /></If>}>

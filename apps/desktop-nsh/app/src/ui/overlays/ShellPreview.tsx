@@ -17,6 +17,7 @@ import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import type { Annotation } from "@real-bot/protocol";
 import { projectDirOf } from "../../m/overlays/artifact-lookup.ts";
 import { clampPreviewWidth, savePreviewWidth } from "../../m/overlays/preview-width.ts";
+import { revealOnEntry } from "../../platform/reveal-on-entry";
 import type { ShellArtifact } from "../../m/overlays/shell-artifact.svelte.ts";
 import { copy, runtime } from "../../runtime";
 import { tip } from "../tip";
@@ -203,9 +204,11 @@ export function ShellPreview(props: {
  * file showed nothing.
  */
 function PreviewSheet(props: { children: JSX.Element }) {
+  // On the phone's page, seen once its history entry is written (`revealOnEntry`).
+  const shown = revealOnEntry();
   return (
     <Overlay testID="preview-sheet" style={{ left: 0, top: 0, right: 0, bottom: 0 }}>
-      <View class="flex-1 min-h-0 bg-pane" style={{ paddingBottom: safeArea().bottom }}>
+      <View class="flex-1 min-h-0 bg-pane" style={{ paddingBottom: safeArea().bottom, opacity: shown() ? 1 : 0 }}>
         {props.children}
       </View>
     </Overlay>

@@ -45,9 +45,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - If one of those parts cannot be downloaded (a phone between networks), its place says so, with a button that reloads the page; the page reopens where it was.
 - On the desktop nothing changes that you can see: the same views load the moment they are first shown.
 
-### On the phone, swiping back from a conversation shows the list under it
+### On the phone, swiping back shows the page you go back to
 
-- On an Android phone, the swipe back from the left edge slides the page away over a picture of where it goes back to. A conversation opened from the list slid away over a copy of itself, and the list only came back when the swipe ended. Chrome takes that picture as the page leaves the list, and the page wrote the conversation's address after it had already drawn the conversation. A conversation opened from the list (a row, or a pinned one) now writes its address first and shows a frame later, so the picture under the swipe is the list.
+- On an Android phone, the swipe back from the left edge slides the page away over a picture of where it goes back to. Chrome takes that picture as the page leaves the earlier screen, and the page wrote each new screen's address after it had already drawn that screen. So a conversation, a file, Settings or a Bot's settings slid away over a copy of itself, and the earlier screen only came back when the swipe ended.
+- A conversation opened from the list (a row, or a pinned one) now writes its address first and shows a frame later. A file opened from a message, Settings and a conversation's or Bot's settings stay unseen until their address is written, a frame or two. The picture under the swipe is then the screen they opened over.
 - The swipe from the right edge has no such picture. That is Chrome's behaviour and is unchanged.
 
 ### On the phone, Usage, Roles and Archived sessions have no bottom bar
