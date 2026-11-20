@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On the phone, text no longer runs into the block under it
+
+- On the phone's page the last line of a paragraph or a list item sometimes lay over the next block, or a block had an empty line under it. NSH measured a text at one width and laid it out in a box rounded to the screen's pixels, a fraction of a pixel narrower or wider, so a line that only just fitted wrapped once more (or once less) than its box allowed. It now lays the text out at the width it measured (longbridge/nsh#2545), and the app builds on an NSH that has it. It showed on phones whose screens have a fractional pixel ratio (2.75, 3.5, 2.625), most of all in Markdown lists.
+
 ### A project session's questions wait at the end, and several are one card
 
 - When the agent in a project session asks you something, the question now sits at the end of the conversation, under what it said before asking and the commands it ran, right above the message box. Before, its card went in as a line the moment it was asked and stayed above all of that, often out of sight until you scrolled up.
@@ -59,6 +63,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - On an Android phone, the swipe back from the left edge slides the page away over a picture of where it goes back to. Chrome takes that picture as the page leaves the earlier screen, and the page wrote each new screen's address after it had already drawn that screen. So a conversation, a file, Settings or a Bot's settings slid away over a copy of itself, and the earlier screen only came back when the swipe ended.
 - A conversation opened from the list, from another conversation (a link) or from a notification now writes its address first and shows a frame later. A file opened from a message, Settings and a conversation's or Bot's settings stay unseen until their address is written, a frame or two. The picture under the swipe is then the screen they opened over.
 - The pages one level down inside a page have an entry of their own too, written before they show: a tab and a section in Settings, the endpoint editor's form and a model's page, a section of a Bot's settings, a call on the Roles page, a step or ticket in a job's inspector, a model picker's or tune picker's inner list. So does an enlarged picture or a file opened full screen over a conversation. Back steps out of each one at a time and the picture under the swipe is the level above. Before, closing an enlarged picture with Back wrote the conversation's entry again with the conversation on screen, so the next swipe back from the conversation showed the conversation under itself; and a dialog that stepped back inside itself on Back had its entry written again with nothing pressed.
+- Pages opened from a sheet that slides up from the bottom (Workspace, Usage and Roles from Tools, a project's conversation and its folder, the flow page, Archived sessions) slid away over a copy of themselves too: the sheet closed and the new page's address was written after the page had been drawn. Their address now takes the sheet's place in the history (longbridge/nsh#2572), so the picture under the swipe is the screen the sheet opened over.
 - The swipe from the right edge has no such picture. That is Chrome's behaviour and is unchanged.
 
 ### On the phone, Usage, Roles and Archived sessions have no bottom bar

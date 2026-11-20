@@ -36,6 +36,13 @@ pub fn params(config: &Config, window_id: u32) -> Map<String, Value> {
         if config.quit {
             params.insert("quit".into(), true.into());
         }
+        // `--hidden` (a login launch): the app puts its window away as it first renders
+        // (`window-life.ts`). NSH no longer reads `defaultVisible` for the window it opens
+        // (longbridge/nsh#2307: its own host never shows, and the app's window is the app's).
+        #[cfg(not(target_os = "macos"))]
+        if config.hidden {
+            params.insert("hidden".into(), true.into());
+        }
     }
     params
 }
@@ -281,6 +288,14 @@ mod tests {
         assert!(params(&config(), 1).get("quit").is_none());
         let quit = Config { quit: true, ..config() };
         assert_eq!(params(&quit, 1)["quit"], true);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn a_login_launch_tells_the_app_to_start_put_away() {
+        assert!(params(&config(), 1).get("hidden").is_none());
+        let hidden = Config { hidden: true, ..config() };
+        assert_eq!(params(&hidden, 1)["hidden"], true);
     }
 
     #[test]

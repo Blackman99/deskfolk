@@ -20,9 +20,9 @@ export const seeded = fixture as {
   pty: boolean;
 };
 
-/** The app on the fixture's runtime. */
-export function openApp(options: Partial<OpenOptions> = {}) {
-  return openEntry("../App.tsx", {}, options);
+/** The app on the fixture's runtime; `params` reach it as `host.params`, beside the runtime's. */
+export function openApp(options: Partial<OpenOptions> = {}, params: Record<string, unknown> = {}) {
+  return openEntry("../App.tsx", params, options);
 }
 
 /** One screen on its own (`stories/index.ts`), on the fixture's runtime; `params` reach it as `host.params`. */

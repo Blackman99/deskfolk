@@ -23,8 +23,9 @@ import { installLinuxTray } from "./platform/linux-tray";
 import { installNotificationClick } from "./platform/notification-click";
 import { pageBuildUpdates, reloadPage } from "./platform/page-build";
 import { pageRoute } from "./platform/page-route-install";
+import { keepAppWindow } from "./platform/viewport";
 import { linuxWheelProps } from "./platform/wheel";
-import { installWindowLife } from "./platform/window-life";
+import { holdReloadedWindow, installWindowLife } from "./platform/window-life";
 import { runtime } from "./runtime";
 import { preloadLazyViews } from "./ui/lazy-view";
 import { PdfPane, TerminalPane } from "./ui/lazy-views";
@@ -40,6 +41,10 @@ export function Main() {
   // The shell opens the window that way (`host/src/win.rs`), with Mica behind it where there is some.
   // The phone's page: what the address names opens, and the address follows what is open
   // (`platform/page-route.ts`). Seeded before the runtime connects, as the Svelte page does.
+  // The window the app is in, whose size the app reads on Windows and Linux (`platform/viewport.ts`).
+  keepAppWindow();
+  // macOS: a dev reload's window waits unseen for the shell to put it in the old one's place.
+  holdReloadedWindow();
   const route = runtime.hosted ? pageRoute() : null;
   route?.seed();
   runtime.start();

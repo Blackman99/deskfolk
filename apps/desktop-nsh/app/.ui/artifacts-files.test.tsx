@@ -9,8 +9,8 @@ const current = (app: App) => app.texts().find((text) => text.startsWith("curren
 const path = (app: App) => (app.texts().find((text) => text.startsWith("path:")) ?? "").slice(5);
 const LOAD_MS = 20_000;
 
-async function story(): Promise<App> {
-  const app = await openStory("artifacts");
+async function story(options: Parameters<typeof openStory>[1] = {}): Promise<App> {
+  const app = await openStory("artifacts", options);
   await app.waitFor("id:artifacts", { timeout: 15_000 });
   return app;
 }
@@ -49,8 +49,9 @@ test("a press on the previewed picture enlarges it over the app, showing the pre
 });
 
 test("a finger dragging a tree row carries nothing: it is left to scroll the tree", async () => {
-  // `dragAndHold` is a finger. The mouse's drag onto a target is `src/ui/workspace-drag.test.ts`.
-  const app = await story();
+  // A finger: on a phone `dragAndHold` is one, on a desktop the mouse (longbridge/nsh#2455). The
+  // mouse's drag onto a target is `src/ui/workspace-drag.test.ts`.
+  const app = await story({ platform: "ios" });
   await app.press("id:story-make-ts");
   await app.waitFor("id:artifact-code-editor", { timeout: LOAD_MS });
   const file = path(app);

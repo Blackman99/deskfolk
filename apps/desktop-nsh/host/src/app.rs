@@ -238,6 +238,12 @@ pub fn alert(title: &str, text: &str) {
 }
 
 pub fn new_window(mtm: MainThreadMarker) {
+    // One window is made at a time: the window NSH makes next is then surely the waiting engine's
+    // (`window.rs`), and a second click meanwhile opens nothing more.
+    if crate::window::opening() {
+        log::info!("a window is still opening");
+        return;
+    }
     CONFIG.with(|c| {
         if let Some(config) = c.get() {
             crate::window::open(mtm, config);
@@ -246,6 +252,11 @@ pub fn new_window(mtm: MainThreadMarker) {
     if !background() {
         NSApplication::sharedApplication(mtm).activate();
     }
+}
+
+/// Runs `f` with the shell's configuration, once `run` has it.
+pub fn with_config<R>(f: impl FnOnce(&Config) -> R) -> Option<R> {
+    CONFIG.with(|c| c.get().map(f))
 }
 
 fn background() -> bool {
@@ -498,8 +509,11 @@ fn watch_bundle(path: PathBuf) {
             let now = modified(&path);
             if now.is_some() && now != last {
                 last = now;
-                let path = path.clone();
-                DispatchQueue::main().exec_async(move || crate::window::reload_all(&path));
+                DispatchQueue::main().exec_async(|| {
+                    if let Some(mtm) = MainThreadMarker::new() {
+                        crate::window::reload_all(mtm);
+                    }
+                });
             }
         }
     });
@@ -509,8 +523,8 @@ fn watch_bundle(path: PathBuf) {
 /// a picture of every window, `new-window`, `badge <label>` (empty clears), `notify <text>`,
 /// `notification-click <click_ref>` (what a click on a banner carrying it does),
 /// `wheel <x> <y> <dy> [ctrl]`, `resize <w> <h> [steps] [ms]`, `drag <x0> <y0> <x1> <y1> [steps] [ms]`,
-/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `tray [title]`, `menu <title>`,
-/// `quit`.
+/// `keys <text>`, `chord <keystroke>`, `compose [text]`, `commit <text>`, `close` (the first window's
+/// close button), `tray [title]`, `menu <title>`, `quit`.
 fn watch_snapshot_requests(dir: PathBuf) {
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(move || {
@@ -536,6 +550,7 @@ fn watch_snapshot_requests(dir: PathBuf) {
                     ("chord", keystroke) => crate::window::chord_first(keystroke, mtm),
                     ("compose", text) => crate::window::compose_first(text, false),
                     ("commit", text) => crate::window::compose_first(text, true),
+                    ("close", _) => crate::window::close_first(),
                     ("tray", title) => tray_request(mtm, title),
                     ("menu", title) => menu_request(mtm, title),
                     // Quits as the menu's Quit does, so `applicationWillTerminate` stops the runtime

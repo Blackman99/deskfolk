@@ -8,6 +8,11 @@
  * Without a tray to bring the window back from (Linux's GNOME without the AppIndicator extension:
  * the shell says so in `host.params.trayShown`), the close button minimizes it instead, so it is
  * never put where nothing reaches it.
+ *
+ * NSH leaves the window to the app (longbridge/nsh#2307: its own host never shows): a later launch
+ * (the Start menu, a shortcut, the desktop file) reaches the running copy as `reopen`, which brings
+ * the window back here, and a login launch (`--hidden`, `host.params.hidden`) puts it away as it
+ * first renders, since NSH no longer reads `defaultVisible` for it.
  */
 import { host, platform } from "nsh";
 import { Application, currentWindow } from "nsh/desktop";
@@ -33,10 +38,26 @@ export function launchedToQuit(params: { quit?: unknown }): boolean {
   return params.quit === true;
 }
 
+/** Whether this copy was started at login (`--hidden`): its window starts put away. */
+export function launchedHidden(params: { hidden?: unknown }): boolean {
+  return params.hidden === true;
+}
+
+/**
+ * The Mac shell's dev loop: a reload runs the bundle in a new engine beside the old one, and NSH
+ * opens it a new window (its window model). That window starts put away (`host.params.reloaded`),
+ * and the shell gives it the old one's place once it has drawn (`host/src/window.rs`), so a save
+ * elsewhere never blinks the window or raises it over another app. Called as the root renders.
+ */
+export function holdReloadedWindow(): void {
+  if (platform.os !== "macos" || !host.available()) return;
+  if ((host.params as { reloaded?: unknown }).reloaded === true) currentWindow().hide();
+}
+
 export function installWindowLife(): void {
   if (platform.os !== "windows" && platform.os !== "linux") return;
   if (!host.available()) return;
-  const params = host.params as { trayShown?: boolean; quit?: unknown };
+  const params = host.params as { trayShown?: boolean; quit?: unknown; hidden?: unknown };
   if (launchedToQuit(params)) {
     // After this first render: the run ends from the loop, not from inside it.
     setTimeout(() => Application.quit(), 0);
@@ -46,6 +67,7 @@ export function installWindowLife(): void {
   const window = currentWindow();
   keepDesktopWindow(window);
   window.set({ closeOnPress: false });
+  if (launchedHidden(params)) window.hide();
   window.on("closePress", ({ reason }) => {
     switch (closeAction(platform.os, trayShown, reason)) {
       case "quit":
@@ -63,8 +85,22 @@ export function installWindowLife(): void {
     }
   });
   // The tray's Quit (`win_tray.rs`, the Linux tray), and a later launch with `--quit`.
-  host.on("shell.quit", () => Application.quit());
+  let quitting = false;
+  const quit = () => {
+    quitting = true;
+    Application.quit();
+  };
+  host.on("shell.quit", quit);
   Application.on("secondInstance", ({ args }) => {
-    if (asksToQuit(args)) Application.quit();
+    if (asksToQuit(args)) quit();
+  });
+  // A later launch: the window comes back and forward. Windows reports `reopen` before the launch's
+  // arguments (`secondInstance`), so it waits a turn: a `--quit` launch never shows it on the way out.
+  Application.on("reopen", () => {
+    setTimeout(() => {
+      if (quitting) return;
+      window.show();
+      window.focus();
+    }, 0);
   });
 }

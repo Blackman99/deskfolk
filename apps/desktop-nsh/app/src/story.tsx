@@ -4,6 +4,7 @@
  */
 import { mount, type JSX } from "nsh";
 import { loadStorage } from "./platform/globals";
+import { keepAppWindow } from "./platform/viewport";
 
 export function story(load: () => Promise<() => JSX.Element>): void {
   void loadStorage()
@@ -12,5 +13,11 @@ export function story(load: () => Promise<() => JSX.Element>): void {
       runtime.start();
       return view;
     })
-    .then((view) => mount(view));
+    .then((view) =>
+      mount(() => {
+        // As the app's root does (`Main.tsx`): the window's size is read from it on Windows and Linux.
+        keepAppWindow();
+        return view();
+      }),
+    );
 }

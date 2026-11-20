@@ -30,7 +30,7 @@
 - 滚动区：`Scroll`；要定位、要虚拟化的用 `List` 和它的 ref（`scrollToIndex`、`scrollToEnd`）。
 - 拿视图：`ref={(node) => …}` 拿 NSH 的 ref（`focus()`、`measure()`、`scrollTo()`），没有 DOM。
 - 键盘：`keymap.bind("mod+k", fn)`（`nsh`），组件卸载时自动解绑；没有 `window` / `document` 的事件。
-- 断点用 `widthAtMost(680)`（`src/platform/viewport.ts`，缓存的布尔值，窗口跨过断点才通知读者；`narrowWindow()` 就是它），别写 `windowSize().width <= 680`：改窗口大小时每一帧都会让读者重跑，一百多处加起来让排版落后窗口好几秒。要真实尺寸（弹层宽高）才读 `viewportSize()`（同一个文件；只有 `viewport.ts` 读 NSH 的 `windowSize()`，`scripts/viewport-reads.test.ts` 守着）；自己的宽度用 `onLayout` 量；手机布局看 `platform.desktop` 和宽度。没有媒体查询和容器查询。
+- 断点用 `widthAtMost(680)`（`src/platform/viewport.ts`，缓存的布尔值，窗口跨过断点才通知读者；`narrowWindow()` 就是它），别写 `windowSize().width <= 680`：改窗口大小时每一帧都会让读者重跑，一百多处加起来让排版落后窗口好几秒。要真实尺寸（弹层宽高）才读 `viewportSize()`（同一个文件；桌面上 NSH 的 `windowSize()` 是看不见的宿主的尺寸，不是窗口的，只有 `viewport.ts` 读它，`scripts/viewport-reads.test.ts` 守着）；自己的宽度用 `onLayout` 量；手机布局看 `platform.desktop` 和宽度。没有媒体查询和容器查询。
 - 提示：`<View tooltip={tip("…")}>`（`src/ui/tip`）。
 - 界面钩子（`data-ui`）：`class={ui("x", "…类名")}`（`src/ui/interface/hooks`，ADR 0108）。
 - 底线（`data-floor`）：`ref={floor("x", { ink: "字或图标的令牌", ground: ["底下的令牌", …] })}`（`src/ui/interface/floor`，底从下往上写，颜色可以是函数、不是底线时返回 null）；`Button` 用 `floor="x"`（再加 `floorOn` 说它放在哪种底上，默认 `pane`）。
