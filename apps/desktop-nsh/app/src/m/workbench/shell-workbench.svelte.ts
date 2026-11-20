@@ -47,7 +47,7 @@ import {
   type PlaceContext,
 } from "./pane-open.ts";
 import { canSplit, computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
-import { closedTerminals } from "./terminal-tabs.ts";
+import { endedTerminalsClosed } from "./terminal-tabs.ts";
 import { clampFrame, frameForOpen, stepPastFloats } from "./float-frame.ts";
 import { loadFloatFrames, openKindOf, rememberFloatFrame } from "./open-placement.ts";
 import { openPlacements } from "./open-placement-store.svelte.ts";
@@ -162,7 +162,7 @@ export class ShellWorkbench {
           ),
           this.freshPaneId,
         );
-        if (healed !== this.layout) this.commitLayout(healed, { keepShells: true });
+        if (healed !== this.layout) this.commitLayout(healed);
       });
     });
 
@@ -269,28 +269,25 @@ export class ShellWorkbench {
   freshPaneId = (): string => `wb-${Date.now().toString(36)}-${++this.paneSeq}`;
 
   /**
-   * Every change to the arrangement comes through here, and so does the end of a terminal: a tab
-   * is its shell, so a session the new layout no longer shows is ended (`closedTerminals`), however
-   * its tab went. `keepShells` is for the two commits that are not a close: healing, which drops
-   * tabs whose session has already gone, and Reset Layout, which leaves the shells running under
-   * 接回 rather than stopping a `pnpm dev` for tidying the panes.
+   * Every change to the arrangement comes through here. Taking a terminal's tab away (its ×, its
+   * pane closed, Close Others, a replace, Reset Layout) never ends a shell that runs: it goes on
+   * under 接回, and 结束会话 in the tab's head is what ends it. A session whose shell has already
+   * ended is forgotten once no tab shows it (`endedTerminalsClosed`), since nothing is left to
+   * carry on with. Healing drops only sessions the runtime no longer has, so it forgets nothing.
    */
-  commitLayout = (next: WorkbenchLayout, opts?: { keepShells?: boolean }): void => {
+  commitLayout = (next: WorkbenchLayout): void => {
     if (next === this.layout) return;
     const before = this.layout;
     this.layout = next;
     saveWorkbenchLayout(next);
-    if (!opts?.keepShells) this.endClosedTerminals(before, next);
+    this.forgetEndedTerminals(before, next);
   };
 
-  private endClosedTerminals(before: WorkbenchLayout, after: WorkbenchLayout): void {
-    const closed = closedTerminals(before, after);
-    if (closed.length === 0) return;
+  private forgetEndedTerminals(before: WorkbenchLayout, after: WorkbenchLayout): void {
     untrack(() => {
       const runtime = this.getRuntime();
-      // Once the list has been read, a session missing from it has already gone: nothing to end.
-      const known = runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null;
-      for (const id of closed) if (!known || known.has(id)) void runtime.endTerminal(id);
+      const ended = endedTerminalsClosed(before, after, runtime.terminalsLoaded ? runtime.terminals : null);
+      for (const id of ended) void runtime.endTerminal(id);
     });
   }
 
@@ -477,9 +474,9 @@ export class ShellWorkbench {
   };
 
   /**
-   * Sessions no tab shows: one the phone started, or one Reset Layout left running. Closing a tab
-   * ends its shell, so these are the only ones without a tab, and they have to be reachable from
-   * where you open things — to carry on with, or to close.
+   * Sessions no tab shows: one whose tab or pane was closed, one the phone started, or one Reset
+   * Layout left running. Closing a tab never stops its shell, so what is still there has to be
+   * reachable from where you open things — to carry on with, or to end from its tab's head.
    */
   #untabbedTerminals$s = derived<Terminal[]>(() => {
     const shown = new Set(
@@ -522,7 +519,7 @@ export class ShellWorkbench {
    */
   runMenuCommand = (id: string): void => {
     if (id === "pane-reset") {
-      this.commitLayout(freshLayout(this.freshPaneId()), { keepShells: true });
+      this.commitLayout(freshLayout(this.freshPaneId()));
       return;
     }
     if (id === "view-spend") {

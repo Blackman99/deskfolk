@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import type { PaneMin, Rect, WorkbenchLayout, WorkbenchTab } from "./layout-types.ts";
 import { closeLeaf, closeTab, closeTabs, makeBranch, makeLeaf, replaceTabParams, tabsClosedBy, tiledLeaves, leafById } from "./layout-tree.ts";
 import { applyDrop, beginLeafDrag, beginTabDrag, type DropContext } from "./tab-drag.ts";
-import { closedTerminals, terminalIdsIn } from "./terminal-tabs.ts";
+import type { Terminal } from "@real-bot/protocol";
+import { closedTerminals, endedTerminalsClosed, terminalIdsIn } from "./terminal-tabs.ts";
 
 const term = (id: string, terminalId: string): WorkbenchTab => ({ id, kind: "terminal", params: { terminalId, cwd: "/ws" } });
 const chat = (id: string): WorkbenchTab => ({ id, kind: "chat", params: { sessionId: `s-${id}` } });
@@ -26,13 +27,13 @@ test("the layout names the sessions its terminal tabs show, a tab with none star
   expect([...terminalIdsIn(layout)]).toEqual(["pty-1"]);
 });
 
-test("a closed terminal tab ends its session, and only its own", () => {
+test("a closed terminal tab takes its session off the screen, and only its own", () => {
   const before = twoPanes();
   expect(closedTerminals(before, closeTab(before, "a", "t1", "f1"))).toEqual(["pty-1"]);
   expect(closedTerminals(before, closeTab(before, "a", "c1", "f1"))).toEqual([]);
 });
 
-test("closing a pane, Close Others and Close All end every shell they take away", () => {
+test("closing a pane, Close Others and Close All take away every shell they showed", () => {
   const before = twoPanes();
   expect(closedTerminals(before, closeLeaf(before, "b", "f1"))).toEqual(["pty-3"]);
   const leaf = leafById(before, "a")!;
@@ -40,7 +41,7 @@ test("closing a pane, Close Others and Close All end every shell they take away"
   expect(closedTerminals(before, closeTabs(before, "a", tabsClosedBy(leaf, "c1", "all"), "f1")).sort()).toEqual(["pty-1", "pty-2"]);
 });
 
-test("a tab moved to another pane, or a pane floated, ends nothing", () => {
+test("a tab moved to another pane, or a pane floated, takes nothing away", () => {
   const before = twoPanes();
   const moved = applyDrop(before, beginTabDrag("b", "t3", { x: 0, y: 0 }), { kind: "tabstrip", leafId: "a", index: -1 }, ctx());
   expect(moved).not.toBe(before);
@@ -50,7 +51,7 @@ test("a tab moved to another pane, or a pane floated, ends nothing", () => {
   expect(closedTerminals(before, floated)).toEqual([]);
 });
 
-test("a session another tab still shows lives on when one of the two closes", () => {
+test("a session another tab still shows is not taken away when one of the two closes", () => {
   const before = layoutOf(makeBranch("r", "row", [makeLeaf("a", [term("t1", "pty-1")]), makeLeaf("b", [term("t2", "pty-1")])], [0.5, 0.5]));
   expect(closedTerminals(before, closeLeaf(before, "a", "f1"))).toEqual([]);
 });
@@ -59,4 +60,31 @@ test("a tab bound to another session lets the first one go", () => {
   const before = twoPanes();
   expect(closedTerminals(before, replaceTabParams(before, "a", "t1", { terminalId: "pty-9", cwd: "/ws" }))).toEqual(["pty-1"]);
   expect(closedTerminals(before, before)).toEqual([]);
+});
+
+/** The runtime's list: `pty-1` running, `pty-2` exited, `pty-3` running. */
+const rows = (): Terminal[] =>
+  (
+    [
+      ["pty-1", "live"],
+      ["pty-2", "exited"],
+      ["pty-3", "live"],
+    ] as const
+  ).map(([id, status]) => ({ id, status }) as Terminal);
+
+test("closing ends no shell that runs: only one already ended is forgotten", () => {
+  const before = twoPanes();
+  const leaf = leafById(before, "a")!;
+  const all = closeTabs(before, "a", tabsClosedBy(leaf, "c1", "all"), "f1");
+  expect(endedTerminalsClosed(before, all, rows())).toEqual(["pty-2"]);
+  expect(endedTerminalsClosed(before, closeTab(before, "a", "t1", "f1"), rows())).toEqual([]);
+  expect(endedTerminalsClosed(before, closeLeaf(before, "b", "f1"), rows())).toEqual([]);
+  // An ended one a tab still shows stays, with its last screen and how it ended.
+  expect(endedTerminalsClosed(before, closeTab(before, "a", "c1", "f1"), rows())).toEqual([]);
+});
+
+test("before the list has been read, nothing is known to have ended, so nothing is forgotten", () => {
+  const before = twoPanes();
+  expect(endedTerminalsClosed(before, closeTab(before, "a", "t2", "f1"), null)).toEqual([]);
+  expect(endedTerminalsClosed(before, closeTab(before, "a", "t2", "f1"), rows())).toEqual(["pty-2"]);
 });

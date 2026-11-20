@@ -66,9 +66,10 @@ shellTest("the page reattaches to the shell the desktop has open, and leaving it
   await app.press("id:terminal-back");
   await app.waitFor("id:terminal-page", { state: "gone" });
 
-  // Still running: the desktop's tab keeps Stop. Its × is what ends it.
+  // Still running: the desktop's tab keeps Stop. Its 结束会话 is what ends it.
   await desk.waitFor("id:terminal-stop");
-  await desk.press("label:关闭标签页");
+  await desk.press("id:terminal-end");
+  await desk.press("id:terminal-end-confirm");
   await desk.waitFor("text:没有可接回的终端", { timeout: 10_000 });
 });
 

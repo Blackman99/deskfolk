@@ -2,8 +2,8 @@
  * The terminal on a phone, and in a window too narrow for the workbench: one page over the list
  * (`TerminalView.svelte`'s phone page). Opening it reattaches to a shell that is already there —
  * the one it showed last, else the newest one still running (`pageTerminal`) — and only when none
- * runs does it start one in the workspace, once. Leaving the page never ends a session: on the
- * desktop a tab is its shell, here the page is only a view of the shells the Mac holds.
+ * runs does it start one in the workspace, once. Leaving the page never ends a session, as closing
+ * a desktop tab doesn't: the page is only a view of the shells the Mac holds.
  *
  * The head has Back, the session's name and folder, and + for a new shell. The name opens the list
  * of sessions, to switch to another or end one: a finished shell at once, a running one after a

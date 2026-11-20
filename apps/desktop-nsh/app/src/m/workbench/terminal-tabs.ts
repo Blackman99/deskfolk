@@ -1,10 +1,12 @@
 /**
- * On the desktop a terminal tab is its shell: closing the tab ends the session, the way closing a
- * window of Terminal.app does. The layout is what says which sessions are still shown, so the
- * sessions to end are the ones a commit took out of it — whichever gesture did it (the tab's ×, a
- * pane closed, Close Others, a replace), and none for a tab only moved, floated, docked or pulled
- * into another pane.
+ * Which terminal sessions a change to the layout took off the screen. Taking one off ends nothing
+ * that runs: closing a tab, closing its pane, Close Others or a replace only puts the shell away,
+ * to be reattached later, and 结束会话 in the tab's head is what ends one. A session whose shell has
+ * already ended is different: nothing is left to carry on with, so once no tab shows it the
+ * workbench forgets it rather than leave a finished row under 接回. Moving, floating, docking and
+ * pulling a tab into another pane take nothing off the screen.
  */
+import type { Terminal } from "@real-bot/protocol";
 import type { WorkbenchLayout } from "./layout-types.ts";
 import { allLeaves } from "./layout-tree.ts";
 
@@ -20,9 +22,20 @@ export function terminalIdsIn(layout: WorkbenchLayout): Set<string> {
   return ids;
 }
 
-/** The sessions `before` showed and `after` no longer does: the ones to end. */
+/** The sessions `before` showed and `after` no longer does. */
 export function closedTerminals(before: WorkbenchLayout, after: WorkbenchLayout): string[] {
   if (before === after) return [];
   const kept = terminalIdsIn(after);
   return [...terminalIdsIn(before)].filter((id) => !kept.has(id));
+}
+
+/**
+ * Of the sessions a commit took off the screen, the ones to forget: those the runtime's list says
+ * have already ended. A running one runs on. Before the list has been read (`rows` null) nothing
+ * is known to have ended, so nothing is forgotten.
+ */
+export function endedTerminalsClosed(before: WorkbenchLayout, after: WorkbenchLayout, rows: readonly Terminal[] | null): string[] {
+  if (!rows) return [];
+  const ended = new Set(rows.filter((row) => row.status !== "live").map((row) => row.id));
+  return closedTerminals(before, after).filter((id) => ended.has(id));
 }

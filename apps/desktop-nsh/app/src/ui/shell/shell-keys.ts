@@ -50,9 +50,9 @@ export function bindShellKeys(s: ShellState): void {
   // Ctrl+W closes the tab in front of you on Windows and Linux, and puts the window away once none
   // is left, as 0.4.0's menu did there (`matchesCloseTab`); the Mac's Window menu has ⌘W. A
   // terminal keeps Ctrl+W (readline's delete a word back): with one in front of the focused pane
-  // the key goes on to it, since closing its tab would end the shell. Ctrl+Shift+W closes the tab
-  // from anywhere, as in Windows Terminal. The keymap has no focus scope, so "in front of the pane
-  // the keyboard is in" stands for "has the keyboard".
+  // the key goes on to it, so typing never puts the shell away. Ctrl+Shift+W closes the tab from
+  // anywhere, as in Windows Terminal; the shell runs on under 接回. The keymap has no focus scope,
+  // so "in front of the pane the keyboard is in" stands for "has the keyboard".
   if (platform.os === "windows" || platform.os === "linux") {
     bind("mod+w", () => {
       if (s.wide() && !s.workbench.terminalInFront()) s.workbench.runMenuCommand("pane-close-tab");
