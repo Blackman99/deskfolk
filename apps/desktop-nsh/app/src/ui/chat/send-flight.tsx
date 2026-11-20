@@ -69,6 +69,8 @@ const SENT_WAIT_MS = 600;
 const ARMED_MS = 6000;
 /** A row shown without its flight fades in over this. */
 const REVEAL_MS = 200;
+/** Past its landing, a flight that has not landed (no display frames: the window hidden right after the press) gives its row back. */
+const OVERDUE_MS = 1000;
 
 const HIDDEN: ViewStyle = { opacity: 0 };
 const REVEAL: ViewStyle = { opacity: 1, transitionProperty: "opacity", transitionDuration: REVEAL_MS, transitionTimingFunction: "ease-out" };
@@ -90,6 +92,8 @@ export type Flying = {
 
 type Armed = {
   text: string;
+  /** The newest line when it was armed: only a line after it is the one sent. */
+  after: string | null;
   words: Promise<{ x: number; y: number } | null>;
   sent: boolean;
   messageId: string | null;
@@ -112,6 +116,8 @@ function rectOf(measured: { bounds: { size: { width: number; height: number } };
  * One conversation's flights (one at a time). `frame` is the conversation (the stand-in's clip),
  * `list` the transcript (the bubble must sit whole inside it), `atLatest` whether the reader is at
  * the newest line, `session` the conversation shown: a switch gives up what is on its way.
+ * `newest` is the id of the conversation's newest line (ids are ULIDs, in the order they were made):
+ * a line older than the press never takes the flight, even saying the same and made anew meanwhile.
  * `nextFrame` is when the box has emptied and the list moved for it (the next display frame; a test
  * without a display brings its own).
  */
@@ -120,6 +126,7 @@ export function createSendFlight(deps: {
   list: () => ViewRef | null;
   atLatest: () => boolean;
   session: () => string | null;
+  newest?: () => string | null;
   nextFrame?: (fn: () => void) => void;
 }) {
   const nextFrame = deps.nextFrame ?? ((fn: () => void) => void requestAnimationFrame(() => fn()));
@@ -179,6 +186,11 @@ export function createSendFlight(deps: {
     const messageId = was.messageId;
     const row = was.row;
     const from = session;
+    // Frames may stop (the window hidden right after the press): the row is given back all the same.
+    later(() => {
+      if (flying()?.messageId === messageId) finish();
+      else if (hidden().has(messageId)) reveal(messageId);
+    }, LAND_MS + OVERDUE_MS);
     nextFrame(() => {
       void Promise.all([was.words, row.node.measure(), deps.frame()?.measure() ?? null, deps.list()?.measure() ?? null])
         .then(([words, bubble, frame, list]) => {
@@ -186,6 +198,7 @@ export function createSendFlight(deps: {
           const clip = rectOf(frame);
           const band = rectOf(list);
           const whole = to && band && to.height > 0 && to.y >= band.y - 1 && to.y + to.height <= band.y + band.height + 1;
+          if (!hidden().has(messageId)) return;
           if (session !== from || !words || !to || !clip || !whole || reduceMotion()) {
             reveal(messageId);
             return;
@@ -213,6 +226,7 @@ export function createSendFlight(deps: {
       if (!at || !alone || !words || platform.os === "web" || !deps.atLatest() || reduceMotion()) return () => {};
       const mine: Armed = {
         text: words,
+        after: deps.newest?.() ?? null,
         words: at.node
           .measure()
           .then((m) => {
@@ -245,6 +259,7 @@ export function createSendFlight(deps: {
       if (!armed) return false;
       if (armed.messageId === messageId) return true;
       if (armed.messageId || !mine || body.trim() !== armed.text) return false;
+      if (armed.after !== null && messageId <= armed.after) return false;
       armed.messageId = messageId;
       hidden.set(new Set([...hidden(), messageId]));
       return true;

@@ -124,7 +124,7 @@ export function ProjectChat(props: {
   /** A line of words you send flies from the box into the transcript (`send-flight`). */
   let stageNode: ViewRef | null = null;
   let transcriptNode: ViewRef | null = null;
-  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: state.sessionId });
+  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: state.sessionId, newest: lastLineId });
   effect(() => flight.switched(state.sessionId()));
   cleanup(() => flight.dispose());
 

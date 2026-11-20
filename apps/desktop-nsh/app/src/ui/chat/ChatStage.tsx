@@ -101,7 +101,7 @@ export function ChatStage(props: {
   /** A line of words you send flies from the box into the transcript (`send-flight`). */
   let stageNode: ViewRef | null = null;
   let transcriptNode: ViewRef | null = null;
-  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: ctx.sessionId });
+  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: ctx.sessionId, newest: ctx.lastMessageId });
   effect(() => flight.switched(ctx.sessionId()));
   cleanup(() => flight.dispose());
   const toBottom = () => {

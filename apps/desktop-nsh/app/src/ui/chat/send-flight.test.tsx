@@ -15,14 +15,15 @@ const BOX: Rect = { x: 307, y: 664, width: 700, height: 32 };
 const BUBBLE: Rect = { x: 676, y: 526, width: 376, height: 44 };
 const ghost = () => <View />;
 
-function flightOver(list: Rect = LIST, opts: { atLatest?: boolean } = {}) {
+function flightOver(list: Rect = LIST, opts: { atLatest?: boolean; newest?: string; frames?: boolean } = {}) {
   let session = "s1";
   const flight = createSendFlight({
     frame: () => at(STAGE),
     list: () => at(list),
     atLatest: () => opts.atLatest ?? true,
     session: () => session,
-    nextFrame: (fn) => setTimeout(fn, 0),
+    newest: () => opts.newest ?? null,
+    nextFrame: opts.frames === false ? () => {} : (fn) => setTimeout(fn, 0),
   });
   return { flight, switchTo: (id: string) => ((session = id), flight.switched(id)) };
 }
@@ -148,4 +149,24 @@ test("switching conversations gives up what is on its way, and lands what is fly
   other.switchTo("s2");
   expect(other.flight.flying()).toBe(null);
   expect(other.flight.hides("m1")).toBe(undefined);
+});
+
+test("an older line saying the same, made anew while the line is on its way, does not take the flight", () => {
+  const { flight } = flightOver(LIST, { newest: "01M7B" });
+  flight.arm({ node: at(BOX), inset: { x: 4, y: 6 } }, "ok", true);
+  expect(flight.claim("01M7A", "ok", true)).toBe(false);
+  expect(flight.claim("01M7B", "ok", true)).toBe(false);
+  expect(flight.hides("01M7A")).toBe(undefined);
+  expect(flight.claim("01M7C", "ok", true)).toBe(true);
+});
+
+test("with no display frames after take-off, the row is given back all the same", async () => {
+  const { flight } = flightOver(LIST, { frames: false });
+  const landed = flight.arm({ node: at(BOX), inset: { x: 4, y: 6 } }, "hi", true);
+  flight.claim("m1", "hi", true);
+  flight.placed("m1", at(BUBBLE), ghost);
+  landed(true);
+  expect(flight.hides("m1")?.opacity).toBe(0);
+  await until(() => flight.hides("m1")?.opacity !== 0, 3000);
+  expect(flight.flying()).toBe(null);
 });
