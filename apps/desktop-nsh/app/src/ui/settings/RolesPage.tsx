@@ -9,9 +9,10 @@
  * `roles-page-title`, and `RoutingTab`'s.
  */
 import type { PromptSummary } from "@real-bot/protocol";
-import { effect, signal, Text, untracked, View } from "nsh";
+import { cleanup, effect, signal, Text, untracked, View } from "nsh";
 import { copy, runtime } from "../../runtime";
 import { holdBack } from "../../m/chat/message-text-pages.ts";
+import { holdLevels } from "../../platform/page-levels";
 import { IconButton } from "../IconButton";
 import { RoutingTab, type RoutingTabHandle } from "./RoutingTab";
 
@@ -53,6 +54,10 @@ export function RolesPage(props: { host?: "pane" | "page"; onBack?: () => void }
     return untracked(() => holdBack(() => back()));
   });
 
+  // On the hosted phone page a call's page has a history entry of its own over the list page's: Back
+  // between them steps out of the call, and leaves the page only from the map.
+  cleanup(holdLevels({ name: "roles-call", depth: () => (page() && roles()?.inSection() ? 1 : 0), inModal: false, stepOut: () => void roles()?.backFromSection() }));
+
   return (
     <View testID="roles-page" class="flex-1 min-h-0 min-w-0 flex-col bg-pane">
       <If when={page()}>
@@ -69,6 +74,7 @@ export function RolesPage(props: { host?: "pane" | "page"; onBack?: () => void }
         loadFailed={failed()}
         openTab={() => runtime.openPromptSettings(null)}
         ownBack={!page()}
+        levels={page()}
         onReady={(handle) => roles.set(handle)}
       />
     </View>

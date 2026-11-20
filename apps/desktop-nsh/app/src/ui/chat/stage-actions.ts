@@ -12,6 +12,7 @@ import { canQuoteReply, draftWithQuoteMention, quotedBotName } from "../../m/cha
 import { queuedLine as queuedLineOf, type QueuedLine } from "../../m/chat/queued-line.ts";
 import type { VersionsShown } from "../../m/chat/transcript-stage.ts";
 import { showToast } from "../../m/toast.svelte.ts";
+import { stepIn } from "../../platform/page-route";
 import { copy, runtime } from "../../runtime";
 import { imageOrigin, type PressedPicture } from "./image-origin";
 import type { ImageOrigin } from "./MessageImageLightbox";
@@ -98,14 +99,20 @@ export function createStageActions(
 
   // --- a picture or a file opened over the app ---
   function openInlineFile(att: Attachment, messageId: string): void {
-    inlineFile.set({
-      sessionId: selected()?.id ?? null,
-      // A file the card only names has no row of its own; the workspace has the bytes.
-      attachment: att.id.startsWith("handoff:") ? null : att,
-      relpath: att.workspace_relpath,
-      messageId,
-    });
+    const open = () =>
+      inlineFile.set({
+        sessionId: selected()?.id ?? null,
+        // A file the card only names has no row of its own; the workspace has the bytes.
+        attachment: att.id.startsWith("handoff:") ? null : att,
+        relpath: att.workspace_relpath,
+        messageId,
+      });
+    // The menu it may come from goes first: on the hosted phone page the file's history entry is
+    // written before it shows, and written while the menu's own entry was the current one, the
+    // menu's closing would take it away with its own.
     closeMenu();
+    if (runtime.hosted) stepIn(open);
+    else open();
   }
 
   /**
@@ -114,8 +121,12 @@ export function createStageActions(
    */
   function openInlineImage(attachment: Attachment | null, relpath: string | null, from?: PressedPicture | null): void {
     void imageOrigin(from?.view).then((origin) => {
-      inlineImage.set({ sessionId: selected()?.id ?? null, attachment, relpath, origin, placeholder: from?.shown ?? null });
+      const open = () => inlineImage.set({ sessionId: selected()?.id ?? null, attachment, relpath, origin, placeholder: from?.shown ?? null });
+      // The menu first, as for a file (`openInlineFile`); then, on the hosted phone page, the
+      // picture's history entry before it shows.
       closeMenu();
+      if (runtime.hosted) stepIn(open);
+      else open();
     });
   }
 

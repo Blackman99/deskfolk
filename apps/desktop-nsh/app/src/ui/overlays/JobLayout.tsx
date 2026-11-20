@@ -16,10 +16,12 @@
  * page, with nothing left to put away, closes it.
  */
 import type { JSX } from "nsh";
-import { effect, keymap, signal, untracked, View } from "nsh";
+import { cleanup, effect, keymap, signal, untracked, View } from "nsh";
 import type { Attachment, Bot, BuiltinModelRole, Hold, Provider, SessionSummary, TaskDetail, TicketStatus, TicketWithArtifacts } from "@real-bot/protocol";
 import { tick } from "../../lib/reactive";
-import { copy } from "../../runtime";
+import { copy, runtime } from "../../runtime";
+import { holdLevels } from "../../platform/page-levels";
+import { stepIn } from "../../platform/page-route";
 import { holdBack } from "../../m/chat/message-text-pages.ts";
 import type { StopChoice } from "../../m/chat/stop-menu.ts";
 import type { MessengerApi } from "../../m/messenger-api.ts";
@@ -295,9 +297,19 @@ export function JobLayout(props: {
 
   /** A ticket picked on the rail, or put down. */
   function pickTicket(id: string | null): void {
-    job.selectedTicket = id;
-    specHeld.set(false);
-    inspectorExpanded.set(false);
+    const apply = () => {
+      job.selectedTicket = id;
+      specHeld.set(false);
+      inspectorExpanded.set(false);
+    };
+    if (id !== null) openSheet(apply);
+    else apply();
+  }
+
+  /** On the hosted phone page a sheet's history entry is written before the sheet comes up. */
+  function openSheet(apply: () => void): void {
+    if (runtime.hosted && host() === "page" && narrow()) stepIn(apply);
+    else apply();
   }
 
   /** A card on a lane: its ticket picked, and the trace slides to it. */
@@ -352,13 +364,16 @@ export function JobLayout(props: {
   });
 
   /** On a phone Back puts a sheet away (a step's, a ticket's) before it leaves the job. */
+  function putSheetAway(): void {
+    if (inspectorView() === "step") job.openStep = null;
+    else job.selectedTicket = null;
+  }
   effect(() => {
     if (host() !== "page" || !sheet()) return;
-    return holdBack(() => {
-      if (inspectorView() === "step") job.openStep = null;
-      else job.selectedTicket = null;
-    });
+    return holdBack(putSheetAway);
   });
+  // Narrow, the part on screen shows one sheet at a time (a step over the trace, a ticket over the rail): one level.
+  cleanup(holdLevels({ name: "job-sheet", depth: () => (host() === "page" && sheet() ? 1 : 0), inModal: false, stepOut: putSheetAway }));
 
   /** A message asking for its card brings the trace up, narrow; not remembered as your choice. */
   let seenFocus = props.focusToken ?? 0;
@@ -637,6 +652,7 @@ export function JobLayout(props: {
             onOpenArtifact={props.onOpenArtifact}
             onHandle={(handle) => (traceHandle = handle)}
             coverBox={coverBox}
+            openSheet={openSheet}
           />
         </View>
         <If when={boardOpen() && job.detail}>

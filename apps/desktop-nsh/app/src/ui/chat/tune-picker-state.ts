@@ -5,6 +5,8 @@
  * (`tune-picker.ts`) says what each level lists; this does not know models from accounts.
  */
 import { computed, signal } from "nsh";
+import { stepIn } from "../../platform/page-route";
+import { runtime } from "../../runtime";
 import type { TuneFocus, TuneLevel, TuneRow, TuneTree } from "../../m/chat/tune-picker";
 
 /** Pointing opens what is under a row after a moment, so a slanting path to the column beside it does not open every row it crosses. */
@@ -106,13 +108,21 @@ export function createTune(options: {
     clearTimeout(hoverTimer);
     active.set(level);
     if (opensMore(level, row.value)) {
-      sheetStep.set("forward");
-      openAt(level, row.value);
+      const deeper = () => {
+        sheetStep.set("forward");
+        openAt(level, row.value);
+      };
+      // On the hosted phone page the level's history entry is written before the sheet goes down into it.
+      if (runtime.hosted && options.phone()) stepIn(deeper);
+      else deeper();
       return;
     }
     focusAt(level, row.value);
     commit(level);
   }
+
+  /** Levels the phone's sheet is down below its first list; null while it is closed (or beside the columns). */
+  const sheetDepth = (): number | null => (open() && options.phone() ? Math.max(0, shown().length - 1) : null);
 
   /** The phone sheet's Back: one level up. */
   function sheetBack(): void {
@@ -205,7 +215,7 @@ export function createTune(options: {
   }
 
   return {
-    open, focus, depth, active, keyed, sheetStep, levels, shown, sheetLevel, sheetTitle, reserve,
+    open, focus, depth, active, keyed, sheetStep, sheetDepth, levels, shown, sheetLevel, sheetTitle, reserve,
     rowsOf, checkedOf, focusOf, opensMore, isLeaf, columnOf,
     openPicker, close, commit, press, sheetBack, hover, key, settleActive,
     stop: () => clearTimeout(hoverTimer),

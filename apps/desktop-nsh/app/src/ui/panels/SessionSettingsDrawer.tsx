@@ -12,7 +12,7 @@
  * text-selection drag from closing it) has no use here: the scrim's own press is a press.
  * `profilePane.backFromEditor()` is reported through `onProfilePane`.
  */
-import { Text, View, windowSize } from "nsh";
+import { cleanup, Text, View, windowSize } from "nsh";
 import { Dialog } from "nsh/base";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { backdropClick } from "../../m/click-outside";
@@ -25,6 +25,7 @@ import { shadow } from "../styles";
 import { GroupPane } from "./GroupPane";
 import { ProfilePane, type ProfilePaneApi } from "./ProfilePane";
 import { SettingsHead } from "./SettingsHead";
+import { holdLevels } from "../../platform/page-levels";
 import { revealOnEntry } from "../../platform/reveal-on-entry";
 import { WheelLayer } from "../../platform/wheel-layer";
 
@@ -164,7 +165,30 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
     else runtime.closeSessionSettings();
   };
 
+  /**
+   * Back on the phone's page: a danger confirm is dismissed, otherwise it reaches the drawer's own
+   * entry, so the drawer closes. A refusal here had NSH push the entry again with nothing pressed;
+   * the section page has its own entry, and `holdLevels` below steps out of it.
+   */
+  const cancel = () => {
+    if (!runtime.hosted) return escape();
+    if (props.danger.drawerHasDanger) props.danger.dismissDangerConfirm();
+    else runtime.closeSessionSettings();
+  };
+
   const Drawer = () => {
+    // A section page open on the phone is a level of its own (its press opens it inside `stepIn`).
+    // The profile's skill, routine and memory editors are not counted here.
+    cleanup(
+      holdLevels({
+        name: "session-settings",
+        depth: () => (props.narrow && props.paneMobileDetail ? 1 : 0),
+        inModal: true,
+        stepOut: () => {
+          if (!profilePane?.backFromDetail()) props.onPaneMobileDetailChange(false);
+        },
+      }),
+    );
     // On the phone's page, seen once its history entry is written (`revealOnEntry`).
     const shown = revealOnEntry();
     return (
@@ -174,7 +198,7 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
       animation="fade"
       closeOnEscape={false}
       closeOnBackdropPress={false}
-      onCancel={escape}
+      onCancel={cancel}
       class="bg-transparent"
       style={{ width: windowSize().width, height: windowSize().height }}
     >

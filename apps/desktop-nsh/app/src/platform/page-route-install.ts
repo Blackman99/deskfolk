@@ -4,12 +4,14 @@
  * `Main.tsx` seeds before the runtime starts and installs while it renders, hosted only.
  */
 import { cleanup, effect, signal, untracked, UrlScheme } from "nsh";
+import { provideSelectionGate } from "../m/chat/selection-gate";
 import { runtime } from "../runtime";
+import { followLevels } from "./page-levels";
 import { ENTRY_WAIT_MS, PageRoute, provideRoute, viewOf, withoutHash, type PageHistory } from "./page-route";
 
 type PageWindow = {
   location: { href: string; hash: string };
-  history: { back(): void; go(delta: number): void };
+  history: { back(): void; go(delta: number): void; state: { nsh?: number } | null };
   performance: { getEntriesByType(type: string): Array<{ type?: string }> };
 };
 
@@ -39,6 +41,10 @@ export const browserHistory: PageHistory = {
     };
     setTimeout(look, 0);
   },
+  later(then) {
+    setTimeout(then, 0);
+  },
+  dialogDepth: () => pageWindow().history.state?.nsh ?? 0,
   onAddress(listener) {
     const changes = UrlScheme.on("change", (change) => listener(change.url, change.reason));
     const opens = UrlScheme.on("open", (open) => listener(open.url, "open"));
@@ -59,8 +65,11 @@ export function pageRoute() {
     install(): void {
       route.armFloor();
       cleanup(browserHistory.onAddress((url, move) => route.moved(url, move)));
-      // Settings' pages each get an entry (`reportDialogLevels`, from `SettingsModal`).
+      // What has pages of its own reports them (`reportLevels`) and opens them by `stepIn`.
       cleanup(provideRoute(route));
+      followLevels();
+      // A conversation opened from a screen the address names alone gets its entry first.
+      cleanup(provideSelectionGate((id) => route.entryFirst(id)));
       // The address moved (a link, Back, Forward): what it names opens. Each reads only the address,
       // as on the Svelte page: read together with what is open, the two would fight over a click.
       effect(() => {

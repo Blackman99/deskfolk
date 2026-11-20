@@ -23,6 +23,7 @@ import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { INDEX_MIN_MARKS, messageIndexMarks, type IndexMark } from "../../m/chat/message-index.ts";
 import { USER_MEMBER } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
 import { narrowWindow } from "../Modal";
 import { imageOrigin, type PressedPicture } from "./image-origin";
 import { MessageImageLightbox, type ImageOrigin } from "./MessageImageLightbox";
@@ -125,7 +126,12 @@ export function ProjectChat(props: {
   const sideRoom = () => (showMessageIndex() && !narrowWindow() ? 40 : phone() ? 12 : 24);
 
   function openImage(attachment: Attachment, from?: PressedPicture): void {
-    void imageOrigin(from?.view).then((origin) => image.set({ sessionId: selected().id, attachment, origin, placeholder: from?.shown ?? null }));
+    void imageOrigin(from?.view).then((origin) => {
+      const open = () => image.set({ sessionId: selected().id, attachment, origin, placeholder: from?.shown ?? null });
+      // On the hosted phone page the picture's history entry is written before it shows.
+      if (runtime.hosted) stepIn(open);
+      else open();
+    });
   }
 
   return (

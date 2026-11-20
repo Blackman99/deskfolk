@@ -38,6 +38,7 @@ import { fileProgressPercent, formatFileProgress, type FileLoadOptions, type Fil
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { artifactKind, svgDisplayBlob } from "../../m/overlays/artifacts.ts";
 import { saveFile } from "../../m/save-file.ts";
+import { holdLevels } from "../../platform/page-levels";
 import { copy } from "../../runtime";
 import { onWheel, openWheelLayer } from "../../platform/wheel";
 import { Icon } from "../Icon";
@@ -348,6 +349,8 @@ export function MessageImageLightbox(props: {
 
   // The phone's Back closes this, the way ✕ does, instead of leaving the page under it.
   cleanup(holdBack(requestClose));
+  // On the hosted phone page the picture has an entry of its own (written before it showed), so Back reaches it here.
+  cleanup(holdLevels({ name: "image", depth: () => 1, inModal: false, stepOut: requestClose }));
   if (instant()) {
     grown.set(true);
   } else {

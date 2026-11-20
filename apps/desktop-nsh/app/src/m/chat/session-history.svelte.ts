@@ -15,6 +15,7 @@ import type { NotificationCapabilities } from "../notifications/types.ts";
 import type { KeptHistory, SessionView } from "../session-view.svelte.ts";
 import { collectUntilMessage } from "../sidebar/search-jump.ts";
 import { classifySession } from "../sidebar/session-groups.ts";
+import { selectionGate } from "./selection-gate.ts";
 import type { Snapshot } from "../snapshot.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 
@@ -89,6 +90,9 @@ export class SessionHistory {
    */
   private readIn = new Map<string, number>();
 
+  /** Selections asked for so far: one that waited for its entry goes on only if none came after it. */
+  private selections = 0;
+
   /**
    * The Bot↔Bot direct open in its popup over the conversation you are in, or null (ADR 0091). It is
    * read there and nowhere else: never the selection, a pane or a row of the list.
@@ -108,6 +112,14 @@ export class SessionHistory {
     // opens its popup instead; going anywhere else puts the popup away.
     const target = this.host.snapshot.sessions.find((session) => session.id === id);
     if (target && classifySession(target) === "bot-bot") return this.openBotDm(target, opts);
+    // The phone's page writes the conversation's history entry before it shows (`selection-gate.ts`).
+    // Of selections made while one waits, the last goes on.
+    const asked = ++this.selections;
+    const entry = selectionGate(id);
+    if (entry) {
+      await entry;
+      if (asked !== this.selections) return;
+    }
     this.botDmSessionId = null;
     const previousId = this.host.selectedId;
     const previousSpend = this.host.spendOpen;

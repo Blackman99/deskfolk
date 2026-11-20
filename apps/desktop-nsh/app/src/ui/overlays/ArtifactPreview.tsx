@@ -30,6 +30,7 @@ import { openWorkspacePath } from "../../m/overlays/open-workspace.ts";
 import { baseName } from "../../m/paths.ts";
 import { inDesktopShell } from "../../m/desktop-shell.ts";
 import { copy, runtime } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
 import { AnnotationSendBar } from "../annotations/AnnotationSendBar";
 import { BottomSheet } from "../BottomSheet";
 import { Icon } from "../Icon";
@@ -326,7 +327,10 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
    * starting from the chip's 256 px copy (`placeholder`) while its bytes come, as the Svelte does.
    */
   function enlarge(image: string, own: boolean, origin: ImageOrigin | null, shown: string | null): void {
-    enlarged.set({ from: relpath(), relpath: image, own, origin, shown: own ? shown : null, placeholder: own ? null : shown });
+    const open = () => enlarged.set({ from: relpath(), relpath: image, own, origin, shown: own ? shown : null, placeholder: own ? null : shown });
+    // On the hosted phone page the picture's history entry is written before it shows.
+    if (runtime.hosted) stepIn(open);
+    else open();
   }
 
   /** Opens this tree row with the system, or reveals it in Finder; a failure stays a quiet hint on the preview. */

@@ -20,7 +20,8 @@
  */
 import { effect, signal, untracked, Text, View, type JSX } from "nsh";
 import type { AgentStatus, AgentsStatusResponse, Bot, BotRunner, ClaudeCodeStatus } from "@real-bot/protocol";
-import { copy } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
+import { copy, runtime } from "../../runtime";
 import { agentCommand, agentKey, agentUnreachable } from "../../m/settings/agents.ts";
 import { claudeAccountLabel } from "../../m/settings/claude-agent.ts";
 import { UsageFeed, type UsageApi } from "../../m/usage/usage-feed.svelte.ts";
@@ -207,6 +208,11 @@ export function AgentsTab(props: {
   };
 
   function toggle(row: Row): void {
+    // Opening an agent's page on a phone is one level deeper: on the hosted page its entry is written first.
+    if (runtime.hosted && phone() && opened() === null) {
+      stepIn(() => opened.set(row.key));
+      return;
+    }
     opened.set(opened() === row.key ? null : row.key);
   }
 

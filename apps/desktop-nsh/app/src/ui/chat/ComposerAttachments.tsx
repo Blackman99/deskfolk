@@ -9,7 +9,8 @@ import { formatFileSize } from "../../m/chat/attachments.ts";
 import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import type { StagedAttachment, StagedWorkspacePath } from "../../m/session-view.svelte.ts";
 import type { MessengerApi } from "../../m/messenger-api.ts";
-import { copy } from "../../runtime";
+import { copy, runtime } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
 import { Icon } from "../Icon";
 import { ImageContextMenu } from "../ImageContextMenu";
 import { FileIcon } from "../overlays/FileIcon";
@@ -44,7 +45,10 @@ export function ComposerAttachments(props: {
 
   async function enlarge(id: string, node: ViewRef | null, thumbnail: string | null): Promise<void> {
     const origin = await originOf(node);
-    enlarged.set({ id, origin, placeholder: thumbnail });
+    const open = () => enlarged.set({ id, origin, placeholder: thumbnail });
+    // On the hosted phone page the picture's history entry is written before it shows.
+    if (runtime.hosted) stepIn(open);
+    else open();
   }
 
   function Thumb(thumb: { id: string; name: string; url: string; label: string }) {

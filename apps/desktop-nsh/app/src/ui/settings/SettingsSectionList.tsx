@@ -9,6 +9,8 @@
  */
 import { Text, View, type JSX } from "nsh";
 import { Icon } from "../Icon";
+import { stepIn } from "../../platform/page-route";
+import { runtime } from "../../runtime";
 
 export function SettingsSectionList<S extends string>(props: {
   sections: readonly S[];
@@ -19,6 +21,8 @@ export function SettingsSectionList<S extends string>(props: {
   onPick: (of: S) => void;
   testID?: string;
 }) {
+  // Opening a section is one level deeper, which the hosted phone page counts: its entry is written first.
+  const pick = (of: S) => (runtime.hosted ? stepIn(() => props.onPick(of)) : props.onPick(of));
   return (
     <View role="list" testID={props.testID} accessibilityLabel={props.ariaLabel} class="flex-col rounded-(--radius-lg) overflow-hidden bg-pane">
       <Each of={props.sections} key={(item) => item}>
@@ -27,7 +31,7 @@ export function SettingsSectionList<S extends string>(props: {
             role="button"
             testID={`section-${of()}`}
             accessibilityLabel={props.label(of())}
-            onPress={() => props.onPick(of())}
+            onPress={() => pick(of())}
             class="cursor-pointer select-none relative flex-row items-center gap-3 w-full min-h-16 px-[14px] py-[10px] bg-pane active:bg-row-hover"
           >
             <If when={index() > 0}>

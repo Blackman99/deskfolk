@@ -65,6 +65,10 @@ export interface PageHistory {
   whenAt(hash: string, then: () => void): void;
   /** Runs `then` once `ready()` holds (an address set lands a turn later), or after `ENTRY_WAIT_MS` without it. */
   whenThere(ready: () => boolean, then: () => void): void;
+  /** Runs `then` after the current turn, once what it changed has been reported. */
+  later(then: () => void): void;
+  /** How many of NSH's dialogs the current entry is under (`history.state.nsh`): 0 at a screen of the app's own. */
+  dialogDepth(): number;
   onAddress(listener: (url: string, move: AddressMove) => void): () => void;
 }
 
@@ -117,7 +121,7 @@ export function provideBackChain(next: BackChain): () => void {
 
 let live: PageRoute | null = null;
 
-/** The page's route hears how deep the dialogs are (`reportDialogLevels`); the returned function stops it. */
+/** The page's route hears what has pages of its own (`reportLevels`) and opens them (`stepIn`); the returned function stops it. */
 export function provideRoute(route: PageRoute): () => void {
   live = route;
   return () => {
@@ -125,14 +129,28 @@ export function provideRoute(route: PageRoute): () => void {
   };
 }
 
-/** How deep each dialog the address carries is, the bottom one first (`PageRoute.levels`). Nothing without a page (the desktop). */
-export function reportDialogLevels(layers: readonly number[]): void {
-  live?.levels(layers);
+/**
+ * A part of the page with pages of its own under one address, each with a history entry
+ * (`#l<n>`): settings' tab and section, the endpoint editor's pages, a conversation's settings'
+ * sections, an enlarged picture, a sheet's sub-list. `depth` is how many it has open now.
+ * `inModal`: they lie inside an NSH dialog, whose closing takes their entries away with its own;
+ * otherwise a page the app closes is gone back over. `stepOut` closes the deepest, as its ‹ does
+ * (the shell's `stepOutOfDialog` when none is given).
+ */
+export type LevelSource = { key: string; depth: number; inModal: boolean; stepOut?: () => void };
+
+/** The parts with pages of their own, bottom first (`PageRoute.levels`). Nothing without a page (the desktop). */
+export function reportLevels(sources: readonly LevelSource[]): void {
+  live?.levels(sources);
 }
 
-/** `PageRoute.entryFirst` on the page's route: null without a page (the desktop), or with nothing to wait for. */
-export function entryFirst(id: string): Promise<void> | null {
-  return live?.entryFirst(id) ?? null;
+/**
+ * Opens one page deeper (`apply`) after its history entry is written (`PageRoute.stepIn`), so the
+ * picture Chrome on Android keeps of the page under it is that page. At once without a page.
+ */
+export function stepIn(apply: () => void): void {
+  if (live) live.stepIn(apply);
+  else apply();
 }
 
 /** `PageRoute.afterEntry` on the page's route; false without a page (the desktop), where nothing waits. */
@@ -142,7 +160,16 @@ export function afterEntry(then: () => void): boolean {
   return true;
 }
 
-const total = (layers: readonly number[]) => layers.reduce((sum, n) => sum + n, 0);
+const total = (sources: readonly LevelSource[]) => sources.reduce((sum, s) => sum + s.depth, 0);
+
+/** Numbers as the dialogs that carry them, bottom first: what `levels` took before it had keys. */
+const asDialogs = (layers: readonly (number | LevelSource)[]): LevelSource[] =>
+  layers.map((layer, i) => (typeof layer === "number" ? { key: `dialog-${i}`, depth: layer, inModal: true } : layer));
+
+/** What a fallback of the route's did, for `phone-web-e2e` to count: each is a picture taken late. */
+function late(what: string): void {
+  console.info(`[page-route] ${what}`);
+}
 
 /** `url` without its fragment. */
 export function withoutHash(url: string): string {
@@ -191,8 +218,8 @@ export class PageRoute {
   private onFloor = false;
   /** How deep the page's entry is in the dialog the address carries (`LEVEL`), or will be once a move of ours lands. */
   private level = 0;
-  /** How deep each dialog was, as last reported (`levels`). */
-  private layers: readonly number[] = [];
+  /** The parts with pages of their own, as last reported (`levels`). */
+  private sources: readonly LevelSource[] = [];
   /** Moves of ours over the dialog's pages' entries on their way: their `change`s are not the person's. */
   private ownMoves = 0;
 
@@ -264,8 +291,10 @@ export class PageRoute {
     // A layer the address does not carry closes first; the entry Back left goes up again. Settings
     // is a dialog the address carries: Back reached its `onCancel` first, it stepped out of a tab's
     // page and stayed, and NSH has given its entry back already, at the address under it; the
-    // address goes onto that entry, as another would be one Back too many.
+    // address goes onto that entry, as another would be one Back too many. A layer with pages of
+    // its own (`levels`) never comes here: its entry is its own.
     if (move === "back" && this.chainOf()?.backMobileLayer()) {
+      if (!this.rt.settingsOpen) late("a layer with no entry of its own took Back; its screen's entry went up again");
       this.page.setUrl(this.address(), this.rt.settingsOpen ? "replace" : "push");
       return;
     }
@@ -274,22 +303,28 @@ export class PageRoute {
   }
 
   /**
-   * How deep each dialog the address carries is, the bottom one first: settings under its list (a
-   * tab, a section of it), then the endpoint editor over it under its first page (a connector's
-   * form, a model's page). A page opened (a press) gets an entry after the one showing;
-   * a page the app stepped out of itself (‹, ✕, Escape) is gone back over. A dialog that closed
-   * took its pages' entries with its own (NSH goes back over them), so nothing of ours moves.
+   * The parts with pages of their own (`LevelSource`), bottom first: settings under its list (a
+   * tab, a section of it), the endpoint editor over it under its first page, a conversation's
+   * settings' sections, an enlarged picture… (numbers: dialogs, as before keys). A page opened gets
+   * an entry after the one showing: under the press, by `stepIn`, before it shows; here, after it
+   * shows, only as a fallback. A page the app stepped out of itself (‹, ✕, Escape) is gone back
+   * over. A dialog that closed took its pages' entries with its own (NSH goes back over them), so
+   * nothing of ours moves for those.
    */
-  levels(next: readonly number[]): void {
-    let before = total(this.layers);
-    if (next.length < this.layers.length) {
-      before = total(this.layers.slice(0, next.length));
+  levels(reported: readonly (number | LevelSource)[]): void {
+    const next = asDialogs(reported);
+    const keys = new Set(next.map((s) => s.key));
+    const gone = this.sources.filter((s) => s.inModal && !keys.has(s.key));
+    let before = total(this.sources);
+    if (gone.length > 0) {
+      before -= total(gone);
       this.level = Math.min(this.level, before);
     }
-    this.layers = [...next];
+    this.sources = next;
     const now = total(next);
     // Only a page opened writes an entry: never what a Back stepped out of, which counts down.
     if (now > before && now > this.level) {
+      late(`a page opened before its entry was written (level ${now}): the one under it is pictured with it`);
       this.level = now;
       this.page.setUrl(`${this.address()}${LEVEL}${now}`, "push");
       return;
@@ -300,6 +335,37 @@ export class PageRoute {
       // One move at a time: one on its way goes on from where it lands (`toLevel`).
       if (this.ownMoves === 0) this.travel(delta);
     }
+  }
+
+  /**
+   * One page deeper, its entry first: `apply` opens it once the page is at that entry, so the
+   * frame the browser drew as it left the entry under it (Chrome on Android's picture of that
+   * entry, under a back swipe) is the page it was. `levels` then finds the entry there already. A
+   * press that opened nothing deeper after all (`apply` changed no depth) leaves no entry behind.
+   * A menu the press came from closes before this, not in `apply`: an entry written while an NSH
+   * dialog's own entry is the current one goes with that dialog when it closes.
+   */
+  stepIn(apply: () => void): void {
+    if (this.onFloor || this.ownMoves > 0) {
+      apply();
+      return;
+    }
+    const deeper = this.level + 1;
+    this.level = deeper;
+    this.page.setUrl(`${this.address()}${LEVEL}${deeper}`, "push");
+    this.page.whenThere(
+      () => levelOf(this.page.href()) === deeper,
+      () => {
+        apply();
+        this.page.later(() => {
+          const now = total(this.sources);
+          if (this.level === deeper && now < deeper && this.ownMoves === 0) {
+            this.level = now;
+            this.travel(now - deeper);
+          }
+        });
+      },
+    );
   }
 
   private travel(delta: number): void {
@@ -321,10 +387,14 @@ export class PageRoute {
       return;
     }
     // Back: out of as many pages as the entry is under the one showing, counted before the first
-    // step, as each step reports the levels again.
-    const steps = this.level - marker;
+    // step, as each step reports the levels again; the deepest part's first.
+    let steps = this.level - marker;
     this.level = marker;
-    for (let i = 0; i < steps; i++) this.chainOf()?.stepOutOfDialog?.();
+    for (const source of [...this.sources].reverse()) {
+      for (let i = 0; i < source.depth && steps > 0; i++, steps--) (source.stepOut ?? (() => this.chainOf()?.stepOutOfDialog?.()))();
+      if (steps === 0) break;
+    }
+    for (; steps > 0; steps--) this.chainOf()?.stepOutOfDialog?.();
   }
 
   private land(url: string): void {
@@ -394,25 +464,29 @@ export class PageRoute {
   }
 
   /**
-   * A conversation opened from the roster: its entry first, the conversation once the page is
-   * there. Chrome on Android pictures an entry as the page leaves it and slides the page off that
-   * picture under a back swipe. NSH writes the app's address a turn after the press, when the
-   * browser has drawn what the press opened already, so the roster's entry was pictured with the
-   * conversation over it and the swipe back showed the conversation under itself. Written before
-   * anything changes, the roster is what the browser drew last; `write` then finds the page there.
-   * Only from the roster as it stands (nothing open): what else opens keeps its own way. Null when
-   * there is nothing to wait for, the address naming the conversation already among it.
+   * A conversation opened from the roster or from another one (a row, a link, a notification): its
+   * entry first, the conversation once the page is there. Chrome on Android pictures an entry as
+   * the page leaves it and slides the page off that picture under a back swipe. NSH writes the
+   * app's address a turn after the press, when the browser has drawn what the press opened
+   * already, so the entry under was pictured with the conversation over it and the swipe back
+   * showed the conversation under itself. Written before anything changes, the screen it opens from
+   * is what the browser drew last; `write` then finds the page there. Only where `write` would push
+   * an entry of its own, from a screen the address names alone (no page, file or dialog over it: a
+   * dialog's closing in the same turn would take an entry pushed now away with its own). Null when
+   * there is nothing to wait for.
    */
   entryFirst(id: string): Promise<void> | null {
-    if (this.onFloor) return null;
+    if (this.onFloor || this.page.dialogDepth() > 0) return null;
     const view = viewOf(this.rt);
-    if (view.selectedId || view.previewRelpath || view.previewAttachmentId || view.overlay.kind !== "none") return null;
+    if (view.selectedId === id || view.previewRelpath || view.previewAttachmentId || view.overlay.kind !== "none") return null;
     const current = this.url();
-    const target = sessionUrl(current, { ...view, selectedId: id }, true);
+    const wanted = { ...view, selectedId: id };
+    const target = sessionUrl(current, wanted, true);
     if (!target) return null;
     const next = new URL(target, current);
     const there = () => sameQuery(new URL(withoutHash(this.page.href())), next);
     if (there()) return null;
+    if (planUrlNavigation({ target: next.search, stack: this.stack, step: routeStep(viewFromUrl(current, true), wanted) }) !== "push") return null;
     this.page.setUrl(next.href, "push");
     return new Promise((resolve) => this.page.whenThere(there, resolve));
   }
@@ -461,6 +535,8 @@ export class PageRoute {
       if (under) this.stack[this.stack.length - 1] = new URL(under, current).search;
     }
     const plan = planUrlNavigation({ target: next.search, stack: this.stack, step });
+    // Another address: the pages of the one it leaves stay behind it in history, not counted here.
+    this.level = 0;
     if (plan === "back") {
       this.selfBack = true;
       // The address is the target already, so a snapshot that comes before Back lands reads it.

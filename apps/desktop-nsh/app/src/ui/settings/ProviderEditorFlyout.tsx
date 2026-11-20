@@ -18,6 +18,7 @@
  */
 import { computed, Text, View, type JSX } from "nsh";
 import type { ConnectorId, ModelSpeed } from "@real-bot/protocol";
+import { stepIn } from "../../platform/page-route";
 import { copy, runtime } from "../../runtime";
 import { providerHost, type ProviderDraft, type ProviderEditorState } from "../../m/settings/provider-form.ts";
 import { Modal, narrowWindow } from "../Modal";
@@ -103,7 +104,7 @@ export function ProviderEditorFlyout(props: {
         maxHeight={0.88}
         pageOnPhone
         // On the phone's page a connector's form and a model's page have history entries of their
-        // own (`SettingsModal`'s `onPageLevels`), so Back reaches the dialog only on its first page,
+        // own (`SettingsModal`'s `holdLevels`), so Back reaches the dialog only on its first page,
         // and closes it: a dialog that took Back and stayed had NSH push its entry again unpressed.
         stepsBack={narrowWindow() && !runtime.hosted}
         // There, when NSH closes it itself (Back on its own entry, a swipe), it closes from any page:
@@ -146,7 +147,7 @@ export function ProviderEditorFlyout(props: {
           </View>
         </If>
         <If when={editor()?.picking} else={<>{() => form()}</>}>
-          <ConnectorPicker onPick={props.pickConnector} />
+          <ConnectorPicker onPick={(id) => (runtime.hosted ? stepIn(() => props.pickConnector(id)) : props.pickConnector(id))} />
         </If>
       </Modal>
     </If>

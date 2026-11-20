@@ -113,6 +113,8 @@ export function TraceView(props: {
    * Where it covers the board, the card it is about slides out from under it once.
    */
   coverBox?: () => PaneBox | null;
+  /** Opens a step's sheet: on the hosted phone page after its history entry is written; at once elsewhere. */
+  openSheet?: (apply: () => void) => void;
 }) {
   const job = props.job;
   const t = () => copy();
@@ -562,7 +564,12 @@ export function TraceView(props: {
                         open={job.openStep === placement().group.id}
                         lit={stepsLit() && placement().group.anomalous}
                         dim={(stepsLit() && !placement().group.anomalous) || lighting() !== null || job.selectedTicket !== null}
-                        onToggle={() => (job.openStep = job.openStep === placement().group.id ? null : placement().group.id)}
+                        onToggle={() => {
+                          const id = placement().group.id;
+                          if (job.openStep === id) job.openStep = null;
+                          else if (props.openSheet) props.openSheet(() => (job.openStep = id));
+                          else job.openStep = id;
+                        }}
                       />
                     </View>
                   )}

@@ -39,12 +39,15 @@ import { PlaybookStepDetail } from "./PlaybookStepDetail";
 import { PlaybookTurnPart } from "./PlaybookTurnPart";
 import { PromptEditorPage } from "./PromptEditorPage";
 import { RoutingNode } from "./RoutingNode";
+import { stepIn } from "../../platform/page-route";
 import { widthAtMost } from "../../platform/viewport";
 import { settled } from "../workbench/drag-settle";
 
 export type RoutingTabHandle = {
   sectionTitle: () => string | null;
   deep: () => boolean;
+  /** A call's page is up in place of the map (narrow); not the prompt editor, which is a dialog of its own. */
+  inSection: () => boolean;
   backFromSection: () => boolean;
   backFromEditor: () => boolean;
 };
@@ -58,6 +61,8 @@ export function RoutingTab(props: {
   openTab: (tab: "prompts") => void;
   notices?: JSX.Element;
   ownBack?: boolean;
+  /** The Roles page on the hosted phone page counts a call's page as a level of its own (`RolesPage`). */
+  levels?: boolean;
   onReady?: (handle: RoutingTabHandle) => void;
 }) {
   const t = () => copy();
@@ -184,15 +189,25 @@ export function RoutingTab(props: {
     });
   });
 
+  /** Where a call's page counts as a level, its history entry is written before the page replaces the map. */
+  function enter(apply: () => void): void {
+    if (runtime.hosted && props.levels && narrow()) stepIn(apply);
+    else apply();
+  }
+
   function startDraft(step: CustomStep): void {
-    draft.set(step);
-    selected.set(step.id as PlaybookNodeId);
-    historyOf.set(null);
-    toTop(detailScroll);
-    if (narrow()) {
-      opened.set(true);
-      toTop(scroller);
-    }
+    const apply = () => {
+      draft.set(step);
+      selected.set(step.id as PlaybookNodeId);
+      historyOf.set(null);
+      toTop(detailScroll);
+      if (narrow()) {
+        opened.set(true);
+        toTop(scroller);
+      }
+    };
+    if (narrow()) enter(apply);
+    else apply();
   }
 
   /** The step a call belongs to in this engine; a step of your own's call belongs to its first model step. */
@@ -203,15 +218,19 @@ export function RoutingTab(props: {
   const order = () => playbookOrder(own());
 
   function pick(node: PlaybookNodeId): void {
-    selected.set(node);
-    historyOf.set(null);
     if (!narrow()) {
+      selected.set(node);
+      historyOf.set(null);
       // Another call's page starts at its top; the map stays where it was.
       toTop(detailScroll);
       return;
     }
-    opened.set(true);
-    toTop(scroller);
+    enter(() => {
+      selected.set(node);
+      historyOf.set(null);
+      opened.set(true);
+      toTop(scroller);
+    });
   }
 
   // On a wide window ↑ and ↓ walk the map's calls in its order, picking each as it goes.
@@ -243,6 +262,7 @@ export function RoutingTab(props: {
     sectionTitle: () => (narrow() && opened() ? nameOf(selected()) : null),
     /** A call's page on a phone, or the prompt editor, is open: Back has a step to take in here first. */
     deep: () => open() !== null || (narrow() && opened()),
+    inSection: () => narrow() && opened(),
     /** Back on a phone from a call's page goes to the map. */
     backFromSection: () => {
       if (!narrow() || !opened()) return false;
@@ -280,9 +300,13 @@ export function RoutingTab(props: {
       if (target.playbook) show(target.playbook);
       const node = target.role ? nodeOfRole(target.role) : null;
       if (node) {
-        selected.set(node);
-        historyOf.set(null);
-        if (narrow()) opened.set(true);
+        const apply = () => {
+          selected.set(node);
+          historyOf.set(null);
+          if (narrow()) opened.set(true);
+        };
+        if (narrow()) enter(apply);
+        else apply();
       }
     });
   });

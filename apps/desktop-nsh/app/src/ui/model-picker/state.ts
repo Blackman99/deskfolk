@@ -4,7 +4,8 @@
  * sheet's level. The picking logic itself is `src/m/model-picker.ts`'s.
  */
 import { computed, effect, signal } from "nsh";
-import { copy } from "../../runtime";
+import { copy, runtime } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
 import {
   findPicked,
   searchPicker,
@@ -185,13 +186,22 @@ export function createPicker(o: PickerOptions) {
     openPicker, close, activate, arrow, enter, sheetBack, escape,
     sheetInto(source: PickerSource): void {
       if (source.disabled) return;
-      sheetSource.set(source.key);
-      sheetGroup.set(null);
-      query.set("");
+      const apply = () => {
+        sheetSource.set(source.key);
+        sheetGroup.set(null);
+        query.set("");
+      };
+      // On the hosted phone page a level deeper has its history entry written before it shows.
+      if (runtime.hosted && phone()) stepIn(apply);
+      else apply();
     },
     sheetIntoGroup(group: PickerGroup): void {
-      sheetGroup.set(group.key);
-      query.set("");
+      const apply = () => {
+        sheetGroup.set(group.key);
+        query.set("");
+      };
+      if (runtime.hosted && phone()) stepIn(apply);
+      else apply();
     },
   };
 }

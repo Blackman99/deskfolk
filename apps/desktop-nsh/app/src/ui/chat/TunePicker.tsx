@@ -22,12 +22,13 @@
  * land outside its columns and its trigger. Not in a modal (the Bot↔Bot direct's): a frame measured
  * there is the dialog's, not the window's, and a press on a row would read as outside.
  */
-import { Scroll, Text, View, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
+import { Scroll, Text, View, cleanup, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
 import { Popover } from "nsh/base";
 import { frameOf, onPressOutside } from "../../platform/press";
 import type { ModelSource } from "../../m/model-source";
 import type { TuneRow, TuneTree } from "../../m/chat/tune-picker";
 import { copy } from "../../runtime";
+import { holdLevels } from "../../platform/page-levels";
 import { BottomSheet, SheetItem } from "../BottomSheet";
 import { Icon } from "../Icon";
 import { ModelSourceMark } from "../ModelSourceMark";
@@ -56,6 +57,8 @@ export function TunePicker(props: {
 }) {
   const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle, onOpen: () => props.onOpen?.() });
   const phone = phoneSheet;
+  // The phone sheet's levels have history entries of their own on the hosted page; Back there steps up one.
+  cleanup(holdLevels({ name: "tune-sheet", depth: () => tune.sheetDepth(), inModal: true, stepOut: () => tune.sheetBack() }));
   const frames = signal<Record<string, ColumnFrame | undefined>>({});
   /** Where the popover went and the room it has there (`onPosition`); the room is null until it says. */
   const side = signal<"top" | "bottom">("top");

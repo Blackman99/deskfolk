@@ -10,9 +10,10 @@
  * The data and the searching are `src/m/model-picker.ts`'s. `bind:value` is `value` + `onChange`
  * (called on a change only); the copy is `copy()`'s, not a `t` prop.
  */
-import { Scroll, Text, View, effect, keymap, signal, type ScrollRef } from "nsh";
+import { Scroll, Text, View, cleanup, effect, keymap, signal, type ScrollRef } from "nsh";
 import { Popover, Sheet } from "nsh/base";
-import { copy } from "../runtime";
+import { copy, runtime } from "../runtime";
+import { holdLevels } from "../platform/page-levels";
 import { holdBack } from "../m/chat/message-text-pages";
 import { sourceCount, type PickerData, type PickerRow } from "../m/model-picker";
 import { Icon } from "./Icon";
@@ -99,6 +100,9 @@ export function ModelPicker(props: {
     if (!picker.open() || !picker.phone()) return;
     return holdBack(() => picker.sheetBack());
   });
+
+  // The sheet's levels (a source, a group of its models) have history entries of their own on the hosted phone page.
+  cleanup(holdLevels({ name: "model-sheet", depth: () => (picker.open() && picker.phone() ? picker.sheetDepth() : null), inModal: true, stepOut: () => picker.sheetBack() }));
 
   const label = () => props.ariaLabel ?? props.title;
   const trigger = (
@@ -238,7 +242,8 @@ export function ModelPicker(props: {
           side="bottom"
           onOpenChange={(e) => {
             if (!e.open) {
-              if (e.reason === "cancel") picker.escape();
+              // On the hosted phone page Back between levels is the route's (`holdLevels`); a cancel that reaches the sheet closes it.
+              if (e.reason === "cancel" && !runtime.hosted) picker.escape();
               else picker.close();
             }
           }}

@@ -36,6 +36,7 @@ import { modelSelectValue } from "../../m/settings/provider-form";
 import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
+import { stepIn } from "../../platform/page-route";
 import { BotActionsCard } from "./BotActionsCard";
 import { BotTabNav, type BotTab } from "./BotTabNav";
 import { MemoryCard, type MemoryCardApi } from "./MemoryCard";
@@ -105,6 +106,12 @@ export function ProfilePane(props: {
   const snapshot = () => runtime.snapshot;
   const setFailed = (failed: boolean) => props.onProfileFailedChange(failed);
   const setMobileDetail = (open: boolean) => props.onMobileDetailChange?.(open);
+  // On the phone's page a section is a level with a history entry of its own (the drawer counts it),
+  // so the press that opens it writes the entry first.
+  const openSectionPage = () => {
+    if (runtime.hosted && narrowWindow()) stepIn(() => setMobileDetail(true));
+    else setMobileDetail(true);
+  };
 
   const listedModels = computed(() => endpointModelPicker(snapshot().providers, t()));
   /**
@@ -369,7 +376,7 @@ export function ProfilePane(props: {
     if (runtime.profileRoutineId)
       untracked(() => {
         activeTab.set("routines");
-        if (narrowWindow()) setMobileDetail(true);
+        if (narrowWindow()) openSectionPage();
       });
   });
 
@@ -380,7 +387,7 @@ export function ProfilePane(props: {
 
   function switchTab(tab: BotTab): void {
     // On a phone the row is how you enter the section, so tapping the current one still opens it.
-    if (narrowWindow()) setMobileDetail(true);
+    if (narrowWindow()) openSectionPage();
     if (activeTab() === tab) return;
     flushProfileSave();
     activeTab.set(tab);

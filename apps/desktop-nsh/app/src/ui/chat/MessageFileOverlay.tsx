@@ -14,6 +14,7 @@ import { targetFor } from "../../m/annotations/model.ts";
 import { isPlaceholderAttachment } from "../../m/overlays/artifacts.ts";
 import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { holdFullscreenPreview } from "../../m/overlays/fullscreen-preview.ts";
+import { holdLevels } from "../../platform/page-levels";
 import { copy, runtime } from "../../runtime";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
@@ -65,6 +66,9 @@ export function MessageFileOverlay(props: {
     else props.onClose();
   }
   release = holdFullscreenPreview(close);
+  // On the hosted phone page the file has an entry of its own (written before it showed), so Back reaches it here.
+  // An unsaved edit still asks first through `close` and may keep the file open.
+  cleanup(holdLevels({ name: "file", depth: () => 1, inModal: false, stepOut: close }));
   cleanup(() => {
     release?.();
     release = null;

@@ -18,6 +18,7 @@ import { copy, runtime } from "../../runtime";
 import { AvatarPicture } from "../AvatarPicture";
 import { Icon, type IconName } from "../Icon";
 import { narrowWindow } from "../Modal";
+import { stepIn } from "../../platform/page-route";
 import { Select } from "../Select";
 import { cssColor } from "../styles";
 import { tip } from "../tip";
@@ -165,7 +166,9 @@ export function GroupPane(props: {
 
   function openSection(section: GroupSection): void {
     activeSection.set(section);
-    props.onMobileDetailChange?.(true);
+    // On the phone's page the section is a level with an entry of its own, written first.
+    if (runtime.hosted && phone()) stepIn(() => props.onMobileDetailChange?.(true));
+    else props.onMobileDetailChange?.(true);
   }
 
   /** The shell's Back button and the browser's both come through here first. */

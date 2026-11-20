@@ -590,6 +590,9 @@ export function createShellState() {
         // page on a phone, or it closes. Stepping here as well went two levels for one Back.
         return true;
       case "session-settings":
+        // The phone's page: its section has an entry of its own (`SessionSettingsDrawer`'s
+        // `holdLevels`), which Back leaves for the route to step out of; here the address closes it.
+        if (runtime.hosted) return false;
         if (profilePane?.backFromEditor()) return true;
         if (paneMobileDetail()) {
           paneMobileDetail.set(false);

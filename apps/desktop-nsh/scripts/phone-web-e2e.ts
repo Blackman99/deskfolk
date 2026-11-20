@@ -40,6 +40,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
+import { deflateSync } from "node:zlib";
 import { join, resolve } from "node:path";
 // Playwright's types straight from `playwright-core` in pnpm's store: TypeScript does not follow
 // the package's `@playwright/test` symlink for a relative import, so its `export * from
@@ -69,7 +70,12 @@ const RELAY_ID = "phone-e2e";
 
 const work = mkdtempSync(join(tmpdir(), "deskfolk-phone-e2e-"));
 const stops: Array<() => Promise<void> | void> = [];
-const step = (line: string) => console.log(`· ${line}`);
+/** The step that ran last, for what the page says to be placed after it. */
+let lastStep = "(before the first step)";
+const step = (line: string) => {
+  lastStep = line;
+  console.log(`· ${line}`);
+};
 
 function run(args: string[], cwd: string, env: Record<string, string | undefined> = process.env): void {
   const done = spawnSync(args[0]!, args.slice(1), { cwd, env, stdio: "inherit" });
@@ -228,6 +234,35 @@ async function field(page: Page, testID: string) {
 }
 
 const testid = (page: Page, testID: string) => page.locator(`[data-testid="${testID}"]`);
+
+/** A PNG of one colour, `width` × `height`: a picture for a message to show. */
+function solidPng(width: number, height: number): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (bytes: Buffer) => {
+    let c = 0xffffffff;
+    for (const b of bytes) c = crcTable[(c ^ b) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([length, body, sum]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [74, 168, 136]).flat())]);
+  const pixels = deflateSync(Buffer.concat(Array.from({ length: height }, () => row)));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", pixels), chunk("IEND", Buffer.alloc(0))]);
+}
 /** Whether `text` is on screen inside `testID` (the roster's previews repeat a conversation's lines, so not the whole page). */
 const shownIn = async (page: Page, testID: string, text: string) =>
   (await testid(page, testID).allInnerTexts().catch(() => [] as string[])).some((inner) => inner.includes(text));
@@ -411,8 +446,12 @@ try {
   page.on("request", (r) => {
     if (LOCAL_ONLY_CHUNKS.some((id) => new URL(r.url()).pathname.includes(id.replace(/\.js$/, ""))) || new URL(r.url()).pathname.startsWith("/__local-api")) localOnly.push(r.url());
   });
+  // The route's fallbacks (`page-route.ts` `late`): each is an entry pictured with the page over it,
+  // the picture a phone's back swipe shows. Counted over the run, after the step that ran last.
+  const routeLate: string[] = [];
   page.on("console", (m) => {
     problems.push(`[${m.type()}] ${m.text()}`);
+    if (m.text().startsWith("[page-route] ")) routeLate.push(`${m.text().slice(13)} (after: ${lastStep.slice(0, 90)})`);
   });
   page.on("pageerror", (e) => problems.push(`[pageerror] ${e.message}`));
   // Every address the page goes to, the app's own included: each must pass the edge's query rule,
@@ -667,6 +706,10 @@ try {
   // A folder longer than the phone, for the workspace's list to scroll once it is opened.
   mkdirSync(join(workspace, "many"), { recursive: true });
   for (let i = 1; i <= 60; i += 1) writeFileSync(join(workspace, "many", `item-${String(i).padStart(2, "0")}.md`), `# ${i}\n`);
+  // The picture's message comes first, so it is in the history the conversation reads when it is
+  // opened again after the file's step (a line that arrives live may sit outside a headless list).
+  writeFileSync(join(workspace, "out", "pic.png"), solidPng(240, 160));
+  await mac.api("POST", `/v1/sessions/${mac.writerDirect}/messages`, { body: "看这张图 [pic.png](out/pic.png)" });
   await mac.api("POST",`/v1/sessions/${mac.writerDirect}/messages`, { body: "看这个文件 [report.md](out/report.md)" });
   await until("the file's link on the phone", 20_000, () => shownIn(page, "conversation", "看这个文件"));
   await entryBeforeShown("the file", "artifact-preview", async () => {
@@ -708,6 +751,23 @@ try {
     await testid(page, "conversation").waitFor({ timeout: 10_000 });
   }
   step(`a file pressed in a message covers the conversation; Back puts the file away and the conversation stays${walked ? ", and the next Back (nothing pressed between) the conversation, the page staying" : ""}`);
+
+  // A picture in a message enlarges over the conversation with an entry of its own, written before
+  // it shows (`holdLevels`, `stepIn`): Back puts the picture away and the conversation stays with
+  // nothing written; the next Back is the conversation's, and the page stays.
+  await until("the picture in the conversation", 20_000, async () => (await page.locator('[data-testid="conversation"] [data-testid="md-artifact-image"]:visible').count()) > 0);
+  await entryBeforeShown("the enlarged picture", "msg-image-frame", async () => {
+    await page.locator('[data-testid="conversation"] [data-testid="md-artifact-image"]:visible').last().tap();
+    await testid(page, "msg-image-lightbox").waitFor({ timeout: 10_000 });
+    await until("the picture's entry", 10_000, async () => /#l1$/.test(page.url()));
+  });
+  const walkedPicture = await backTwice("the enlarged picture", `${absent("msg-image-lightbox")} && ${present("conversation")}`, `${absent("conversation")} && ${present(`session-${mac.writerDirect}`)}`);
+  if (walkedPicture) {
+    if (!page.url().startsWith(origin)) throw new Error(`Back after Back from an enlarged picture left the page for ${page.url()}`);
+    await row.click();
+    await testid(page, "conversation").waitFor({ timeout: 10_000 });
+  }
+  step(`a picture in a message enlarges with an entry of its own: Back puts it away and the conversation stays${walkedPicture ? ", and the next Back the conversation, the page staying" : ""}`);
 
   await testid(page, "top-back").click();
   await until("the conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
@@ -1565,6 +1625,9 @@ try {
   await Bun.sleep(1000);
   await page.screenshot({ path: shot("4-tablet") });
   step(`a tablet's width: the roster's column (${Math.round(column)} wide) beside the conversation, no Back, no workbench`);
+
+  if (routeLate.length) throw new Error(`the route wrote ${routeLate.length} entr${routeLate.length === 1 ? "y" : "ies"} after its page showed (a back swipe would show that page under itself):\n  ${routeLate.join("\n  ")}`);
+  step("every page that opened had its history entry written first: the route never fell back");
 
   const refused = problems.filter((line) => /CSP violation|Content Security Policy|Refused to (?:load|execute|compile|connect|apply|frame|create)|blob fetch in /i.test(line));
   if (refused.length) throw new Error(`the page broke the production policy:\n  ${refused.slice(0, 20).join("\n  ")}`);

@@ -19,6 +19,7 @@ import { IconButton } from "./IconButton";
 import { reduceMotion } from "./interface/motion";
 import { shadow } from "./styles";
 import { WheelLayer } from "../platform/wheel-layer";
+import { runtime } from "../runtime";
 
 type BottomSheetProps = {
   /** The heading, and the sheet's name for a screen reader. None: just the grip. */
@@ -77,12 +78,13 @@ function SlidingSheet(props: { p: BottomSheetProps }) {
       open
       animation="none"
       accessibilityLabel={p.title ?? p.label ?? undefined}
-      closeOnEscape={!p.onBack}
+      closeOnEscape={runtime.hosted || !p.onBack}
       closeOnBackdropPress={false}
       onOpen={show}
       // One level up, a turn later: the dialog reads `closeOnEscape` as soon as this returns.
+      // On the hosted phone page Back between levels is the route's (`holdLevels`), so a cancel here closes.
       onCancel={() => {
-        if (p.onBack) queueMicrotask(() => p.onBack?.());
+        if (p.onBack && !runtime.hosted) queueMicrotask(() => p.onBack?.());
       }}
       onOpenChange={(e) => {
         if (!e.open) p.onClose();
@@ -118,7 +120,7 @@ function LiftingSheet(props: { p: BottomSheetProps }) {
       closeOnSwipe
       onOpenChange={(e) => {
         if (e.open) return;
-        if (e.reason === "cancel") (p.onBack ?? p.onClose)();
+        if (e.reason === "cancel" && !runtime.hosted) (p.onBack ?? p.onClose)();
         else p.onClose();
       }}
       backdropClass="bg-modal-backdrop"

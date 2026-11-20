@@ -10,7 +10,7 @@
  * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up;
  * in a narrow window, below the list, Escape (the dialog's `onCancel`) and ✕ step out one level
  * instead, as ‹ does. On the phone's page each level has a history entry of its own, written under
- * the press that opens it (`onPageLevels`, `platform/page-route.ts`): the browser's and the phone's
+ * the press that opens it (`holdLevels`, `platform/page-levels.ts`): the browser's and the phone's
  * Back step between those, and one that reaches the dialog closes it. Where the shell has its
  * bottom bar (`mobileNavigation`), the list is a destination of that bar: no head, the bar under it
  * (the shell's own is under the dialog, so this one is drawn in it), and no fade in or out.
@@ -32,7 +32,7 @@
  * field is `Input`'s masked text.
  */
 import type { Lesson, PromptSummary } from "@real-bot/protocol";
-import { effect, Scroll, signal, Text, untracked, View, windowSize, type JSX } from "nsh";
+import { cleanup, effect, Scroll, signal, Text, untracked, View, windowSize, type JSX } from "nsh";
 import { Dialog, Input } from "nsh/base";
 import { copy, runtime } from "../../runtime";
 import type { CredentialOperation } from "../../m/api.ts";
@@ -62,6 +62,8 @@ import { ProvidersTab } from "./ProvidersTab";
 import { PromptsSettings, type PromptsSettingsApi } from "./PromptsSettings";
 import { RemoteTab } from "./RemoteTab";
 import { SettingsNav, type SettingsTab } from "./SettingsNav";
+import { holdLevels } from "../../platform/page-levels";
+import { stepIn } from "../../platform/page-route";
 import { revealOnEntry } from "../../platform/reveal-on-entry";
 import { widthAtMost } from "../../platform/viewport";
 import { WheelLayer } from "../../platform/wheel-layer";
@@ -71,7 +73,7 @@ export type SettingsModalHandle = {
   backFromProviderEditor: () => void;
   /** Steps out of the deepest thing open on a phone; true when it did, false when settings should close. */
   backWithinSettings: () => boolean;
-  /** Out of the deepest of the levels `onPageLevels` counts; never closes settings or the endpoint editor. */
+  /** Out of the deepest of the levels `pageLevels` counts; never closes settings or the endpoint editor. */
   stepOutOfSettings: () => void;
 };
 
@@ -98,12 +100,6 @@ export function SettingsModal(props: {
   closeSettings: () => void;
   workbench?: boolean;
   onHandle?: (handle: SettingsModalHandle) => void;
-  /**
-   * On a phone, how many levels deep settings is under its list, then the endpoint editor under its
-   * first page when it is open (`[]` while settings is closed): the phone's page gives each level an
-   * entry of its own (`reportDialogLevels`).
-   */
-  onPageLevels?: (layers: number[]) => void;
   /** The shell's bottom bar, where it shows one under settings' list (a phone). */
   mobileNavigation?: { active: Destination; updateAvailable?: boolean; onNavigate: (destination: Destination) => void } | null;
 }) {
@@ -269,10 +265,11 @@ export function SettingsModal(props: {
     const form = editor.target === "add" && !editor.picking ? 1 : 0;
     return [below, form + (providerEditorController.providerDetailModel ? 1 : 0)];
   }
-  effect(() => {
-    const layers = pageLevels();
-    untracked(() => props.onPageLevels?.(layers));
-  });
+  // On the phone's page each level has an entry of its own (`platform/page-levels.ts`): settings'
+  // under its list, then the endpoint editor's over it. Each dialog's closing takes its own away.
+  const layerOf = (at: number) => () => pageLevels()[at] ?? null;
+  cleanup(holdLevels({ name: "settings", depth: layerOf(0), inModal: true }));
+  cleanup(holdLevels({ name: "provider-editor", depth: layerOf(1), inModal: true }));
 
   function stepOutOfSettings(): void {
     if (providerEditor()) {
@@ -305,6 +302,14 @@ export function SettingsModal(props: {
   }
 
   function openSettingsTab(tab: SettingsTab): void {
+    // From the list into a tab's page is one level deeper: on the hosted page its entry is written first.
+    if (runtime.hosted && phone() && !mobileDetail()) {
+      stepIn(() => {
+        activeTab.set(tab);
+        setMobileDetail(true);
+      });
+      return;
+    }
     activeTab.set(tab);
     setMobileDetail(phone());
   }
@@ -654,7 +659,7 @@ export function SettingsModal(props: {
    * of it as ‹ does instead of closing settings. The dialog reads its `closeOnEscape` right after
    * `onCancel` returns, so the step waits a turn, or stepping out of a tab to the list would turn
    * that into a close. Not on the phone's page: there Back steps between its pages' history entries
-   * (`onPageLevels`), and one that reaches the dialog itself closes it, as a refusal had NSH push
+   * (`holdLevels`), and one that reaches the dialog itself closes it, as a refusal had NSH push
    * the dialog's entry again with nothing pressed.
    */
   const backStepsWithin = () => phone() && mobileDetail() && !runtime.hosted;

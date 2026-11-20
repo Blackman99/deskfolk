@@ -22,7 +22,6 @@ import { AgentAvatar } from "./AgentAvatar";
 import type { MenuAt } from "./SessionRow";
 import { SIDE_MUTED_TINT } from "../glass";
 import { foldMotion } from "./fold-motion";
-import { openFromRoster } from "./open-from-roster";
 
 function PinnedItem(props: {
   session: SessionSummary;
@@ -55,7 +54,7 @@ function PinnedItem(props: {
       accessibilityLabel={`${props.title}${props.archivedSuffix}`}
       accessibilityState={{ selected: active() }}
       tooltip={tip(`${props.title}${props.archivedSuffix}`)}
-      onPress={() => void openFromRoster(props.session.id)}
+      onPress={() => void runtime.selectSession(props.session.id)}
       onContextMenu={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
       onLongPress={(e) => props.onContextMenu({ x: e.pagePosition.x, y: e.pagePosition.y }, props.session)}
       {...sessionPan(() => (props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, props.session) : undefined))}

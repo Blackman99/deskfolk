@@ -56,6 +56,10 @@ function fakePage(start = `${ORIGIN}/`, navigation = "navigate") {
         then();
       });
     },
+    later(then) {
+      later.push(then);
+    },
+    dialogDepth: () => 0,
     onAddress(next) {
       listener = next;
       return () => (listener = null);
@@ -197,13 +201,25 @@ test("a conversation opened from the roster has its entry before it shows, and s
   expect(page.at()).toBe(1);
 });
 
-test("a conversation's entry first only from the roster as it stands: nothing is written over a conversation, a page or settings", () => {
+test("a conversation opened from another (a link) has its entry first too; back to the one under it walks back, writing nothing first", async () => {
   const { page, rt, route, write } = setup();
   rt.selectedId = A;
   write();
-  expect(route.entryFirst(B)).toBe(null);
-  rt.selectedId = null;
+  const entry = route.entryFirst(B);
+  expect(entry).not.toBe(null);
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`, `/?s=${B}`]);
+  expect(rt.selectedId).toBe(A);
+  page.flush();
+  await entry;
+  rt.selectedId = B;
   write();
+  expect(page.entries.length).toBe(4);
+  // Back to A as `write` would go: a step back, so nothing is written ahead of it.
+  expect(route.entryFirst(A)).toBe(null);
+});
+
+test("a conversation's entry first only from a screen the address names alone: nothing is written over a page or settings", () => {
+  const { page, rt, route, write } = setup();
   page.flush();
   rt.applyOverlay({ kind: "usage" });
   write();
@@ -459,6 +475,70 @@ test("settings' pages each get an entry under the press that opens them, and Bac
   page.flush();
   expect(page.at()).toBe(1);
   expect(path(route.address())).toBe("/");
+});
+
+test("a page a press opens by stepIn has its entry before it shows, and the levels then write nothing more", () => {
+  const { page, route, depth, open } = settingsSetup();
+  page.lagging = true;
+  route.stepIn(open);
+  // The entry is written while the list still shows: the picture of the list's entry is the list.
+  expect(depth()).toBe(0);
+  page.flush();
+  expect(depth()).toBe(1);
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", "/?o=settings", "/?o=settings#l1"]);
+  page.flush();
+  expect(page.entries.length).toBe(4);
+  // Back steps out of it as out of any page.
+  page.lagging = false;
+  page.press();
+  expect(depth()).toBe(0);
+  expect(page.at()).toBe(2);
+});
+
+test("a press by stepIn that opened nothing deeper after all leaves no entry behind", () => {
+  const { page, route, depth } = settingsSetup();
+  route.stepIn(() => {});
+  page.flush();
+  page.flush();
+  expect(depth()).toBe(0);
+  expect(page.at()).toBe(2);
+  expect(path(page.href())).toBe("/?o=settings");
+});
+
+test("a layer over a conversation with an entry of its own: Back closes it with nothing written; closed by the app, its entry is gone back over", () => {
+  const { page, rt, route, write } = setup();
+  rt.selectedId = A;
+  write();
+  let open = false;
+  const layer = () => route.levels(open ? [{ key: "picture", depth: 1, inModal: false, stepOut: close }] : []);
+  const close = () => {
+    open = false;
+    layer();
+  };
+  route.stepIn(() => {
+    open = true;
+    layer();
+  });
+  page.flush();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`, `/?s=${A}#l1`]);
+  page.press();
+  expect(open).toBe(false);
+  expect(rt.selectedId).toBe(A);
+  expect(page.entries.length).toBe(4);
+  expect(page.at()).toBe(2);
+  // Open again, and closed by its own ✕: back over its entry, the conversation's showing.
+  route.stepIn(() => {
+    open = true;
+    layer();
+  });
+  page.flush();
+  close();
+  page.flush();
+  expect(page.at()).toBe(2);
+  expect(rt.selectedId).toBe(A);
+  // The next Back is the conversation's.
+  page.press();
+  expect(rt.selectedId).toBe(null);
 });
 
 test("‹ goes back over its page's entry, and two at once go back two, not three", () => {

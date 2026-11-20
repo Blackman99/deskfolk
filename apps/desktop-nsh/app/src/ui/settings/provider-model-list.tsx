@@ -9,7 +9,8 @@
  */
 import { effect, Scroll, signal, Text, View, type JSX } from "nsh";
 import { isLocalEndpoint, type ModelSpeed } from "@real-bot/protocol";
-import { copy } from "../../runtime";
+import { stepIn } from "../../platform/page-route";
+import { copy, runtime } from "../../runtime";
 import {
   addDraftModel,
   hasCustomAttrs,
@@ -129,7 +130,8 @@ export function ProviderModelList(props: {
   }
 
   function toggleExpanded(name: string): void {
-    if (narrowWindow()) props.onDetailModelChange(name);
+    // A model's settings page is one level deeper: on the hosted page its entry is written first.
+    if (narrowWindow()) runtime.hosted ? stepIn(() => props.onDetailModelChange(name)) : props.onDetailModelChange(name);
     else expanded.set({ ...expanded(), [name]: !expanded()[name] });
   }
 
