@@ -1,8 +1,10 @@
 /**
  * The agent at work in a project session (the end of `ProjectChat.svelte`'s transcript), as a Bot's
  * working bubble: what it has said so far with a cursor, its commands, then where it is and for how
- * long; the approval it waits on under it (the plan's own card, or a Bot's approval card) and why an
- * answer did not go. The step opens what is going on now when there is more to show than it says.
+ * long; the questions it waits on under it (`ProjectAsks`, one card however many), the approval it
+ * waits on (the plan's own card, or a Bot's approval card) and why an answer did not go. All of it is
+ * the conversation's end, so what it asks is where you look, under what it said before asking. The
+ * step opens what is going on now when there is more to show than it says.
  */
 import { cleanup, createMotion, effect, Text, View } from "nsh";
 import { reduceMotion } from "../interface/motion";
@@ -16,6 +18,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";
 import { pulseMotion } from "./labels";
+import { ProjectAsks } from "./project-chat-asks";
 import { ProjectPlanCard } from "./ProjectPlanCard";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { ProjectTaskSteps } from "./ProjectTaskSteps";
@@ -148,6 +151,9 @@ export function ProjectWorking(props: { state: ProjectState }) {
               </View>
             </If>
           </View>
+          <If when={s().openAsks().length > 0}>
+            <ProjectAsks asks={s().openAsks()} state={s()} testID="project-asks" />
+          </If>
           <If when={s().waiting()}>
             {(approval: () => NonNullable<ReturnType<ProjectState["waiting"]>>) => (
               <If

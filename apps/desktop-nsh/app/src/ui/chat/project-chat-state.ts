@@ -31,6 +31,7 @@ import { isLiveRun, projectAgentOf } from "../../m/sidebar/project-groups.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
 import { citedOnDisk, onThisComputer, type FileOnDisk } from "../file-on-disk";
+import { sameMessages, splitAsks } from "./project-rows";
 
 export type LineKind = "you" | "agent" | "app";
 
@@ -63,6 +64,27 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
       .messages.filter((m) => m.session_id === selected().id && !isHiddenTranscriptKind(m.kind) && !m.withdrawn_at)
       .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1)),
   );
+
+  /**
+   * The lines the transcript shows, and the questions the run waits on: those are asked at its end,
+   * under what it said before them, as one card however many there are (`ProjectAsks`).
+   */
+  const split = computed(() => splitAsks(lines(), awaitsAsk));
+  const shownLines = () => split().shown;
+  const openAsks = computed(() => split().open, { equals: sameMessages });
+
+  /** Your answer on a question's card goes to the daemon, and its draft once it took it. True when it did. */
+  async function answerAsk(id: string): Promise<boolean> {
+    const record = runtime.getAskDraft(id);
+    const custom = (record?.body ?? "").trim();
+    const picks = record?.selected ?? [];
+    if (!custom && picks.length === 0) return false;
+    const res = await runtime.sendAsk(id, { selected: picks, custom }, sessionId());
+    if (res.status === "accepted") runtime.clearAskDraft(id, record?.version ?? 1);
+    else if (res.status === "rejected") runtime.setAskError(id, res.error?.message || t().notifications.executionFailed);
+    else if (res.status === "unknown") runtime.setAskError(id, res.error?.message || t().disconnected.host);
+    return res.status === "accepted";
+  }
 
   // The snapshot holds live runs and events carry changes; how the last run ended is read once here.
   effect(() => {
@@ -295,6 +317,9 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     awaitsAsk,
     planWaiting,
     lines,
+    shownLines,
+    openAsks,
+    answerAsk,
     account,
     agent,
     claudeSession,

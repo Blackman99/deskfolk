@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's questions wait at the end, and several are one card
+
+- When the agent in a project session asks you something, the question now sits at the end of the conversation, under what it said before asking and the commands it ran, right above the message box. Before, its card went in as a line the moment it was asked and stayed above all of that, often out of sight until you scrolled up.
+- Several questions asked at once are one card showing one at a time: numbered steps along its top fill in as each gets an answer, and pressing one moves to that question. Next goes to the next question without an answer; once each has one, the button sends them all together. One that does not go stops there and says why. Answered, they go back into the conversation as one card.
+
 ### A line you send flies from the box into the conversation
 
 - On the desktop, a line you send now leaves the message box where you typed it and flies into the conversation, turning into your bubble on the way, as in Telegram, on Telegram's own curves: it swings across to its side and rises into place in 0.3 s. It works in a Bot's conversation and in a project session. It is a line of words only, sent while you are at the newest line: a line with files or a quote, or one sent while you are reading further up, comes in as before. If the conversation moves while the line is on its way (a reply starting under it), the bubble lands where the line ends up. With reduced motion (the system's setting or your interface profile) nothing flies. The phone's page keeps the old entrance for now.

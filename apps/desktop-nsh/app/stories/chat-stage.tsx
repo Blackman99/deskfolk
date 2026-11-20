@@ -31,9 +31,18 @@ const busy = signal(false);
 const posted = signal(0);
 const popup = signal(false);
 const runOn = signal<"" | "running" | "approval" | "plan" | "asking">("");
-/** The agent's questions in the project session (`story-ask`): one its run waits on, one it no longer does; what you answered. */
+/**
+ * The agent's questions in the project session: `story-ask` puts up one its run waits on and one it
+ * no longer does, `story-ask-many` three it asks at once (pick one, pick any, words only); the ids
+ * the run waits on, and what you answered.
+ */
 const asked = signal(false);
+const askedMany = signal(false);
+const runAsks = signal<string[]>([]);
 const askAnswers = signal<Record<string, { selected: string[]; custom: string | null }>>({});
+const MANY = ["pj-ask-many-1", "pj-ask-many-2", "pj-ask-many-3"];
+/** A question whose next answer the daemon refuses (`story-ask-refuse`). */
+const refuseAsk = signal<string | null>(null);
 /** The running run's first subagent has ended. */
 const subagentDone = signal(false);
 const planMode = signal(false);
@@ -133,7 +142,9 @@ const DELEGATION = (): DelegationView[] => {
 };
 
 /** As the runtime's store holds it: a deep proxy, whose arrays a component must copy before its `Each` draws them. */
-function askLine(id: string, body: string, at: string): Message {
+const README_CHOICES: NonNullable<Message["ask"]> = { options: [{ label: "根目录" }, { label: "docs 目录", description: "docs/README.md" }], multi_select: false };
+
+function askLine(id: string, body: string, at: string, ask: Message["ask"] = README_CHOICES): Message {
   const answer = askAnswers()[id];
   return deep(line({
     id,
@@ -142,7 +153,7 @@ function askLine(id: string, body: string, at: string): Message {
     author: "claude-code",
     body,
     created_at: at,
-    ask: { options: [{ label: "根目录" }, { label: "docs 目录", description: "docs/README.md" }], multi_select: false },
+    ask,
     ask_answer: answer ? { ...answer, answered_at: D2 } : null,
   }));
 }
@@ -158,6 +169,17 @@ function projectBase(): Message[] {
       ? [
           askLine("pj-ask-open", "要改哪一份 README？", "2026-10-20T09:34:00.000Z"),
           askLine("pj-ask-ended", "测试跑哪一组？", "2026-10-20T09:32:30.000Z"),
+        ]
+      : []),
+    // One call's questions land within the same moment.
+    ...(askedMany()
+      ? [
+          askLine(MANY[0]!, "先改哪一份 README？", "2026-10-20T09:35:00.000Z"),
+          askLine(MANY[1]!, "改完要跑哪些检查？", "2026-10-20T09:35:00.001Z", {
+            options: [{ label: "单元测试", description: "bun test" }, { label: "类型检查" }, { label: "截图对比", description: "要几分钟" }],
+            multi_select: true,
+          }),
+          askLine(MANY[2]!, "还有什么要注意的？", "2026-10-20T09:35:00.002Z", null),
         ]
       : []),
     ...projectLines(),
@@ -206,6 +228,9 @@ function runTasks(): AgentRun["tasks"] {
   ] as unknown as AgentRun["tasks"];
 }
 
+/** What the agent said before it asked: the working bubble shows it while the run waits on the questions. */
+const ASKING_SAID = "我看了一下：\n\n- 根目录的 README 有安装、配置、发布三节\n- docs/README.md 只讲本地开发\n\n两份都提到了安装，先确认几件事。";
+
 function projectRun(): AgentRun | null {
   const mode = runOn();
   if (!mode) return null;
@@ -214,9 +239,9 @@ function projectRun(): AgentRun | null {
     id: "run-story",
     session_id: PROJECT_ID,
     status: mode === "running" ? "running" : "waiting_approval",
-    asks: mode === "asking" ? ["pj-ask-open"] : undefined,
+    asks: mode === "asking" ? runAsks().filter((id) => !askAnswers()[id]) : undefined,
     activity: mode === "running" ? "Bash npm test" : null,
-    partial: mode === "running" ? "我先跑一遍测试，看哪些用例挂了" : null,
+    partial: mode === "running" ? "我先跑一遍测试，看哪些用例挂了" : mode === "asking" ? ASKING_SAID : null,
     approval: mode === "approval" ? { kind_key: "bash", target: "npm test", summary: "Bash: rm -rf dist && npm test" } : mode === "plan" ? { kind_key: "plan", target: "plan.md", summary: "## 计划\n\n1. 合并安装三段\n2. 跑测试" } : null,
     error: null,
     created_at: "2026-10-20T09:32:00.000Z",
@@ -313,9 +338,14 @@ const realAnswerAsk = api.answerAsk!;
 api.answerAsk = function (this: unknown, ...args: unknown[]) {
   const [id, answer] = args as [string, { selected: string[]; custom: string | null }];
   if (!id.startsWith("pj-ask-")) return realAnswerAsk.apply(this, args);
+  if (refuseAsk() === id) {
+    refuseAsk.set(null);
+    return Promise.reject(new Error("暂时答不了，再试一次"));
+  }
   said.set(`ask:${id}:${answer.selected.join(",")}|${answer.custom ?? ""}`);
   askAnswers.set({ ...askAnswers(), [id]: answer });
-  runOn.set("running");
+  // The run goes on once every question it waits on has its answer.
+  if (runAsks().every((ask) => askAnswers()[ask])) runOn.set("running");
   return Promise.resolve(askLine(id, "", D2));
 };
 const realCommands = api.projectCommands!;
@@ -433,8 +463,15 @@ export default function ChatStageStory() {
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {
               asked.set(true);
+              runAsks.set(["pj-ask-open"]);
               runOn.set("asking");
             })}
+            {button("story-ask-many", "ask three", () => {
+              askedMany.set(true);
+              runAsks.set(MANY);
+              runOn.set("asking");
+            })}
+            {button("story-ask-refuse", "refuse the 2nd answer", () => refuseAsk.set(MANY[1]!))}
             {button("story-plan", "plan card", () => runOn.set("plan"))}
             {button("story-annotated", "annotated", () => annotated.set(true))}
             {button("show-popup", "popup", () => popup.set(true))}
@@ -447,6 +484,7 @@ export default function ChatStageStory() {
           <Text testID="story-plan-mode" class="text-[12px] text-ink-muted">{`plan-mode:${planMode() ? "on" : "off"}`}</Text>
           <Text testID="story-state" class="text-[12px] text-ink-muted">{`lines:${lines().length} older:${(here() ? runtime.sessionView(here()!.id).hasOlderMessages : false) ? "yes" : "no"}`}</Text>
           <Text testID="story-last" class="text-[12px] text-ink-muted">{`last:${last()?.id ?? ""}`}</Text>
+          <Text testID="story-answers" class="text-[12px] text-ink-muted">{`answers:${Object.entries(askAnswers()).map(([id, a]) => `${id}=${a.selected.join(",")}|${a.custom ?? ""}`).join(";")}`}</Text>
         </View>
       </Scroll>
       <If when={which() === "project" ? here() : null} else={

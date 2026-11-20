@@ -2,7 +2,8 @@
  * A project session's conversation (`ProjectChat.svelte`, ADR 0095): you and the agent in a
  * directory, as in the agent's own desktop app. It has no Bot, so none of the Bot stage applies: your
  * lines on the right, the agent's on the left as Markdown, the app's centred. The run going on is a
- * Bot's working bubble at the end with the approval it waits on under it; Stop is in the composer.
+ * Bot's working bubble at the end with the questions and the approval it waits on under it; Stop is
+ * in the composer.
  * Pictures and files go with a line; Plan mode is a switch in the composer (Shift+Tab); typing `/`
  * lists the agent's commands (ADR 0098); what each agent has besides (accounts, plan mode, stopping one
  * task alone) is `PROJECT_AGENT_CAPS` (ADR 0099, 0111, 0115).
@@ -18,7 +19,6 @@
  */
 import { cleanup, computed, effect, List, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
-import { isDifferentDay } from "../../m/chat/chat-view.ts";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { INDEX_MIN_MARKS, messageIndexMarks, type IndexMark } from "../../m/chat/message-index.ts";
 import { USER_MEMBER } from "@real-bot/protocol";
@@ -29,12 +29,12 @@ import { imageOrigin, type PressedPicture } from "./image-origin";
 import { MessageImageLightbox, type ImageOrigin } from "./MessageImageLightbox";
 import { MessageIndex } from "./MessageIndex";
 import { ProjectSubagentDialog } from "./ProjectSubagentDialog";
-import { EarlierLine, ProjectLine, ProjectTasksEnd, type ProjectRow } from "./project-chat-lines";
+import { EarlierLine, ProjectAskGroup, ProjectLine, ProjectTasksEnd, type ProjectRow } from "./project-chat-lines";
 import { ProjectComposer, type ProjectComposerHandle } from "./project-chat-composer";
 import { workspaceDropTarget } from "../workspace-drag";
 import type { ReadUris } from "./composer-drop";
 import { createProjectState } from "./project-chat-state";
-import { createProjectRowKeeper, sameRows } from "./project-rows";
+import { createProjectRowKeeper, lineRows, sameRows } from "./project-rows";
 import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
@@ -75,14 +75,14 @@ export function ProjectChat(props: {
 
   const hasOlder = () => Boolean(view().hasOlderMessages);
   const lines = state.lines;
-  /** Oldest first: the earlier line, each line with its day line, what a run started with no line to hang under, the run going on. */
+  /**
+   * Oldest first: the earlier line, each line with its day line (questions asked together are one),
+   * what a run started with no line to hang under, the run going on with the questions it waits on.
+   */
   const rows = (): ProjectRow[] => {
     const out: ProjectRow[] = [];
     if (hasOlder()) out.push({ id: "earlier", kind: "earlier" });
-    lines().forEach((message, index) => {
-      const previous = index > 0 ? lines()[index - 1]! : null;
-      out.push({ id: message.id, kind: "line", message, date: !previous || isDifferentDay(previous.created_at, message.created_at) ? message.created_at : null });
-    });
+    out.push(...lineRows(state.shownLines()));
     if (state.placed().end.length > 0 && !focusMode.on) out.push({ id: "tasks", kind: "tasks" });
     if (state.run() && state.live()) out.push({ id: "working", kind: "working" });
     return out;
@@ -105,7 +105,12 @@ export function ProjectChat(props: {
     sessionId: state.sessionId,
     highlightedId: () => null,
     highlightToken: () => 0,
-    indexOf: (id) => inverted().findIndex((row) => row.kind === "line" && row.id === id),
+    // A question is in its group's row, or at the run's end while the run waits on it.
+    indexOf: (id) => {
+      const rowsNow = inverted();
+      const at = rowsNow.findIndex((row) => (row.kind === "line" && row.id === id) || (row.kind === "asks" && row.messages.some((message) => message.id === id)));
+      return at >= 0 || !state.openAsks().some((message) => message.id === id) ? at : rowsNow.findIndex((row) => row.kind === "working");
+    },
     activeFor: (viewable, atEnd) => {
       if (atEnd) return lastLineId();
       const rowsNow = inverted();
@@ -113,6 +118,7 @@ export function ProjectChat(props: {
       for (let i = oldest; i >= 0 && viewable.includes(i); i--) {
         const row = rowsNow[i];
         if (row?.kind === "line") return row.id;
+        if (row?.kind === "asks") return row.messages[0]!.id;
       }
       return null;
     },
@@ -199,6 +205,9 @@ export function ProjectChat(props: {
                         {(line: () => Extract<ProjectRow, { kind: "line" }>) => (
                           <ProjectLine message={line().message} date={line().date} state={state} onOpenArtifact={props.onOpenArtifact} onOpenImage={openImage} />
                         )}
+                      </If>
+                      <If when={row().kind === "asks" ? (row() as Extract<ProjectRow, { kind: "asks" }>) : null}>
+                        {(group: () => Extract<ProjectRow, { kind: "asks" }>) => <ProjectAskGroup messages={group().messages} date={group().date} state={state} />}
                       </If>
                       <If when={row().kind === "tasks"}>
                         <ProjectTasksEnd state={state} />

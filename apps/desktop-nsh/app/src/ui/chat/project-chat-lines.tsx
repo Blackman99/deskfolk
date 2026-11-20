@@ -2,7 +2,9 @@
  * The lines of a project session's transcript (`ProjectChat.svelte`): the app's, centred in a chip;
  * yours on the right in a bubble with its files; the agent's on the left as Markdown with the
  * commands it ran folded under it (and a way into its subagents). A day line above the first line
- * of each day, and the line that says an earlier page is on its way.
+ * of each day, and the line that says an earlier page is on its way. Questions the agent asked
+ * together are one card (`ProjectAskGroup`); those its run still waits on are asked at its end
+ * (`project-chat-working`), not here.
  *
  * An agent line's time sits at the right end of the line under it, as a Bot reply's does, and at
  * the right end of the command card's line when it ran commands (the messenger's `.command-beside`).
@@ -22,6 +24,7 @@ import { AnnotationCards } from "../annotations/AnnotationCards";
 import { CommandActivity } from "./CommandActivity";
 import { SEAM_LINE } from "../glass";
 import { AskCard } from "./AskCard";
+import { ProjectAsks } from "./project-chat-asks";
 import { MarkdownBody } from "../lazy-views";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
@@ -33,6 +36,8 @@ import type { PressedPicture } from "./image-origin";
 export type ProjectRow =
   | { id: "earlier"; kind: "earlier" }
   | { id: string; kind: "line"; message: Message; date: string | null }
+  /** Questions one call asked, the run waiting on none of them now: one card, a step at a time. */
+  | { id: string; kind: "asks"; messages: Message[]; date: string | null }
   /** A run that ended with nothing said: what it started has no line to hang under. */
   | { id: "tasks"; kind: "tasks" }
   | { id: "working"; kind: "working" };
@@ -45,6 +50,15 @@ function DayLine(props: { at: string; locale: "en" | "zh" }) {
       <Text class="select-none text-[11px] font-semibold text-ink-muted">{formatDateDivider(props.at, props.locale)}</Text>
       <View class={`flex-1 h-[1px] ${SEAM_LINE}`} />
     </View>
+  );
+}
+
+/** A line's time. Out of the transcript's selection: a drag across lines passes over it and copies the words alone. */
+function LineTime(props: { at: string }) {
+  return (
+    <Text testID="project-line-time" class="select-none text-[11px] text-ink-muted" style={{ fontVariant: ["tabular-nums"] }}>
+      {formatMessageTime(props.at)}
+    </Text>
   );
 }
 
@@ -82,24 +96,7 @@ export function ProjectLine(props: {
   );
   const hosted = () => s().placed().byLine.get(msg().id) ?? [];
   const kept = () => (focusMode.on ? [] : s().keptRows(hosted()));
-  // Out of the transcript's selection: a drag across lines passes over it and copies the words alone.
-  const time = () => (
-    <Text testID="project-line-time" class="select-none text-[11px] text-ink-muted" style={{ fontVariant: ["tabular-nums"] }}>
-      {formatMessageTime(msg().created_at)}
-    </Text>
-  );
-  /** The card's answer goes to the daemon; the draft goes once it took it. */
-  async function answerAsk(): Promise<void> {
-    const id = msg().id;
-    const record = runtime.getAskDraft(id);
-    const custom = (record?.body ?? "").trim();
-    const selected = record?.selected ?? [];
-    if (!custom && selected.length === 0) return;
-    const res = await runtime.sendAsk(id, { selected, custom }, s().sessionId());
-    if (res.status === "accepted") runtime.clearAskDraft(id, record?.version ?? 1);
-    else if (res.status === "rejected") runtime.setAskError(id, res.error?.message || t().notifications.executionFailed);
-    else if (res.status === "unknown") runtime.setAskError(id, res.error?.message || t().disconnected.host);
-  }
+  const time = () => <LineTime at={msg().created_at} />;
   return (
     <View testID={`project-line-${msg().id}`} class="w-full gap-[14px]">
       <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
@@ -164,7 +161,7 @@ export function ProjectLine(props: {
                 sending={s().view().sending}
                 onDraft={(body) => runtime.setAskDraft(msg().id, body)}
                 onSelect={(picks) => runtime.setAskSelection(msg().id, picks)}
-                onSubmit={() => void answerAsk()}
+                onSubmit={() => void s().answerAsk(msg().id)}
               />
             </View>
           </If>
@@ -186,6 +183,23 @@ export function ProjectLine(props: {
           </If>
         </View>
       </If>
+    </View>
+  );
+}
+
+/** Questions the agent asked together, answered or no longer waited on: one card, a step at a time, as they were asked. */
+export function ProjectAskGroup(props: { messages: Message[]; date: string | null; state: ProjectState }) {
+  const s = () => props.state;
+  const first = () => props.messages[0]!;
+  return (
+    <View testID={`project-asks-${first().id}`} class="w-full gap-[14px]">
+      <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
+      <View class="items-start w-full">
+        <ProjectAsks asks={props.messages} state={s()} />
+        <View testID="project-line-foot" class="self-stretch flex-row justify-end mt-[3px]">
+          <LineTime at={first().created_at} />
+        </View>
+      </View>
     </View>
   );
 }

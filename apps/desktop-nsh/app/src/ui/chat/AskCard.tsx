@@ -31,6 +31,8 @@ export function AskCard(props: {
   onDraft: (body: string) => void;
   onSelect: (selected: string[]) => void;
   onSubmit: () => void;
+  /** The button's word: Reply, unless the card is one of several asked together (`ProjectAsks`). */
+  submitLabel?: string;
 }) {
   const t = () => copy();
   const options = () => props.message.ask?.options ?? [];
@@ -130,7 +132,7 @@ export function AskCard(props: {
                 onPress={submit}
                 class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[13px] py-[7px] rounded-(--radius-sm) bg-brand hover:bg-accent-hover disabled:opacity-[0.45] items-center justify-center"
               >
-                <Text class="text-[13px] font-semibold text-on-accent">{t().stream.reply}</Text>
+                <Text class="text-[13px] font-semibold text-on-accent">{props.submitLabel ?? t().stream.reply}</Text>
               </View>
             </View>
             <If when={props.draft?.error}>

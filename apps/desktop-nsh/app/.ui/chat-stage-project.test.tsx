@@ -169,28 +169,110 @@ test("a Bot↔Bot direct opens in a popup with its lines and delegation records,
   await app.waitUntil(() => !app.shows("id:bot-dm-dialog"), { timeout: 5_000 });
 });
 
-test("a question the agent asks in a project session is answered from its card, and the foot says it waits", async () => {
+test("a question the agent asks waits at the conversation's end, under what it said, and is answered there", async () => {
   const app = await project();
   await app.press("id:story-ask");
-  await app.waitFor("id:project-working", { timeout: 10_000 });
-  await app.waitFor("text:要改哪一份 README？", { timeout: 10_000 });
+  await app.waitFor("id:project-asks", { timeout: 10_000 });
+  // Under the run's bubble (what it said before asking, then its foot), not among the lines.
+  expect(app.shows("id:project-asks >> text:要改哪一份 README？")).toBe(true);
+  expect(app.shows("id:project-line-pj-ask-open")).toBe(false);
+  expect(app.texts()).toContain("两份都提到了安装，先确认几件事。");
   expect(app.texts()).toContain("根目录");
   expect(app.texts()).toContain("docs 目录");
   expect(app.texts()).toContain(t.project.waitingAnswer(t.project.agentNames.claude_code));
   expect(app.shows("id:project-approval")).toBe(false);
-  await app.press("id:project-line-pj-ask-open >> label:docs 目录");
-  await app.press("id:project-line-pj-ask-open >> id:ask-send");
+  // One question has no steps, and its button replies.
+  expect(app.shows("id:project-asks >> id:ask-step-1")).toBe(false);
+  expect(app.shows(`id:project-asks >> text:${t.stream.reply}`)).toBe(true);
+  await app.press("id:project-asks >> label:docs 目录");
+  await app.press("id:project-asks >> id:ask-send");
   await app.waitUntil(() => said(app) === "ask:pj-ask-open:docs 目录|", { timeout: 10_000 });
-  // The card keeps the answer and the run goes on.
-  await app.waitUntil(() => !app.shows("id:project-line-pj-ask-open >> id:ask-input"), { timeout: 10_000 });
-  expect(app.texts().some((x: string) => x.startsWith(`${t.stream.askAnswered} · `))).toBe(true);
+  // Answered, the card goes back among the lines with the answer, and the run goes on.
+  await app.waitFor("id:project-line-pj-ask-open >> id:ask-answered", { timeout: 10_000 });
+  expect(app.shows("id:project-asks")).toBe(false);
+  expect(app.shows("id:project-line-pj-ask-open >> id:ask-input")).toBe(false);
 });
 
-test("a question the run no longer waits on is read-only", async () => {
+test("a question the run no longer waits on is read-only, among the lines", async () => {
   const app = await project();
   await app.press("id:story-ask");
   await app.waitFor("text:测试跑哪一组？", { timeout: 10_000 });
   expect(app.shows("id:project-line-pj-ask-ended >> id:ask-input")).toBe(false);
   await expect(app.press("id:project-line-pj-ask-ended >> label:根目录")).rejects.toMatchObject({ code: "ERR_NSH_TEST_DISABLED" });
-  expect(app.shows("id:project-line-pj-ask-open >> id:ask-input")).toBe(true);
+  expect(app.shows("id:project-asks >> id:ask-input")).toBe(true);
+});
+
+test("questions asked together are one card, a step at a time, sent together once each has its answer", async () => {
+  const app = await project();
+  const agent = t.project.agentNames.claude_code;
+  await app.press("id:story-ask-many");
+  await app.waitFor("id:project-asks", { timeout: 10_000 });
+  expect(app.texts()).toContain(t.project.askingMany(agent, 3));
+  expect(app.texts()).toContain("两份都提到了安装，先确认几件事。");
+  // One question at a time, with a step for each.
+  expect(app.shows("id:project-asks >> text:先改哪一份 README？")).toBe(true);
+  expect(app.shows("text:改完要跑哪些检查？")).toBe(false);
+  expect(app.shows("text:还有什么要注意的？")).toBe(false);
+  expect(app.count("id:project-asks >> id:ask-input")).toBe(1);
+  expect(app.shows("id:project-asks >> id:ask-step-3")).toBe(true);
+  expect(app.shows("id:project-line-pj-ask-many-1")).toBe(false);
+  // Its button goes on to the next while others have no answer.
+  expect(app.shows(`id:project-asks >> text:${t.project.askNext}`)).toBe(true);
+  await app.press("id:project-asks >> label:根目录");
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitFor("id:project-asks >> text:改完要跑哪些检查？", { timeout: 5_000 });
+  expect(app.shows("text:先改哪一份 README？")).toBe(false);
+  expect(said(app)).toBe("—");
+  // Straight to the last: words of your own; the second has none yet, so the button goes there and nothing is sent.
+  await app.press(`label:${t.project.askStep(3, false)}`);
+  await app.waitFor("id:project-asks >> text:还有什么要注意的？", { timeout: 5_000 });
+  await app.type("id:project-asks >> id:ask-input", "别动 CHANGELOG");
+  expect(app.shows(`id:project-asks >> text:${t.project.askNext}`)).toBe(true);
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitFor("id:project-asks >> text:改完要跑哪些检查？", { timeout: 5_000 });
+  expect(said(app)).toBe("—");
+  // The steps say which have their answers.
+  expect(app.shows(`label:${t.project.askStep(1, true)}`)).toBe(true);
+  expect(app.shows(`label:${t.project.askStep(3, true)}`)).toBe(true);
+  expect(app.shows(`label:${t.project.askStep(2, false)}`)).toBe(true);
+  await app.press("id:project-asks >> label:单元测试");
+  await app.press("id:project-asks >> label:类型检查");
+  // Each has an answer now: the button sends them all, oldest first.
+  expect(app.shows(`id:project-asks >> text:${t.project.askSubmit}`)).toBe(true);
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitUntil(() => app.texts().includes("answers:pj-ask-many-1=根目录|;pj-ask-many-2=单元测试,类型检查|;pj-ask-many-3=|别动 CHANGELOG"), { timeout: 10_000 });
+  // Answered, they are one card among the lines, still a step at a time.
+  await app.waitFor("id:project-asks-pj-ask-many-1", { timeout: 10_000 });
+  expect(app.shows("id:project-asks")).toBe(false);
+  expect(app.texts()).toContain(t.project.askedMany(agent, 3));
+  expect(app.shows("id:project-asks-pj-ask-many-1 >> text:先改哪一份 README？")).toBe(true);
+  expect(app.count("id:project-asks-pj-ask-many-1 >> id:ask-answered")).toBe(1);
+  await app.press("id:project-asks-pj-ask-many-1 >> id:ask-step-3");
+  await app.waitFor("id:project-asks-pj-ask-many-1 >> text:还有什么要注意的？", { timeout: 5_000 });
+  expect(app.texts()).toContain("别动 CHANGELOG");
+});
+
+test("an answer refused on the way stops there: its question shows why, and the rest go when sent again", async () => {
+  const app = await project();
+  await app.press("id:story-ask-refuse");
+  await app.press("id:story-ask-many");
+  await app.waitFor("id:project-asks", { timeout: 10_000 });
+  await app.press("id:project-asks >> label:docs 目录");
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitFor("id:project-asks >> text:改完要跑哪些检查？", { timeout: 5_000 });
+  await app.press("id:project-asks >> label:截图对比");
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitFor("id:project-asks >> text:还有什么要注意的？", { timeout: 5_000 });
+  await app.type("id:project-asks >> id:ask-input", "慢慢来");
+  await app.press("id:project-asks >> id:ask-send");
+  // The first went; the second was refused, and shows with why; the third waits.
+  await app.waitFor("id:project-asks >> id:ask-error", { timeout: 10_000 });
+  expect(app.texts()).toContain("暂时答不了，再试一次");
+  expect(app.shows("id:project-asks >> text:改完要跑哪些检查？")).toBe(true);
+  expect(app.texts()).toContain("answers:pj-ask-many-1=docs 目录|");
+  // Still one card of three, the first answered in it.
+  expect(app.shows("id:project-asks >> id:ask-step-3")).toBe(true);
+  await app.press("id:project-asks >> id:ask-send");
+  await app.waitUntil(() => app.texts().includes("answers:pj-ask-many-1=docs 目录|;pj-ask-many-2=截图对比|;pj-ask-many-3=|慢慢来"), { timeout: 10_000 });
+  await app.waitFor("id:project-asks-pj-ask-many-1", { timeout: 10_000 });
 });
