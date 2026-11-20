@@ -8,7 +8,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### A line you send flies from the box into the conversation
 
-- On the desktop, a line you send now leaves the message box where you typed it and flies into the conversation, turning into your bubble on the way, as in Telegram: it dips a little, sweeps across to its side and rises into place. It works in a Bot's conversation and in a project session. It is a line of words only, sent while you are at the newest line: a line with files or a quote, or one sent while you are reading further up, comes in as before. If the conversation moves while the line is on its way (a reply starting under it), the bubble lands where the line ends up. With reduced motion (the system's setting or your interface profile) nothing flies. The phone's page keeps the old entrance for now.
+- On the desktop, a line you send now leaves the message box where you typed it and flies into the conversation, turning into your bubble on the way, as in Telegram, on Telegram's own curves: it swings across to its side and rises into place in 0.3 s. It works in a Bot's conversation and in a project session. It is a line of words only, sent while you are at the newest line: a line with files or a quote, or one sent while you are reading further up, comes in as before. If the conversation moves while the line is on its way (a reply starting under it), the bubble lands where the line ends up. With reduced motion (the system's setting or your interface profile) nothing flies. The phone's page keeps the old entrance for now.
 
 ### An input method's candidates stay under the line you type on Windows
 

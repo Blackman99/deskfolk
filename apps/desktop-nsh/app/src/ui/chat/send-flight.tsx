@@ -47,17 +47,18 @@ export type GhostBubble = (words: boolean) => JSX.Element;
 export const BUBBLE_INSET = { x: 14, y: 10 };
 
 /**
- * The way it goes is a swoosh: out of the box low and sideways, dipping a little, along towards its
- * side, and up into place at the end. Across covers most of the way early and is done first.
+ * Telegram's own send transition (iOS `ChatMessageTransitionNode`, its default `.bezier` parameters):
+ * 0.3 s on both axes. Across goes most of the way at once and eases out; up eases in and out. So the
+ * line swings across to its side first and rises into place, with nothing moving away from where it
+ * is going (a dip below the box, tried first, read as slow and unnatural).
  */
-const ACROSS_MS = 360;
-const ACROSS_CURVE = "cubic-bezier(0.35, 0.55, 0.45, 1)";
-/** Up: first a little down (the curve's control point below zero is the dip), then up, settling into place. */
-const RISE_MS = 380;
-const RISE_CURVE = "cubic-bezier(0.25, -0.8, 0.65, 1)";
+const ACROSS_MS = 300;
+const ACROSS_CURVE = "cubic-bezier(0.23, 1, 0.32, 1)";
+const RISE_MS = 300;
+const RISE_CURVE = "cubic-bezier(0.199, 0.011, 0.279, 0.910)";
 /** The box's words give way to the bubble's while it leaves the box. */
-const WORDS_OUT_MS = 170;
-const BUBBLE_IN_MS = 200;
+const WORDS_OUT_MS = 150;
+const BUBBLE_IN_MS = 180;
 /** When the stand-in hands over to the row: after the longest of the above. */
 const LAND_MS = Math.max(ACROSS_MS, RISE_MS) + 30;
 
