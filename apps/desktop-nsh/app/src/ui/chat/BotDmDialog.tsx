@@ -12,7 +12,8 @@
  * guard that a menu inside the transcript takes its own Escape first is `Dialog`'s and the menu's own
  * key handling here.
  */
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { resolveBotDmOrigin } from "../../m/sidebar/bot-dm-source.ts";
 import { copy, runtime } from "../../runtime";
@@ -47,7 +48,7 @@ export function BotDmDialog(props: {
 
   /** The card's height: nearly the window's (`min(92dvh, 100dvh - 48px)`), less its head and the source strip. */
   const bodyHeight = () => {
-    const h = windowSize().height;
+    const h = viewportSize().height;
     const card = narrowWindow() ? h : Math.min(Math.round(h * 0.92), h - 48);
     return Math.max(160, card - (narrowWindow() ? 52 : 60) - 37);
   };

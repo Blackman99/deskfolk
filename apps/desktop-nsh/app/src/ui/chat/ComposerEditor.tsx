@@ -17,7 +17,8 @@
  * list names into a chip. Not as the Svelte one: a chip has no avatar and no close button (the
  * editor has no node views for the app), and a `@Name` typed by hand stays text until picked.
  */
-import { cleanup, computed, effect, Overlay, platform, signal, untracked, View, windowSize, type ViewRef } from "nsh";
+import { cleanup, computed, effect, Overlay, platform, signal, untracked, View, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { baseKeymap, command, createRichEditor, defineSchema, deleteRange, history, insertContentAt, keymap as editorKeymap, RichEditor, RichEditorPlugin, setTextSelection, withMention } from "nsh/base";
 import type { RichEditorRef, RichEditorSession, RichNodeJSON } from "nsh/base";
 import type { PasteEvent } from "nsh/types";
@@ -163,7 +164,7 @@ export function ComposerEditor(props: {
     }
     return textOfDoc(doc).split("\n").length * 22;
   });
-  const box = (): number => boxHeight(contentHeight(), phone(), windowSize().height);
+  const box = (): number => boxHeight(contentHeight(), phone(), viewportSize().height);
   const at = () => view().caret;
   const editable = () => props.editable;
 
@@ -431,7 +432,7 @@ export function ComposerEditor(props: {
     if (commandsShown() || choicesShown()) closedAt.set(props.value);
   };
 
-  const popupWidth = (max: number) => Math.min(max, Math.max(240, windowSize().width - 32));
+  const popupWidth = (max: number) => Math.min(max, Math.max(240, viewportSize().width - 32));
   const anchor = (): ViewRef | null => editorRef()?.node ?? null;
 
   /** What a paste brings besides text: files go to the attachments (the editor reports them, inserts nothing). */

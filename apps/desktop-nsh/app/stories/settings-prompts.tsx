@@ -1,6 +1,7 @@
 /** Settings › Prompts, Lessons and Notifications: the prompt list and its editor page, the lessons, the three notification cards. */
 import type { Lesson, LessonPatch, PromptSummary } from "@real-bot/protocol";
-import { effect, ErrorBoundary, Scroll, signal, Text, View, windowSize } from "nsh";
+import { effect, ErrorBoundary, Scroll, signal, Text, View } from "nsh";
+import { viewportSize } from "../src/platform/viewport";
 import { copy, runtime } from "../src/runtime";
 import { LessonsSettings } from "../src/ui/settings/LessonsSettings";
 import { NotificationSettings } from "../src/ui/settings/NotificationSettings";
@@ -104,7 +105,7 @@ export default function SettingsPrompts() {
   };
 
   return (
-    <View class="flex-col bg-bg" style={{ height: windowSize().height }}>
+    <View class="flex-col bg-bg" style={{ height: viewportSize().height }}>
       <View class="flex-row items-center gap-2 px-6 py-2 border-b border-line">
         {() =>
           TABS.map((name) => (

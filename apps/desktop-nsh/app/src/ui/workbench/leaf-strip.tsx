@@ -12,7 +12,8 @@
  * bar is that pane's own title bar (`onStripDrag`, `onStripPress`): it moves the pane, a double press
  * docks it.
  */
-import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, windowSize, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
+import { cleanup, effect, PanResponder, Scroll, signal, untracked, View, type PressEvent, type ScrollRef, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { titleBar } from "nsh/desktop";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
@@ -129,7 +130,7 @@ export function LeafStrip(props: StripProps) {
     const bar = titleBar();
     const at = placed();
     if (!bar.right || !at || at.top >= bar.height) return 0;
-    return at.right >= windowSize().width - bar.right ? bar.right : 0;
+    return at.right >= viewportSize().width - bar.right ? bar.right : 0;
   };
   const tabRefs = new Map<string, ViewRef>();
   /** A press that began on one of the strip's own buttons does not move the pane. */

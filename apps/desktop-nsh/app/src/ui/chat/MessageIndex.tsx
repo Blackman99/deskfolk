@@ -5,7 +5,8 @@
  * there. Arrow keys, Home and End move between ticks, Escape closes the card. A conversation as
  * narrow as a phone's has no strip.
  */
-import { cleanup, effect, keymap, Overlay, Scroll, signal, Text, token, View, windowSize, type ViewRef } from "nsh";
+import { cleanup, effect, keymap, Overlay, Scroll, signal, Text, token, View, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { USER_MEMBER } from "@real-bot/protocol";
 import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view";
 import type { IndexMark } from "../../m/chat/message-index";
@@ -206,7 +207,7 @@ export function MessageIndex(props: {
                 onMouseEnter={() => clearTimeout(closeTimer)}
                 onMouseLeave={leave}
                 class="cursor-pointer select-none px-[14px] py-[12px] bg-pane border border-line rounded-(--radius-md) hover:border-line-hover"
-                style={{ width: Math.min(320, windowSize().width - 80), boxShadow: shadow("md") }}
+                style={{ width: Math.min(320, viewportSize().width - 80), boxShadow: shadow("md") }}
               >
                 <Text testID="message-index-preview" class="text-[13px] text-ink line-clamp-4">{mark().preview || props.emptyLabel}</Text>
                 <View class="flex-row items-center gap-[8px] mt-[10px]">

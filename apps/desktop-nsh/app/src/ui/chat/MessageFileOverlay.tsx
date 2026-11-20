@@ -8,7 +8,8 @@
  * for a link to another file) to `children`, which draws it. Escape and the phone's Back close the
  * frame (`holdFullscreenPreview`); a preview with an unsaved edit calls `ctx.holdClose` to ask first.
  */
-import { cleanup, Overlay, Text, View, windowSize, signal, type JSX } from "nsh";
+import { cleanup, Overlay, Text, View, signal, type JSX } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { Attachment } from "@real-bot/protocol";
 import { targetFor } from "../../m/annotations/model.ts";
 import { isPlaceholderAttachment } from "../../m/overlays/artifacts.ts";
@@ -89,7 +90,7 @@ export function MessageFileOverlay(props: {
   return (
     <Overlay
       onCancel={close}
-      style={{ width: windowSize().width, height: windowSize().height }}
+      style={{ width: viewportSize().width, height: viewportSize().height }}
     >
       <WheelLayer>
         <View
@@ -108,7 +109,7 @@ export function MessageFileOverlay(props: {
             style={
               phone()
                 ? undefined
-                : { width: Math.min(1100, windowSize().width - 48), height: Math.min(windowSize().height * 0.88, windowSize().height - 48), boxShadow: shadow("lg") }
+                : { width: Math.min(1100, viewportSize().width - 48), height: Math.min(viewportSize().height * 0.88, viewportSize().height - 48), boxShadow: shadow("lg") }
             }
           >
             <If when={!phone()}>

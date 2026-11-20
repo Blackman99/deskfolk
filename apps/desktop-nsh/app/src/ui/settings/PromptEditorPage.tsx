@@ -12,7 +12,8 @@
  * `onOpenMessage`; `onReady(api)` (hands the caller `flush()`, which saves what was typed).
  */
 import type { Locale, PromptSummary } from "@real-bot/protocol";
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { copy, runtime } from "../../runtime";
 import type { PromptView } from "../../m/settings/prompts-view.ts";
 import { Modal, narrowWindow } from "../Modal";
@@ -36,7 +37,7 @@ export function PromptEditorPage(props: {
     void flushEditor().then(() => props.onClose());
   };
   // A page tall enough that a long prompt reads as a document: the dialog's height cap less its head.
-  const height = () => (narrowWindow() ? windowSize().height - 52 : Math.min(820, windowSize().height - 48) - 56);
+  const height = () => (narrowWindow() ? viewportSize().height - 52 : Math.min(820, viewportSize().height - 48) - 56);
   return (
     <Modal
       testID="prompt-editor-page"

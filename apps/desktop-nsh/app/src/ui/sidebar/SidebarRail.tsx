@@ -8,7 +8,8 @@
  * are the app's (`runtime`, `copy()`).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { cleanup, computed, effect, Scroll, signal, Text, token, untracked, View, windowSize, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
+import { cleanup, computed, effect, Scroll, signal, Text, token, untracked, View, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { SessionDragHandler } from "./session-drag";
 import { copy, runtime } from "../../runtime";
 import { formatShortcut } from "../../m/keymap";
@@ -110,7 +111,7 @@ export function SidebarRail(props: {
    */
   const IN_VIEW_PT = 52;
   const PER_FRAME = 8;
-  const made = signal(Math.ceil(untracked(() => windowSize()).height / IN_VIEW_PT) + 2);
+  const made = signal(Math.ceil(untracked(() => viewportSize()).height / IN_VIEW_PT) + 2);
   const sessionCount = () => sections().reduce((sum, section) => sum + section.length, 0);
   const shownSections = computed(() => {
     let left = made();

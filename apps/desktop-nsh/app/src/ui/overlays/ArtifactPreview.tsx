@@ -13,7 +13,8 @@
  * (list open) and the save shortcut are `keymap`; opening a file with the system or in Finder is the
  * shell command `open_workspace_path` the shell bridges (`openWorkspacePath`).
  */
-import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, platform, signal, Text, untracked, View, windowSize } from "nsh";
+import { cleanup, colorScheme, computed, Clipboard, effect, keymap, PanResponder, platform, signal, Text, untracked, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { workspaceDrag } from "../workspace-drag";
 import type { Annotation, Attachment, CreateAnnotationRequest, PatchAnnotationRequest, SessionSummary } from "@real-bot/protocol";
 import { ANNOTATION_BATCH_MAX } from "@real-bot/protocol";
@@ -649,7 +650,7 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
         <If when={treeOpen()}>
           <BottomSheet title={treeLabel()} closeLabel={t().common.close} onClose={() => treeOpen.set(false)} scrollsItself>
             {/* The tree scrolls itself and makes the rows in view, so it needs a height: most of the screen, less where the sheet stops. */}
-            <View class="shrink min-h-0" style={{ height: Math.round(windowSize().height * 0.6) }}>
+            <View class="shrink min-h-0" style={{ height: Math.round(viewportSize().height * 0.6) }}>
               {treeView()}
             </View>
           </BottomSheet>

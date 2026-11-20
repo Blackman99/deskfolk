@@ -3,7 +3,8 @@
  * Mount it once on the shell; it draws nothing when no drag is under way. The chip takes no
  * pointer, and is placed below and right of the pointer, flipped near an edge (`ghostPlacement`).
  */
-import { Overlay, signal, Text, View, windowSize } from "nsh";
+import { Overlay, signal, Text, View } from "nsh";
+import { viewportSize } from "../platform/viewport";
 import { ghostPlacement } from "../m/workspace-drag.svelte.ts";
 import { shadow } from "./styles";
 import { workspaceDrag } from "./workspace-drag";
@@ -13,7 +14,7 @@ export function WorkspaceDragGhost() {
   return (
     <If when={workspaceDrag.current}>
       {(drag) => {
-        const at = () => ghostPlacement(drag(), size(), windowSize());
+        const at = () => ghostPlacement(drag(), size(), viewportSize());
         return (
           <Overlay class="left-0 top-0 right-0 bottom-0" style={{ pointerEvents: "none" }}>
             <View

@@ -10,7 +10,8 @@
  * Svelte one's `opener` (the control to give focus back to) is a `ViewRef`, and its exported
  * `focusQuery()` is handed to `onApi` once. On a phone (≤ 680) it fills the window.
  */
-import { computed, effect, keymap, safeArea, Scroll, signal, Text, untracked, View, windowSize, type InputRef, type ScrollRef, type ViewRef } from "nsh";
+import { computed, effect, keymap, safeArea, Scroll, signal, Text, untracked, View, type InputRef, type ScrollRef, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Dialog, Input } from "nsh/base";
 import type { Bot, SearchHit, SearchKind, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
@@ -191,7 +192,7 @@ export function GlobalSearch(props: {
   }
 
   const phone = () => narrowWindow();
-  const cardWidth = () => (phone() ? windowSize().width : Math.min(640, windowSize().width - 48));
+  const cardWidth = () => (phone() ? viewportSize().width : Math.min(640, viewportSize().width - 48));
 
   return (
     <Dialog
@@ -205,10 +206,10 @@ export function GlobalSearch(props: {
       class={`bg-pane overflow-hidden ${phone() ? "" : "rounded-(--radius-lg) border border-line"}`}
       style={{
         width: cardWidth(),
-        height: phone() ? windowSize().height : undefined,
-        maxHeight: phone() ? undefined : Math.min(640, Math.round(windowSize().height * 0.7)),
+        height: phone() ? viewportSize().height : undefined,
+        maxHeight: phone() ? undefined : Math.min(640, Math.round(viewportSize().height * 0.7)),
         minHeight: phone() ? 0 : 240,
-        marginTop: phone() ? 0 : Math.min(100, Math.round(windowSize().height * 0.14)),
+        marginTop: phone() ? 0 : Math.min(100, Math.round(viewportSize().height * 0.14)),
         marginHorizontal: "auto",
         paddingTop: phone() ? safeArea().top : 0,
         boxShadow: phone() ? undefined : shadow("lg"),

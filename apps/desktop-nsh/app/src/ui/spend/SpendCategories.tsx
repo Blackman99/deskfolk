@@ -3,7 +3,8 @@
  * Tokens/Money switch, and every category's share of the tokens as one bar with a row each, a
  * category opening into its lines. Pressing a name drills the ledger into it.
  */
-import { Text, View, windowSize } from "nsh";
+import { Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { SpendSummary } from "@real-bot/protocol";
 import type { SpendCopy } from "../../m/spend/spend-copy.ts";
 import type { SpendLedger } from "../../m/spend/spend-ledger.svelte.ts";
@@ -28,7 +29,7 @@ export function SpendCategories(props: {
   wide?: boolean;
 }) {
   const narrow = () => props.narrow ?? narrowWindow();
-  const wide = () => props.wide ?? (!narrowWindow() && windowSize().width >= 1000);
+  const wide = () => props.wide ?? (!narrowWindow() && viewportSize().width >= 1000);
   const copy = () => props.copy;
 
   /** A category or line nothing was called under takes no row. */

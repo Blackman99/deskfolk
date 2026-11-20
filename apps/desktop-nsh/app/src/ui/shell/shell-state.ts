@@ -11,7 +11,7 @@
  * same query). The interface profile is wired with NSH's side of it (`ui/interface/look.ts`, ADR
  * 0108); its words reach every screen through `copy()`, which is `t` here.
  */
-import { batch, cleanup, computed, effect, signal, untracked, windowSize } from "nsh";
+import { batch, cleanup, computed, effect, signal, untracked } from "nsh";
 import type { Bot, SearchHit, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { dangerCopy, shouldDropConfirm } from "../../m/overlays/danger-confirm.ts";

@@ -32,7 +32,7 @@
  * field is `Input`'s masked text.
  */
 import type { Lesson, PromptSummary } from "@real-bot/protocol";
-import { cleanup, effect, Scroll, signal, Text, untracked, View, windowSize, type JSX } from "nsh";
+import { cleanup, effect, Scroll, signal, Text, untracked, View, type JSX } from "nsh";
 import { Dialog, Input } from "nsh/base";
 import { copy, runtime } from "../../runtime";
 import type { CredentialOperation } from "../../m/api.ts";
@@ -65,7 +65,7 @@ import { SettingsNav, type SettingsTab } from "./SettingsNav";
 import { holdLevels } from "../../platform/page-levels";
 import { stepIn } from "../../platform/page-route";
 import { revealOnEntry } from "../../platform/reveal-on-entry";
-import { widthAtMost } from "../../platform/viewport";
+import { widthAtMost, viewportSize } from "../../platform/viewport";
 import { WheelLayer } from "../../platform/wheel-layer";
 
 /** What the shell calls on the window: its Back, and the endpoint editor's. */
@@ -668,8 +668,8 @@ export function SettingsModal(props: {
     if (backStepsWithin()) queueMicrotask(() => void backWithinSettings());
     else props.closeSettings();
   }
-  const width = () => (phone() ? windowSize().width : Math.min(880, Math.round(windowSize().width * 0.94)));
-  const height = () => (phone() ? windowSize().height : Math.min(640, Math.round(windowSize().height * 0.88)));
+  const width = () => (phone() ? viewportSize().width : Math.min(880, Math.round(viewportSize().width * 0.94)));
+  const height = () => (phone() ? viewportSize().height : Math.min(640, Math.round(viewportSize().height * 0.88)));
 
   return (
     <>

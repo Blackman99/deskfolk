@@ -4,9 +4,9 @@
  * whole before the app starts, written through), `sessionStorage`, `navigator`, `structuredClone`
  * and a `matchMedia` that answers from the window's size.
  */
-import { locale, platform, Storage, windowSize } from "nsh";
+import { locale, platform, Storage } from "nsh";
 import { RelativeTimeFormat } from "./relative-time";
-import { widthAtMost } from "./viewport";
+import { widthAtMost, viewportSize } from "./viewport";
 
 type StorageLike = {
   readonly length: number;
@@ -87,7 +87,7 @@ function liveMediaMatches(query: string): boolean {
   for (const part of query.split(/\band\b/)) {
     const max = /max-width:\s*(\d+(?:\.\d+)?)px/.exec(part);
     if (max) all &&= widthAtMost(Number(max[1]));
-    else if (/min-width/.test(part)) all &&= mediaMatches(part, windowSize().width);
+    else if (/min-width/.test(part)) all &&= mediaMatches(part, viewportSize().width);
     else all &&= mediaMatches(part, 0);
   }
   return all;

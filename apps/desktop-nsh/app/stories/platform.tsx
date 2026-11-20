@@ -1,5 +1,6 @@
 /** The platform pieces NSH leaves to the app: wheel events forwarded by the shell, and popups over them. */
-import { Overlay, signal, Text, View, windowSize, type JSX, type ViewRef } from "nsh";
+import { Overlay, signal, Text, View, type JSX, type ViewRef } from "nsh";
+import { viewportSize } from "../src/platform/viewport";
 import { onWheel } from "../src/platform/wheel";
 import { WheelLayer } from "../src/platform/wheel-layer";
 import { Modal } from "../src/ui/Modal";
@@ -65,7 +66,7 @@ export default function Platform() {
         </Modal>
       </If>
       <If when={overlay()}>
-        <Overlay style={{ width: windowSize().width, height: windowSize().height }}>
+        <Overlay style={{ width: viewportSize().width, height: viewportSize().height }}>
           <WheelLayer>
             <View testID="wheel-overlay-scrim" class="flex-1 bg-bg/90" onPress={() => overlay.set(false)}>
               <RenderProp>{(box) => <WheelSum name="overlay" class={box} />}</RenderProp>

@@ -26,7 +26,8 @@
  * thumbnail that was never drawn) the frame fades in and out from a little smaller; the Svelte's
  * simply appears there.
  */
-import { cleanup, effect, Image, keymap, LayoutAnimation, Overlay, PanResponder, signal, Text, untracked, View, windowSize, computed, type ViewRef } from "nsh";
+import { cleanup, effect, Image, keymap, LayoutAnimation, Overlay, PanResponder, signal, Text, untracked, View, computed, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { reduceMotion } from "../interface/motion";
 import type { ShellWheel } from "../../platform/wheel";
 import type { Attachment } from "@real-bot/protocol";
@@ -123,7 +124,7 @@ export function MessageImageLightbox(props: {
   const loadPercent = () => (progress() ? fileProgressPercent(progress()!) : null);
   const loadBytes = () => (progress() ? formatFileProgress(progress()!, formatFileSize) : null);
 
-  const stage = (): ImageOrigin => ({ top: 0, left: 0, width: windowSize().width || 800, height: windowSize().height || 600 });
+  const stage = (): ImageOrigin => ({ top: 0, left: 0, width: viewportSize().width || 800, height: viewportSize().height || 600 });
 
   /** Where the picture rests: fitted once its shape is known; a centred box when nothing is coming to wait for. */
   const settled = computed((): ImageOrigin | null => {
@@ -515,7 +516,7 @@ export function MessageImageLightbox(props: {
   const hot = () => grown() && phase() !== "back";
 
   return (
-    <Overlay onCancel={requestClose} style={{ width: windowSize().width, height: windowSize().height }}>
+    <Overlay onCancel={requestClose} style={{ width: viewportSize().width, height: viewportSize().height }}>
       <View
         testID="msg-image-lightbox"
         class={`flex-1 transition-colors duration-[220ms] ${hot() ? "bg-bg/90" : "bg-transparent"}`}
@@ -612,7 +613,7 @@ export function MessageImageLightbox(props: {
               disabled={originalProgress() !== null}
               onPress={() => loadOriginal()}
               class="cursor-pointer select-none disabled:cursor-default h-8 px-[14px] rounded-full border border-line bg-btn-secondary-bg hover:bg-btn-secondary-hover justify-center"
-              style={{ maxWidth: windowSize().width - 48 }}
+              style={{ maxWidth: viewportSize().width - 48 }}
             >
               <Text class="text-[12px] font-semibold text-ink line-clamp-1 tabular-nums">
                 {originalProgress() ? t().stream.imageOriginalLoading(originalBytes()) : t().stream.imageOriginal(formatFileSize(offerOriginal()!))}
@@ -625,7 +626,7 @@ export function MessageImageLightbox(props: {
           else={
             <If when={name()}>
               <View class={`absolute left-0 right-0 bottom-[22px] items-center ${chrome()}`} style={{ pointerEvents: "none" }}>
-                <Text testID="msg-image-caption" class="text-[12px] text-ink-secondary line-clamp-1" style={{ maxWidth: windowSize().width - 48 }}>
+                <Text testID="msg-image-caption" class="text-[12px] text-ink-secondary line-clamp-1" style={{ maxWidth: viewportSize().width - 48 }}>
                   {name()}
                 </Text>
               </View>
@@ -634,7 +635,7 @@ export function MessageImageLightbox(props: {
         >
           {(note: () => "tap" | "failed") => (
             <View class={`absolute left-0 right-0 bottom-[22px] items-center ${chrome()}`} style={{ pointerEvents: "none" }}>
-              <Text testID="msg-image-caption" class="text-[12px] font-semibold text-ink line-clamp-1" style={{ maxWidth: windowSize().width - 48 }}>
+              <Text testID="msg-image-caption" class="text-[12px] font-semibold text-ink line-clamp-1" style={{ maxWidth: viewportSize().width - 48 }}>
                 {note() === "tap" ? t().stream.imageSaveTapAgain : t().stream.imageSaveFailed}
               </Text>
             </View>

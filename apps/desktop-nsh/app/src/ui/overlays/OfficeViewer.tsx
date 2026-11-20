@@ -13,7 +13,8 @@
  * slide are held here, so entering and leaving it reads nothing again. A file replaced (a new
  * `path`, `base64` or `kind`) starts over; the same file handed down again does not.
  */
-import { batch, cleanup, computed, effect, keymap, signal, Text, untracked, View, windowSize } from "nsh";
+import { batch, cleanup, computed, effect, keymap, signal, Text, untracked, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Dialog } from "nsh/base";
 import { copy, runtime } from "../../runtime";
 import { holdFullscreenPreview } from "../../m/overlays/fullscreen-preview.ts";
@@ -229,7 +230,7 @@ export function OfficeViewer(props: {
           }}
           backdropClass="bg-pane"
           class="m-auto bg-pane overflow-hidden"
-          style={{ width: windowSize().width, height: windowSize().height }}
+          style={{ width: viewportSize().width, height: viewportSize().height }}
         >
           <WheelLayer>
             <View testID="office-fullscreen" class="flex-1 min-h-0">{content()}</View>

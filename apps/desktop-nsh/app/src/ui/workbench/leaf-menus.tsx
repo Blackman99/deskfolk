@@ -4,7 +4,8 @@
  * without a shaped menu shows the wrapping `emptyActions` instead.
  */
 import { Input } from "nsh/base";
-import { Overlay, Scroll, Text, View, windowSize, type InputRef, type ViewRef } from "nsh";
+import { Overlay, Scroll, Text, View, type InputRef, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { copy } from "../../runtime";
 import { BrandMark } from "../BrandMark";
 import { Icon } from "../Icon";
@@ -58,7 +59,7 @@ export function NewTabMenu(props: {
         testID="wb-new-menu"
         accessibilityLabel={copy().pane.newTab}
         class="w-[280px] p-[6px] rounded-(--radius-lg) bg-pane border border-line overflow-hidden"
-        style={{ maxHeight: Math.min(420, windowSize().height - 48), maxWidth: windowSize().width - 16, boxShadow: shadow("menu") }}
+        style={{ maxHeight: Math.min(420, viewportSize().height - 48), maxWidth: viewportSize().width - 16, boxShadow: shadow("menu") }}
       >
         <FilterField testID="wb-new-query" value={props.filter} onChange={props.onFilter} autoFocus />
         <Scroll testID="wb-new-scroll" style={{ flexShrink: 1, minHeight: 0 }}>

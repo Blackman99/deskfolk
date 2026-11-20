@@ -12,12 +12,12 @@
  * `pageOnPhone` is the messenger's `page-on-phone`: in a window 680 wide or less the dialog is the
  * whole page, its ✕ a back chevron, and only the foot's first action (full width) shows.
  */
-import { context, Scroll, Text, View, windowSize, type JSX } from "nsh";
+import { context, Scroll, Text, View, type JSX } from "nsh";
 import { Dialog } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { shadow } from "./styles";
-import { widthAtMost } from "../platform/viewport";
+import { widthAtMost, viewportSize } from "../platform/viewport";
 import { WheelLayer } from "../platform/wheel-layer";
 
 /**
@@ -87,9 +87,9 @@ export function Modal(props: {
   const dismiss = () => {
     if (!props.busy) (props.onDismiss ?? props.onClose)();
   };
-  const cardWidth = () => (narrowWindow() ? windowSize().width - (page() ? 0 : 32) : Math.min(props.width ?? 520, windowSize().width - 48));
-  const cardMaxHeight = () => (page() ? windowSize().height : Math.round(windowSize().height * (props.maxHeight ?? 0.86)));
-  const cardHeight = () => (page() ? windowSize().height : props.fill ? Math.min(cardMaxHeight(), windowSize().height - 48) : undefined);
+  const cardWidth = () => (narrowWindow() ? viewportSize().width - (page() ? 0 : 32) : Math.min(props.width ?? 520, viewportSize().width - 48));
+  const cardMaxHeight = () => (page() ? viewportSize().height : Math.round(viewportSize().height * (props.maxHeight ?? 0.86)));
+  const cardHeight = () => (page() ? viewportSize().height : props.fill ? Math.min(cardMaxHeight(), viewportSize().height - 48) : undefined);
   const grows = () => (props.fill ? "flex-1 min-h-0" : "shrink min-h-0");
   return (
     <Dialog

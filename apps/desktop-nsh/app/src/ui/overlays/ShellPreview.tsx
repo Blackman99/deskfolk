@@ -12,7 +12,8 @@
  * events on `window`, so the same drag (width = width at the press − distance, clamped, saved on
  * release) is written against the responder.
  */
-import { Overlay, PanResponder, safeArea, View, windowSize, type JSX } from "nsh";
+import { Overlay, PanResponder, safeArea, View, type JSX } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import type { Annotation } from "@real-bot/protocol";
 import { projectDirOf } from "../../m/overlays/artifact-lookup.ts";
@@ -89,7 +90,7 @@ export function ShellPreview(props: {
       artifact().previewDragging = true;
     },
     onPanResponderMove: (_e, g) => {
-      artifact().previewPreferred = clampPreviewWidth(originWidth - g.dx, props.shellWidth?.() ?? windowSize().width);
+      artifact().previewPreferred = clampPreviewWidth(originWidth - g.dx, props.shellWidth?.() ?? viewportSize().width);
     },
     onPanResponderRelease: () => {
       artifact().previewDragging = false;

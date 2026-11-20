@@ -10,7 +10,8 @@
  * inside the widget; Escape and a press outside close it. The folding is instant, not the
  * messenger's clip-path morph, and the card appears in place instead of growing out of its bubble.
  */
-import { Canvas, cleanup, effect, Overlay, PanResponder, Path2D, Scroll, signal, Text, token, View, windowSize } from "nsh";
+import { Canvas, cleanup, effect, Overlay, PanResponder, Path2D, Scroll, signal, Text, token, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { UsageAgent } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import { usageCheckedTime, usageLatestCheck, usageLevel, usageTightest, usageUsed, usageUsedText } from "../../m/usage/usage.ts";
@@ -50,8 +51,8 @@ export function UsageWidget() {
   const anyWindow = () => agents().some((agent) => tightestOf(agent) !== null);
   const visible = () => !usageWidget.hidden && agents().length > 0;
   const checked = () => usageCheckedTime(usageLatestCheck(agents()), locale());
-  const viewW = () => windowSize().width;
-  const viewH = () => windowSize().height;
+  const viewW = () => viewportSize().width;
+  const viewH = () => viewportSize().height;
 
   const pointing = signal(false);
   const keyboard = signal(false);

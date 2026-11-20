@@ -9,7 +9,8 @@
  * Svelte `onkeydown` the tools button used for ArrowUp / ArrowDown; it hears the two keys only while
  * the button has the focus.
  */
-import { cleanup, effect, keymap, Overlay, signal, Text, untracked, View, windowSize, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
+import { cleanup, effect, keymap, Overlay, signal, Text, untracked, View, type ContextMenuEvent, type JSX, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { sessionPan, type SessionDrag } from "./session-drag";
 import { shadow } from "../styles";
 
@@ -163,9 +164,9 @@ export function RailTooltip(props: {
   });
 
   // A resize or a scroll of the rail takes the tip away.
-  let lastSize = untracked(() => windowSize());
+  let lastSize = untracked(() => viewportSize());
   effect(() => {
-    const size = windowSize();
+    const size = viewportSize();
     if (size.width === lastSize.width && size.height === lastSize.height) return;
     lastSize = size;
     if (isOpen) hide();

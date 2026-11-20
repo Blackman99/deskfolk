@@ -16,7 +16,7 @@
  * yet saved); `height` (the page's height for the editor, px).
  */
 import { changedLines, type Locale, type PromptDetail, type PromptRevision } from "@real-bot/protocol";
-import { Clipboard, cleanup, effect, signal, Scroll, Text, untracked, View, windowSize, type JSX } from "nsh";
+import { Clipboard, cleanup, effect, signal, Scroll, Text, untracked, View, type JSX } from "nsh";
 import { Input, Tab, Tabs } from "nsh/base";
 import { copy, runtime } from "../../runtime";
 import { ApiError } from "../../m/api.ts";

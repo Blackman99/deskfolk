@@ -8,7 +8,8 @@
  * and body clear of the safe area. `origin` is the page's origin, the relay a compact code is read
  * against (`pairing-code.ts`); the page's own unless a story gives one.
  */
-import { safeArea, Scroll, signal, Text, View, windowSize } from "nsh";
+import { safeArea, Scroll, signal, Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Input } from "nsh/base";
 import { formatFingerprint } from "../../m/remote/fingerprint.ts";
 import { previewPairing, type PairingProgress } from "../../m/remote/pairing.ts";
@@ -49,7 +50,7 @@ export function PairingScreen(props: { origin?: string }) {
     <View testID="pairing-screen" class={`flex-1 bg-bg ${phone() ? "items-stretch" : "items-center justify-center p-6"}`}>
       <View
         class={`flex-col bg-pane overflow-hidden ${phone() ? "flex-1" : "rounded-(--radius-xl) border border-line"}`}
-        style={{ width: phone() ? undefined : Math.min(520, windowSize().width - 48), boxShadow: phone() ? undefined : CARD_SHADOW }}
+        style={{ width: phone() ? undefined : Math.min(520, viewportSize().width - 48), boxShadow: phone() ? undefined : CARD_SHADOW }}
       >
         <View
           class={`flex-row items-center gap-[10px] border-b border-line bg-pane ${phone() ? "px-4" : "px-5 py-[14px]"}`}

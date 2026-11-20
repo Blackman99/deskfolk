@@ -8,7 +8,8 @@
  * Full window: a full-size dialog over the window (the Svelte one moved the card to the top layer);
  * the card's height is held in the conversation meanwhile, so the transcript under it does not move.
  */
-import { effect, platform, Scroll, signal, Text, View, windowSize } from "nsh";
+import { effect, platform, Scroll, signal, Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Dialog } from "nsh/base";
 import type { AgentRunApproval } from "@real-bot/protocol";
 import { holdFullscreenPreview } from "../../m/overlays/fullscreen-preview.ts";
@@ -66,7 +67,7 @@ export function ProjectPlanCard(props: {
   });
 
   const card = (isFull: boolean) => {
-    const side = () => (isFull ? Math.max(24, (windowSize().width - READING_WIDTH) / 2) : 16);
+    const side = () => (isFull ? Math.max(24, (viewportSize().width - READING_WIDTH) / 2) : 16);
     return (
       <>
         <View
@@ -147,7 +148,7 @@ export function ProjectPlanCard(props: {
           }}
           backdropClass="bg-pane"
           class="bg-pane overflow-hidden"
-          style={{ width: windowSize().width, height: windowSize().height }}
+          style={{ width: viewportSize().width, height: viewportSize().height }}
         >
           <WheelLayer>
             <View testID="plan-card-full" class="flex-1 bg-pane">

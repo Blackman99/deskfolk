@@ -22,7 +22,8 @@
  * land outside its columns and its trigger. Not in a modal (the Bot↔Bot direct's): a frame measured
  * there is the dialog's, not the window's, and a press on a row would read as outside.
  */
-import { Scroll, Text, View, cleanup, effect, keymap, signal, untracked, windowSize, type ViewRef } from "nsh";
+import { Scroll, Text, View, cleanup, effect, keymap, signal, untracked, type ViewRef } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Popover } from "nsh/base";
 import { frameOf, onPressOutside } from "../../platform/press";
 import type { ModelSource } from "../../m/model-source";
@@ -90,7 +91,7 @@ export function TunePicker(props: {
   const fit = signal(1);
   effect(() => {
     if (!tune.open() || phone()) return;
-    untracked(() => fit.set(columnFit(props.tree.room(tune.focus()).map((level) => level.width), windowSize().width)));
+    untracked(() => fit.set(columnFit(props.tree.room(tune.focus()).map((level) => level.width), viewportSize().width)));
   });
 
   // The keys the picker keeps while its columns are open.

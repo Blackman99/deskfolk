@@ -4,7 +4,8 @@
  * gone from the snapshot while it is open reads "missing".
  */
 import type { Bot, Routine } from "@real-bot/protocol";
-import { Scroll, Text, View, windowSize } from "nsh";
+import { Scroll, Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Dialog } from "nsh/base";
 import { copy } from "../../runtime";
 import { routineScheduleLabel } from "../../m/panels/routine-form.ts";
@@ -25,7 +26,7 @@ export function RoutineDetail(props: {
   onClose: () => void;
 }) {
   const t = () => copy();
-  const width = () => Math.min(440, windowSize().width - (narrowWindow() ? 32 : 40));
+  const width = () => Math.min(440, viewportSize().width - (narrowWindow() ? 32 : 40));
   return (
     <Dialog
       open
@@ -36,7 +37,7 @@ export function RoutineDetail(props: {
       }}
       backdropClass="bg-modal-backdrop"
       class="m-auto bg-pane overflow-hidden rounded-(--radius-lg) border border-line"
-      style={{ width: width(), maxHeight: Math.round(windowSize().height * 0.9), boxShadow: shadow("lg") }}
+      style={{ width: width(), maxHeight: Math.round(viewportSize().height * 0.9), boxShadow: shadow("lg") }}
     >
       <WheelLayer>
         <Scroll class="shrink min-h-0">

@@ -9,7 +9,8 @@
  * workspace left the bar for the tools), so stopping 60 points above it left an empty strip. Not
  * carried over: the backdrop blur and the slide animation (`pageSlide`).
  */
-import { Overlay, safeArea, View, windowSize, type JSX } from "nsh";
+import { Overlay, safeArea, View, type JSX } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { copy } from "../../runtime";
 import { narrowWindow } from "../Modal";
@@ -73,7 +74,7 @@ export function WorkspaceExplorer(props: {
             testID="workspace-pane"
             class={`min-w-0 overflow-hidden bg-pane ${narrow() ? "" : "border-l border-line"}`}
             style={{
-              width: narrow() ? windowSize().width : Math.min(1400, windowSize().width - 72),
+              width: narrow() ? viewportSize().width : Math.min(1400, viewportSize().width - 72),
               paddingBottom: narrow() ? safeArea().bottom : 0,
               boxShadow: narrow() ? undefined : shadow("sheet-end"),
             }}

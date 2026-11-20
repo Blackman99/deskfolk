@@ -12,7 +12,8 @@
  * text-selection drag from closing it) has no use here: the scrim's own press is a press.
  * `profilePane.backFromEditor()` is reported through `onProfilePane`.
  */
-import { cleanup, Text, View, windowSize } from "nsh";
+import { cleanup, Text, View } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { Dialog } from "nsh/base";
 import type { Bot, SessionSummary } from "@real-bot/protocol";
 import type { backdropClick } from "../../m/click-outside";
@@ -200,7 +201,7 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
       closeOnBackdropPress={false}
       onCancel={cancel}
       class="bg-transparent"
-      style={{ width: windowSize().width, height: windowSize().height }}
+      style={{ width: viewportSize().width, height: viewportSize().height }}
     >
       <WheelLayer>
         <View class="flex-1 flex-row" style={{ opacity: shown() ? 1 : 0 }}>
@@ -219,7 +220,7 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
             testID="session-settings"
             class={`min-h-0 bg-bg overflow-hidden ${props.narrow ? "border-l-0" : "border-l border-line"}`}
             style={{
-              width: props.narrow ? windowSize().width : Math.min(460, Math.round(windowSize().width * 0.94)),
+              width: props.narrow ? viewportSize().width : Math.min(460, Math.round(viewportSize().width * 0.94)),
               boxShadow: props.narrow ? undefined : shadow("sheet-end"),
             }}
           >

@@ -28,7 +28,8 @@
  * being placed: what was staged stays in the box until the Mac has it, so the words leave the box
  * when the box empties, not at the press.
  */
-import { batch, cleanup, context, Overlay, platform, View, signal, windowSize, type JSX, type ViewRef, type ViewStyle } from "nsh";
+import { batch, cleanup, context, Overlay, platform, View, signal, type JSX, type ViewRef, type ViewStyle } from "nsh";
+import { viewportSize } from "../../platform/viewport";
 import { reduceMotion } from "../interface/motion";
 
 /** A frame in the window (the root view), in points. */
@@ -368,7 +369,7 @@ function Ghost(props: { flight: Flying; onLanded: () => void }) {
     clearTimeout(landing);
   });
   return (
-    <Overlay style={{ width: windowSize().width, height: windowSize().height, pointerEvents: "none" }}>
+    <Overlay style={{ width: viewportSize().width, height: viewportSize().height, pointerEvents: "none" }}>
       <View
         testID="send-flight"
         style={{ position: "absolute", left: f.clip.x, top: f.clip.y, width: f.clip.width, height: f.clip.height, overflow: "hidden", pointerEvents: "none" }}
