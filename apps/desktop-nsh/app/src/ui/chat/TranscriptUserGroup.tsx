@@ -13,6 +13,7 @@
  * hook) has no counterpart.
  */
 import { signal, Text, View, type ViewRef } from "nsh";
+import { USER_MEMBER } from "@real-bot/protocol";
 import type { TranscriptGroup } from "../../m/chat/chat-view.ts";
 import { transcriptItemKey, type TranscriptItem } from "../../m/chat/transcript.ts";
 import type { TranscriptStage } from "../../m/chat/transcript-stage.ts";
@@ -32,6 +33,7 @@ import { ReplyingIndicator } from "./ReplyingIndicator";
 import { messageHover, MessagePill } from "./message-pill";
 import { arriveMotion, lineSelection, MessageToolbar, ringStyle, toolbarWanted, type MessageMenuHandler } from "./transcript-parts";
 import { LineButton, MessageFoot, QueuedRow, VersionsBlock } from "./transcript-user-parts";
+import { SendFlightOf } from "./send-flight";
 
 export function TranscriptUserGroup(props: {
   group: TranscriptGroup;
@@ -83,7 +85,29 @@ function Segment(props: {
   /** The bubble: the pill stands on its top edge. */
   const bubble = signal<ViewRef | null>(null);
   const editing = () => stage.editingHere(msg());
-  const arrive = arriveMotion(() => stage.arriving.has(transcriptItemKey(props.item())));
+  /** The line you just sent flies in from the box (`send-flight`) instead of rising into place. */
+  const flight = SendFlightOf();
+  const flies = flight?.claim(msg().id, msg().body, msg().author === USER_MEMBER && msg().attachments.length === 0 && !msg().parent_id) ?? false;
+  const arrive = arriveMotion(() => !flies && stage.arriving.has(transcriptItemKey(props.item())));
+  /** The bubble's corners: the first of a run points at its sender. */
+  const corners = () =>
+    grouped()
+      ? "rounded-tl-(--radius-lg) rounded-tr-(--radius-md) rounded-br-(--radius-lg) rounded-bl-(--radius-lg)"
+      : "rounded-tl-(--radius-lg) rounded-tr-(--radius-xs) rounded-br-(--radius-lg) rounded-bl-(--radius-lg)";
+  /** The bubble as it flies in (`send-flight`): the words as the box showed them, or the bubble itself. */
+  const ghost = (words: boolean) => (
+    <View class={`w-full h-full px-[14px] py-[10px] border border-transparent ${words ? "" : "bg-you"} ${corners()}`} style={words ? undefined : { boxShadow: shadow("xs") }}>
+      <MarkdownBody
+        selectable={false}
+        source={stage.messageBody(msg())}
+        options={stage.markdownOpts(msg())}
+        copyLabel={t().chat.copyCode}
+        copiedLabel={t().chat.copied}
+        inverted={!words}
+        files={workspaceFiles()}
+      />
+    </View>
+  );
   const ringed = () => stage.highlightedId === msg().id || stage.selectedMessageId === msg().id;
   const replying = () => props.item().replying ?? [];
   const botDm = () => (!msg().withdrawn_at && !stage.focus ? stage.botDmIndex.get(msg().id) : undefined);
@@ -99,7 +123,7 @@ function Segment(props: {
         class={`relative items-end ${editing() ? "w-full" : narrowWindow() ? "max-w-full" : "max-w-[80%]"} ${ringed() ? "rounded-[16px]" : ""} ${
           grouped() ? "mt-[4px] pt-[8px] border-t border-line-subtle" : ""
         }`}
-        style={{ ...ringStyle(ringed()), ...arrive() }}
+        style={{ ...ringStyle(ringed()), ...arrive(), ...(flies ? flight?.hides(msg().id) : undefined) }}
       >
         <If
           when={!msg().withdrawn_at}
@@ -119,12 +143,12 @@ function Segment(props: {
           <View
             testID="msg-bubble"
             ref={(node: ViewRef) => bubble.set(node)}
+            onLayout={() => {
+              const node = bubble();
+              if (flies && node) flight?.placed(msg().id, node, ghost);
+            }}
             {...lineSelection((at, selected) => props.onContextMenu?.(msg(), at, selected))}
-            class={`max-w-full px-[14px] py-[10px] border ${editing() ? "w-full bg-pane border-accent-border" : "bg-you border-transparent"} ${
-              grouped()
-                ? "rounded-tl-(--radius-lg) rounded-tr-(--radius-md) rounded-br-(--radius-lg) rounded-bl-(--radius-lg)"
-                : "rounded-tl-(--radius-lg) rounded-tr-(--radius-xs) rounded-br-(--radius-lg) rounded-bl-(--radius-lg)"
-            }`}
+            class={`max-w-full px-[14px] py-[10px] border ${editing() ? "w-full bg-pane border-accent-border" : "bg-you border-transparent"} ${corners()}`}
             style={editing() ? undefined : { boxShadow: shadow("xs") }}
           >
             {/* An overlay on the bubble's top edge (`message-pill`), above the rows around it. */}

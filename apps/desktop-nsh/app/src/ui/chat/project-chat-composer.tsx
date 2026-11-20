@@ -30,6 +30,7 @@ import { AgentTune } from "./AgentTune";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
+import type { SendFlight } from "./send-flight";
 import { ComposerEditor } from "../lazy-views";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
@@ -60,6 +61,8 @@ export function ProjectComposer(props: {
   fileDragOver?: boolean;
   /** How the conversation hands files dropped elsewhere on it to this box. */
   onHandle?: (handle: ProjectComposerHandle | null) => void;
+  /** The conversation's flight: a line of words alone flies from here into the transcript (`send-flight`). */
+  flight?: SendFlight;
 }) {
   const t = () => copy();
   const s = () => props.state;
@@ -114,12 +117,15 @@ export function ProjectComposer(props: {
     const rows = [...staged()];
     const pathRows = [...stagedPaths()];
     const { attach, mention } = splitDraggedPaths(pathRows.map((row) => row.path), s().snapshot().settings.workspace_path ?? null);
+    // Measured now, while the words are still in the box.
+    const landed = props.flight?.arm(editor?.words() ?? null, target.draft, rows.length === 0 && pathRows.length === 0);
     const sent = await runtime.send({
       sessionId: props.selected.id,
       attachments: rows.length > 0 ? rows.map((row) => row.file) : undefined,
       ...(attach.length > 0 ? { paths: attach } : {}),
       ...(mention.length > 0 ? { lines: mention } : {}),
     });
+    landed?.(sent);
     sendFailed.set(!sent);
     if (!sent) return;
     // What was staged goes once the Mac has it, as in a Bot's composer.

@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A line you send flies from the box into the conversation
+
+- On the desktop, a line you send now leaves the message box where you typed it and flies into the conversation, turning into your bubble on the way, as in Telegram: it dips a little, sweeps across to its side and rises into place. It works in a Bot's conversation and in a project session. It is a line of words only, sent while you are at the newest line: a line with files or a quote, or one sent while you are reading further up, comes in as before. If the conversation moves while the line is on its way (a reply starting under it), the bubble lands where the line ends up. With reduced motion (the system's setting or your interface profile) nothing flies. The phone's page keeps the old entrance for now.
+
 ### An input method's candidates stay under the line you type on Windows
 
 - On Windows, typing Chinese with an input method (Microsoft Pinyin) into the message box moved the candidate window down about a line with every letter, until it sat on the taskbar or jumped above the box. It now stays under the line being typed, as in any Windows text box. The fix is NSH's (longbridge/nsh#2497), and the app now builds on an NSH that has it.

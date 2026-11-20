@@ -18,7 +18,7 @@
  * press is `onContextMenu` of the groups, and the menu's selected text is what the line's selection
  * last reported (`lineSelection`); the file overlay has no preview inside (see `stage-overlays`).
  */
-import { cleanup, computed, List, platform, Scroll, signal, View, type ViewRef, type ViewStyle } from "nsh";
+import { cleanup, computed, effect, List, platform, Scroll, signal, View, type ViewRef, type ViewStyle } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
@@ -37,6 +37,7 @@ import { DelegationBlock, HistoryLoading, StageRowView } from "./stage-parts";
 import { trackReading } from "./stage-reading";
 import { activeMessageId, createRowKeeper, hiddenWaitingFromRows, inverseIndexOf, invertedRows, stageRows } from "./stage-rows";
 import { TranscriptClip } from "./message-pill";
+import { createSendFlight, SendFlightLayer, SendFlightOf } from "./send-flight";
 import { createStageScroll } from "./stage-scroll";
 import { settled } from "../workbench/drag-settle";
 import { onGlassCard } from "../glass";
@@ -97,6 +98,12 @@ export function ChatStage(props: {
     olderLoading: () => Boolean(view()?.olderLoading),
     loadOlder: () => void runtime.loadOlderMessages(selected()?.id),
   });
+  /** A line of words you send flies from the box into the transcript (`send-flight`). */
+  let stageNode: ViewRef | null = null;
+  let transcriptNode: ViewRef | null = null;
+  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: ctx.sessionId });
+  effect(() => flight.switched(ctx.sessionId()));
+  cleanup(() => flight.dispose());
   const toBottom = () => {
     scroll.scrollToBottom(false);
     setTimeout(() => scroll.scrollToBottom(false), 120);
@@ -131,6 +138,7 @@ export function ChatStage(props: {
   return (
     <View
       testID="chat-stage"
+      ref={(node: ViewRef | null) => (stageNode = node)}
       class={`flex-1 min-h-0 relative overflow-hidden ${glassCard() ? "" : "bg-pane"}`}
       onLayout={(e) => {
         width.set(e.bounds.size.width);
@@ -171,34 +179,37 @@ export function ChatStage(props: {
               let listNode: ViewRef | null = null;
               return (
                 <TranscriptClip.Provider value={() => listNode}>
-                  <List
-                    testID="transcript"
-                    ref={(node) => {
-                      listNode = node;
-                      scroll.ref(node);
-                    }}
-                    each={inverted()}
-                    inverted
-                    keyExtractor={(row) => row.id}
-                    class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                    style={LAYER}
-                    contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 16 }}
-                    estimatedItemSize={96}
-                    onScroll={scroll.onScroll}
-                    onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
-                    onLoadMore={scroll.onLoadMore}
-                  >
-                    {(row) => (
-                      <StageRowView
-                        row={row()}
-                        stage={stage}
-                        ctx={ctx}
-                        loadingEarlier={Boolean(view()?.olderLoading)}
-                        onContextMenu={actions.openMenu}
-                        onOpenArtifact={openArtifact}
-                      />
-                    )}
-                  </List>
+                  <SendFlightOf.Provider value={flight}>
+                    <List
+                      testID="transcript"
+                      ref={(node) => {
+                        listNode = node;
+                        transcriptNode = node;
+                        scroll.ref(node);
+                      }}
+                      each={inverted()}
+                      inverted
+                      keyExtractor={(row) => row.id}
+                      class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
+                      style={LAYER}
+                      contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 16 }}
+                      estimatedItemSize={96}
+                      onScroll={scroll.onScroll}
+                      onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
+                      onLoadMore={scroll.onLoadMore}
+                    >
+                      {(row) => (
+                        <StageRowView
+                          row={row()}
+                          stage={stage}
+                          ctx={ctx}
+                          loadingEarlier={Boolean(view()?.olderLoading)}
+                          onContextMenu={actions.openMenu}
+                          onOpenArtifact={openArtifact}
+                        />
+                      )}
+                    </List>
+                  </SendFlightOf.Provider>
                 </TranscriptClip.Provider>
               );
             }}
@@ -238,8 +249,10 @@ export function ChatStage(props: {
           onHandle={(handle) => (composer = handle)}
           fileDragOver={fileOver()}
           readFiles={props.readFiles}
+          flight={flight}
         />
       </View>
+      <SendFlightLayer flight={flight} />
       <StageOverlays ctx={ctx} actions={actions} selected={selected()} onOpenProfile={props.onOpenProfile} onOpenArtifact={props.onOpenArtifact} />
     </View>
   );

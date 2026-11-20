@@ -33,6 +33,7 @@ import { boxHeight, mentionCandidatesFor } from "./composer-editor";
 import { MentionPopup } from "./MentionPopup";
 import { argumentQuery, matchArguments, takesChoices, withArgument, type ArgumentQuery } from "./command-arguments";
 import { CommandChoiceMenu, ProjectCommandMenu } from "./ProjectCommandMenu";
+import type { WordsAt } from "./send-flight";
 
 /** Paragraphs of text and chips: the composer's whole schema. */
 const SCHEMA = withMention(
@@ -53,7 +54,13 @@ export type ComposerEditorHandle = {
   selection(): { start: number; end: number };
   /** The chips now, in order (the member ids a send carries; tests read them). */
   chips(): { id: string; label: string }[];
+  /** Where the words start: the editor's view and its padding (a sent line flies from there, `send-flight`). */
+  words(): WordsAt;
 };
+
+/** The editor's padding: the content classes below, and where `words()` says the words start. */
+const PAD_PHONE = { x: 4, y: 9 };
+const PAD_DESKTOP = { x: 4, y: 6 };
 
 export function ComposerEditor(props: {
   /** The draft. */
@@ -450,6 +457,7 @@ export function ComposerEditor(props: {
                   },
                   selection: () => selectionNow(),
                   chips: () => chipsOf(docOf()).map(({ id, label }) => ({ id, label })),
+                  words: () => ({ node: node.node, inset: phone() ? PAD_PHONE : PAD_DESKTOP }),
                 }
               : null,
           );

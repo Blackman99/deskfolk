@@ -34,6 +34,7 @@ import { BotTune } from "./BotTune";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
+import type { SendFlight } from "./send-flight";
 import { ComposerEditor } from "../lazy-views";
 import { ComposerQuote } from "./ComposerQuote";
 import { ComposerSuggestions } from "./ComposerSuggestions";
@@ -90,6 +91,8 @@ export function Composer(props: {
   readFiles?: ReadUris;
   /** Files from Finder are being dragged over the conversation, outside the card: the card says where they go. */
   fileDragOver?: boolean;
+  /** The conversation's flight: a line of words alone flies from here into the transcript (`send-flight`). */
+  flight?: SendFlight;
 }) {
   const MOD_ENTER = formatShortcut(["mod", "Enter"]);
   const snapshot = () => runtime.snapshot;
@@ -257,7 +260,11 @@ export function Composer(props: {
     if (state.primary.kind !== "send" || state.primary.disabled || !target) return;
     const staged = [...files.pendingAttachments];
     const stagedPaths = [...files.pendingPaths];
-    if (!(await props.onSend(staged.map((row) => row.file), stagedPaths.map((row) => row.path)))) return;
+    // Measured now, while the words are still in the box.
+    const landed = props.flight?.arm(editor?.words() ?? null, target.draft, staged.length === 0 && stagedPaths.length === 0 && !target.replyingToId);
+    const went = await props.onSend(staged.map((row) => row.file), stagedPaths.map((row) => row.path));
+    landed?.(went);
+    if (!went) return;
     sentAt = performance.now();
     for (const row of [...staged, ...stagedPaths]) if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
     const sent = new Set([...staged, ...stagedPaths].map((row) => row.id));

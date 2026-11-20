@@ -12,7 +12,7 @@
  * selection area of its own (no `selectable` view, Markdown with `selectable={false}`): the nearest
  * area takes a right click before the pane hears it (`pane-menu.ts`).
  */
-import { Text, View } from "nsh";
+import { Text, View, type ViewRef } from "nsh";
 import type { Annotation, Message } from "@real-bot/protocol";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view.ts";
@@ -26,6 +26,7 @@ import { MarkdownBody } from "../lazy-views";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { lineOf, type ProjectState } from "./project-chat-state";
+import { SendFlightOf } from "./send-flight";
 import type { Attachment } from "@real-bot/protocol";
 import type { PressedPicture } from "./image-origin";
 
@@ -69,6 +70,16 @@ export function ProjectLine(props: {
   const s = () => props.state;
   const msg = () => props.message;
   const who = () => lineOf(msg());
+  /** The line you just sent flies in from the box (`send-flight`). */
+  const flight = SendFlightOf();
+  const flies = flight?.claim(msg().id, msg().body, who() === "you" && msg().attachments.length === 0) ?? false;
+  let bubble: ViewRef | null = null;
+  /** The bubble as it flies in: the words as the box showed them, or the bubble itself. */
+  const ghost = (words: boolean) => (
+    <View class={`w-full h-full px-[14px] py-[10px] rounded-[16px] gap-2 ${words ? "" : "bg-you"}`}>
+      <Text class={`text-[14px] ${words ? "text-ink" : "text-you-foreground"}`}>{msg().body}</Text>
+    </View>
+  );
   const hosted = () => s().placed().byLine.get(msg().id) ?? [];
   const kept = () => (focusMode.on ? [] : s().keptRows(hosted()));
   // Out of the transcript's selection: a drag across lines passes over it and copies the words alone.
@@ -98,8 +109,14 @@ export function ProjectLine(props: {
         </View>
       </If>
       <If when={who() === "you"}>
-        <View testID="project-line-you" class="items-end w-full">
-          <View class="max-w-[88%] px-[14px] py-[10px] rounded-[16px] bg-you gap-2">
+        <View testID="project-line-you" class="items-end w-full" style={flies ? flight?.hides(msg().id) : undefined}>
+          <View
+            ref={(node: ViewRef) => (bubble = node)}
+            onLayout={() => {
+              if (flies && bubble) flight?.placed(msg().id, bubble, ghost);
+            }}
+            class="max-w-[88%] px-[14px] py-[10px] rounded-[16px] bg-you gap-2"
+          >
             <If when={msg().body}>
               {/* In the transcript's selection, as no area of its own: an area here would take the right click (`pane-menu.ts`). */}
               <View>

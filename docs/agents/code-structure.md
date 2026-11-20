@@ -50,6 +50,7 @@
     - 小工具：`is-record.ts`、`locale-tag.ts`、`spend-format.ts`。
     - 界面方案（ADR 0106）：`interface/controller.svelte.ts` 的 `interfaceController`（每个窗口一个，套用、底线、回报），读用法用 `interface/behaviour.svelte.ts` 的 `interfaceBehaviour()`，改过的字走 `copy.ts` 的 `copyFor(locale, overrides)`；校验和打补丁在协议包的 `applyInterfacePatch`，两端共用。画代码的地方：代码配色取 `app/src/ui/code-colors.tsx`（`codeTheme(place)`、`codeSurface()`、`highlightCode`），不要自己挑主题。
     - 从外面来的文件：两个消息框都用 `app/src/ui/chat/composer-drop.tsx`（`stageUris` 读访达拖入、粘贴的 `file:` 地址并暂存，`pickInto` 是回形针，`sayLeftOut` 说哪些没加上，`DropVeil` 是拖着经过时的提示）；文件树的拖入在 `ArtifactTree` 的 `onDropFiles`，拷贝走 `ArtifactTreeSource.importDropped`。中英文案里列几个名字用 `m/copy/name-list.ts`。
+    - 发出去的一行从消息框飞进对话：`app/src/ui/chat/send-flight.tsx`（对话里 `createSendFlight` 加 `SendFlightLayer`，消息框在按下时 `arm`，你那一行用 `SendFlightOf` 认领），Bot 的对话和项目会话共用。
     - 交互：`pointer-drag.ts`（拖动改宽高）、`autosave.svelte.ts`（边输边存）、`keymap.ts` 的 `isPrimaryModifier`；平台这一侧的 `app/src/platform/`（`press.ts` 的 `onPressOutside`、`wheel.ts`、`lifecycle.ts`、`viewport.ts` 的 `widthAtMost`）。
   - **界面组件（`apps/desktop-nsh/app/src/ui`，NSH TSX，写法见 `apps/desktop-nsh/PORTING.md`）**
     - `Button.tsx`、`IconButton.tsx`、`Icon.tsx`（图标表在 `m/icons.ts`）；右上角提示 `m/toast.svelte.ts` 的 `showToast`（`ToastHost.tsx` 外壳挂一个）。

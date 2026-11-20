@@ -16,7 +16,7 @@
  * Differences from the Svelte one are `ChatStage`'s: the composer sits under the list, the active
  * tick is read from the rows viewable.
  */
-import { cleanup, computed, List, signal, Text, View, type ViewRef } from "nsh";
+import { cleanup, computed, effect, List, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment, SessionSummary } from "@real-bot/protocol";
 import { isDifferentDay } from "../../m/chat/chat-view.ts";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
@@ -38,6 +38,7 @@ import { createProjectRowKeeper, sameRows } from "./project-rows";
 import { ProjectWorking } from "./project-chat-working";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
+import { createSendFlight, SendFlightLayer, SendFlightOf } from "./send-flight";
 import { settled } from "../workbench/drag-settle";
 import { PaneMenu } from "../workbench/pane-menu";
 import { onGlassCard } from "../glass";
@@ -120,6 +121,12 @@ export function ProjectChat(props: {
     loadOlder: () => void runtime.loadOlderMessages(selected().id),
   });
   trackReading({ sessionId: state.sessionId, lastMessageId: lastLineId, atLatest: scroll.stick });
+  /** A line of words you send flies from the box into the transcript (`send-flight`). */
+  let stageNode: ViewRef | null = null;
+  let transcriptNode: ViewRef | null = null;
+  const flight = createSendFlight({ frame: () => stageNode, list: () => transcriptNode, atLatest: scroll.stick, session: state.sessionId });
+  effect(() => flight.switched(state.sessionId()));
+  cleanup(() => flight.dispose());
 
   const empty = () => lines().length === 0 && !state.live() && !view().historyLoading;
   const phone = settled(() => width() > 0 && width() <= 680);
@@ -137,6 +144,7 @@ export function ProjectChat(props: {
   return (
     <View
       testID="project-chat"
+      ref={(node: ViewRef | null) => (stageNode = node)}
       class={`flex-1 min-h-0 relative overflow-hidden ${glassCard() ? "" : "bg-pane"}`}
       onLayout={(e) => {
         width.set(e.bounds.size.width);
@@ -165,38 +173,43 @@ export function ProjectChat(props: {
               and the lines touched. Inverted, `paddingTop` is the end by the composer. */}
           <Each of={[state.sessionId()]} key={(id: string) => id}>
             {() => (
-              <List
-                testID="project-transcript"
-                ref={scroll.ref}
-                each={inverted()}
-                inverted
-                keyExtractor={(row) => row.id}
-                class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 14 }}
-                estimatedItemSize={80}
-                onScroll={scroll.onScroll}
-                onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
-                onLoadMore={scroll.onLoadMore}
-              >
-                {(row) => (
-                  <View class="w-full max-w-[800px] self-center">
-                    <If when={row().kind === "earlier"}>
-                      <EarlierLine loading={Boolean(view().olderLoading)} />
-                    </If>
-                    <If when={row().kind === "line" ? (row() as Extract<ProjectRow, { kind: "line" }>) : null}>
-                      {(line: () => Extract<ProjectRow, { kind: "line" }>) => (
-                        <ProjectLine message={line().message} date={line().date} state={state} onOpenArtifact={props.onOpenArtifact} onOpenImage={openImage} />
-                      )}
-                    </If>
-                    <If when={row().kind === "tasks"}>
-                      <ProjectTasksEnd state={state} />
-                    </If>
-                    <If when={row().kind === "working"}>
-                      <ProjectWorking state={state} />
-                    </If>
-                  </View>
-                )}
-              </List>
+              <SendFlightOf.Provider value={flight}>
+                <List
+                  testID="project-transcript"
+                  ref={(node) => {
+                    transcriptNode = node;
+                    scroll.ref(node);
+                  }}
+                  each={inverted()}
+                  inverted
+                  keyExtractor={(row) => row.id}
+                  class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
+                  contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 14 }}
+                  estimatedItemSize={80}
+                  onScroll={scroll.onScroll}
+                  onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
+                  onLoadMore={scroll.onLoadMore}
+                >
+                  {(row) => (
+                    <View class="w-full max-w-[800px] self-center">
+                      <If when={row().kind === "earlier"}>
+                        <EarlierLine loading={Boolean(view().olderLoading)} />
+                      </If>
+                      <If when={row().kind === "line" ? (row() as Extract<ProjectRow, { kind: "line" }>) : null}>
+                        {(line: () => Extract<ProjectRow, { kind: "line" }>) => (
+                          <ProjectLine message={line().message} date={line().date} state={state} onOpenArtifact={props.onOpenArtifact} onOpenImage={openImage} />
+                        )}
+                      </If>
+                      <If when={row().kind === "tasks"}>
+                        <ProjectTasksEnd state={state} />
+                      </If>
+                      <If when={row().kind === "working"}>
+                        <ProjectWorking state={state} />
+                      </If>
+                    </View>
+                  )}
+                </List>
+              </SendFlightOf.Provider>
             )}
           </Each>
         </If>
@@ -229,8 +242,10 @@ export function ProjectChat(props: {
           fileDragOver={fileOver()}
           readFiles={props.readFiles}
           onHandle={(handle) => (composer = handle)}
+          flight={flight}
         />
       </View>
+      <SendFlightLayer flight={flight} />
       <If when={state.subagentShown()}>
         {(task: () => NonNullable<ReturnType<typeof state.subagentShown>>) => (
           <ProjectSubagentDialog
