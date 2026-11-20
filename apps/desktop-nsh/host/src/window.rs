@@ -453,27 +453,33 @@ fn adopt(mtm: MainThreadMarker, id: u32, window: &Retained<NSWindow>) {
             window.setFrame_display(kept.frame, false);
             later(HAND_OVER_AFTER, move |mtm| hand_over(mtm, id, kept));
         }
-        None => {
-            // Cascaded from the newest window, like any document app.
+        None if BACKGROUND.get() => {
             match earlier {
                 Some(origin) => window.setFrameOrigin(NSPoint::new(origin.x + 28.0, origin.y - 28.0)),
                 None => window.center(),
             }
-            if BACKGROUND.get() {
-                // Beside the person's own work: out of Stage Manager's strip (which would shrink it
-                // to a thumbnail nothing can capture), on a secondary display when there is one.
-                window.setCollectionBehavior(NSWindowCollectionBehavior::Auxiliary);
-                let screens = NSScreen::screens(mtm);
-                if screens.count() > 1 && earlier.is_none() {
-                    let area = screens.objectAtIndex(1).visibleFrame();
-                    let size = window.frame().size;
-                    window.setFrameOrigin(NSPoint::new(
-                        area.origin.x + (area.size.width - size.width) / 2.0,
-                        area.origin.y + (area.size.height - size.height) / 2.0,
-                    ));
-                }
+            // Beside the person's own work: out of Stage Manager's strip (which would shrink it to a
+            // thumbnail nothing can capture), on a secondary display when there is one.
+            window.setCollectionBehavior(NSWindowCollectionBehavior::Auxiliary);
+            let screens = NSScreen::screens(mtm);
+            if screens.count() > 1 && earlier.is_none() {
+                let area = screens.objectAtIndex(1).visibleFrame();
+                let size = window.frame().size;
+                window.setFrameOrigin(NSPoint::new(
+                    area.origin.x + (area.size.width - size.width) / 2.0,
+                    area.origin.y + (area.size.height - size.height) / 2.0,
+                ));
             }
         }
+        // Cascaded from the newest window, like any document app; the first one in the middle of
+        // the screen at the last size.
+        None => match earlier {
+            Some(origin) => {
+                window.setFrameOrigin(NSPoint::new(origin.x + 28.0, origin.y - 28.0));
+                keep_frame(window, window.frame());
+            }
+            None => centre_at_last_size(mtm, window),
+        },
     }
     if let Some(host_window) = &host_window {
         follow(host_window, window);
@@ -485,6 +491,58 @@ fn adopt(mtm: MainThreadMarker, id: u32, window: &Retained<NSWindow>) {
         host_window.map_or(0.0, |h| h.backingScaleFactor()),
         if NSApplication::sharedApplication(mtm).isActive() { "active" } else { "in the background" }
     );
+}
+
+/// The first window at the last size (`window_state.rs`), no larger than the screen's visible area,
+/// in its middle: NSH places a new window from its host's corner, so a window as large as the
+/// screen came out cut by the screen's edge.
+fn centre_at_last_size(mtm: MainThreadMarker, window: &NSWindow) {
+    let size = SIZE_DIR.with_borrow(|d| d.as_deref().map(crate::window_state::load)).unwrap_or_default();
+    let Some(screen) = window.screen().or_else(|| NSScreen::mainScreen(mtm)) else {
+        window.center();
+        return;
+    };
+    let area = screen.visibleFrame();
+    let content = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(size.width.min(area.size.width), size.height.min(area.size.height)));
+    let mut frame = window.frameRectForContentRect(content);
+    frame.size.width = frame.size.width.min(area.size.width);
+    frame.size.height = frame.size.height.min(area.size.height);
+    frame.origin = NSPoint::new(
+        area.origin.x + (area.size.width - frame.size.width) / 2.0,
+        area.origin.y + (area.size.height - frame.size.height) / 2.0,
+    );
+    window.setFrame_display(frame, false);
+    keep_frame(window, frame);
+}
+
+/// Puts `window` back at `frame` once it shows: AppKit moves a window the first time it is ordered
+/// in (NSH orders it in with its first frame), off the place it was given and cut by the screen's
+/// edge. Looked at every frame for a second and a half, and once more a little after it shows.
+fn keep_frame(window: &NSWindow, frame: NSRect) {
+    let number = window.windowNumber();
+    fn look(number: isize, frame: NSRect, tries: u32, settled: bool) {
+        later(FIND_EVERY, move |mtm| {
+            let Some(window) = NSApplication::sharedApplication(mtm).windows().iter().find(|w| w.windowNumber() == number) else { return };
+            if !window.isVisible() || window.isMiniaturized() {
+                if tries > 0 {
+                    look(number, frame, tries - 1, settled);
+                }
+                return;
+            }
+            if window.frame() != frame && !window.inLiveResize() {
+                window.setFrame_display(frame, true);
+            }
+            if !settled {
+                later(Duration::from_millis(300), move |mtm| {
+                    let Some(window) = NSApplication::sharedApplication(mtm).windows().iter().find(|w| w.windowNumber() == number) else { return };
+                    if window.frame() != frame && !window.inLiveResize() {
+                        window.setFrame_display(frame, true);
+                    }
+                });
+            }
+        });
+    }
+    look(number, frame, (Duration::from_millis(1500).as_millis() / FIND_EVERY.as_millis()) as u32, false);
 }
 
 /// The host takes `window`'s frame: what NSH reports of the surface (`windowSize()`, its scale)
@@ -652,6 +710,9 @@ fn hand_over(mtm: MainThreadMarker, id: u32, kept: Kept) {
         }
         if kept.key && NSApplication::sharedApplication(mtm).isActive() {
             window.makeKeyWindow();
+        }
+        if !kept.zoomed {
+            keep_frame(&window, kept.frame);
         }
     }
     retire(replaced);
