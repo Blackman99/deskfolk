@@ -249,7 +249,7 @@ fn tauri_size_dir(config: &Config) -> Option<PathBuf> {
 /// bar hidden with the content under it, the sidebar's material behind the app, no smaller than the
 /// 0.4.0 window went, at `size` and zoomed if it was. `activate`: it takes the keyboard and brings
 /// the app forward as it shows (never beside the person's work, nor when a reload makes it again).
-fn launch(name: &str, size: &crate::window_state::WindowSize, activate: bool) -> serde_json::Value {
+fn launch(name: &str, size: &crate::window_state::WindowSize, activate: bool, at: Position) -> serde_json::Value {
     let mut window = serde_json::json!({
         "title": name,
         "titleBar": { "style": "hidden" },
@@ -258,10 +258,29 @@ fn launch(name: &str, size: &crate::window_state::WindowSize, activate: bool) ->
         "defaultSize": { "width": size.width, "height": size.height },
         "activate": activate,
     });
+    match at {
+        Position::Cascade => {}
+        Position::At(x, y) => window["defaultPosition"] = serde_json::json!({ "x": x, "y": y }),
+    }
     if size.maximized {
         window["defaultMode"] = serde_json::json!("maximized");
     }
     window
+}
+
+/// Where NSH opens a window: left to it (it cascades from its host's corner), or with its top left
+/// at a point of the screen (from the primary screen's top left).
+#[derive(Clone, Copy)]
+enum Position {
+    Cascade,
+    At(f64, f64),
+}
+
+/// `frame`'s top left as NSH takes a window's position: from the primary screen's top left, down.
+fn top_left(mtm: MainThreadMarker, frame: NSRect) -> Position {
+    let screens = NSScreen::screens(mtm);
+    let primary = if screens.count() > 0 { screens.objectAtIndex(0).frame().size.height } else { 0.0 };
+    Position::At(frame.origin.x, primary - (frame.origin.y + frame.size.height))
 }
 
 /// Opens a window running the current bundle; returns its id. The window itself comes once NSH has
@@ -275,7 +294,7 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     BACKGROUND.set(config.background);
     // The last window's size, the 0.4.0 app's before there is one of ours (`window_state.rs`).
     let size_dir = crate::config::nsh_data_dir(&config.data_dir);
-    let size = crate::window_state::load_or_import(&size_dir, tauri_size_dir(config).as_deref());
+    let mut size = crate::window_state::load_or_import(&size_dir, tauri_size_dir(config).as_deref());
     SIZE_DIR.with_borrow_mut(|d| *d = Some(size_dir));
 
     // The host: the size the window opens at, so what the app reads of the surface before its window
@@ -299,7 +318,18 @@ pub fn open(mtm: MainThreadMarker, config: &Config) -> Option<u32> {
     WINDOWS.with_borrow_mut(|w| {
         w.push(Entry { id, host_window, window: None, replacing: None, kept: None, look: None, unseen: false, view: made.view.clone(), host: made.host.clone() })
     });
-    let json = launch(&config.app_name, &size, !config.background).to_string();
+    // The first window in the middle of the screen; later ones cascade from the newest (`adopt`).
+    let first = WINDOWS.with_borrow(|w| w.iter().filter(|e| e.id != id).all(|e| e.window.is_none()));
+    let at = match first_frame(mtm) {
+        Some(frame) if first && !config.background => {
+            // The window's content is all of it (its title bar is hidden over the content).
+            size.width = frame.size.width;
+            size.height = frame.size.height;
+            top_left(mtm, frame)
+        }
+        _ => Position::Cascade,
+    };
+    let json = launch(&config.app_name, &size, !config.background, at).to_string();
     if !load_bundle(&made.view, &config.bundle, &json) {
         WINDOWS.with_borrow_mut(|w| w.retain(|e| e.id != id));
         return None;
@@ -493,56 +523,61 @@ fn adopt(mtm: MainThreadMarker, id: u32, window: &Retained<NSWindow>) {
     );
 }
 
-/// The first window at the last size (`window_state.rs`), no larger than the screen's visible area,
-/// in its middle: NSH places a new window from its host's corner, so a window as large as the
-/// screen came out cut by the screen's edge.
-fn centre_at_last_size(mtm: MainThreadMarker, window: &NSWindow) {
+/// Where the first window goes: at the last size (`window_state.rs`), no larger than the primary
+/// screen's visible area (the one with the menu bar), in its middle, as the shell's own window
+/// opened before NSH made it. NSH would center it on the screen in front, and AppKit cut it by
+/// that screen's edges.
+fn first_frame(mtm: MainThreadMarker) -> Option<NSRect> {
     let size = SIZE_DIR.with_borrow(|d| d.as_deref().map(crate::window_state::load)).unwrap_or_default();
-    let Some(screen) = window.screen().or_else(|| NSScreen::mainScreen(mtm)) else {
+    let screens = NSScreen::screens(mtm);
+    if screens.count() == 0 {
+        return None;
+    }
+    let area = screens.objectAtIndex(0).visibleFrame();
+    let (width, height) = (size.width.min(area.size.width), size.height.min(area.size.height));
+    Some(NSRect::new(
+        NSPoint::new(area.origin.x + (area.size.width - width) / 2.0, area.origin.y + (area.size.height - height) / 2.0),
+        NSSize::new(width, height),
+    ))
+}
+
+/// The first window at its place (`first_frame`), kept there as it shows.
+fn centre_at_last_size(mtm: MainThreadMarker, window: &NSWindow) {
+    let Some(frame) = first_frame(mtm) else {
         window.center();
         return;
     };
-    let area = screen.visibleFrame();
-    let content = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(size.width.min(area.size.width), size.height.min(area.size.height)));
-    let mut frame = window.frameRectForContentRect(content);
-    frame.size.width = frame.size.width.min(area.size.width);
-    frame.size.height = frame.size.height.min(area.size.height);
-    frame.origin = NSPoint::new(
-        area.origin.x + (area.size.width - frame.size.width) / 2.0,
-        area.origin.y + (area.size.height - frame.size.height) / 2.0,
-    );
     window.setFrame_display(frame, false);
     keep_frame(window, frame);
 }
 
-/// Puts `window` back at `frame` once it shows: AppKit moves a window the first time it is ordered
-/// in (NSH orders it in with its first frame), off the place it was given and cut by the screen's
-/// edge. Looked at every frame for a second and a half, and once more a little after it shows.
+/// Puts `window` back at `frame` once it shows, and keeps it there for two seconds: AppKit moves a
+/// window the first time it is ordered in (NSH orders it in with its first frame, and activating the
+/// app comes after), off the place it was given and cut by the screen's edge. Not while the person
+/// drags or resizes it.
 fn keep_frame(window: &NSWindow, frame: NSRect) {
-    let number = window.windowNumber();
-    fn look(number: isize, frame: NSRect, tries: u32, settled: bool) {
-        later(FIND_EVERY, move |mtm| {
+    const SHOWN_WITHIN: Duration = Duration::from_millis(1500);
+    const KEPT_FOR: Duration = Duration::from_secs(2);
+    const EVERY: Duration = Duration::from_millis(50);
+    fn look(number: isize, frame: NSRect, waits: u32, keeps: u32) {
+        later(EVERY, move |mtm| {
             let Some(window) = NSApplication::sharedApplication(mtm).windows().iter().find(|w| w.windowNumber() == number) else { return };
-            if !window.isVisible() || window.isMiniaturized() {
-                if tries > 0 {
-                    look(number, frame, tries - 1, settled);
+            let shown = window.isVisible() && !window.isMiniaturized();
+            if shown {
+                let busy = window.inLiveResize() || objc2_app_kit::NSEvent::pressedMouseButtons() != 0;
+                if window.frame() != frame && !busy {
+                    window.setFrame_display(frame, true);
                 }
-                return;
-            }
-            if window.frame() != frame && !window.inLiveResize() {
-                window.setFrame_display(frame, true);
-            }
-            if !settled {
-                later(Duration::from_millis(300), move |mtm| {
-                    let Some(window) = NSApplication::sharedApplication(mtm).windows().iter().find(|w| w.windowNumber() == number) else { return };
-                    if window.frame() != frame && !window.inLiveResize() {
-                        window.setFrame_display(frame, true);
-                    }
-                });
+                if keeps > 0 {
+                    look(number, frame, waits, keeps - 1);
+                }
+            } else if waits > 0 {
+                look(number, frame, waits - 1, keeps);
             }
         });
     }
-    look(number, frame, (Duration::from_millis(1500).as_millis() / FIND_EVERY.as_millis()) as u32, false);
+    let steps = |d: Duration| (d.as_millis() / EVERY.as_millis()) as u32;
+    look(window.windowNumber(), frame, steps(SHOWN_WITHIN), steps(KEPT_FOR));
 }
 
 /// The host takes `window`'s frame: what NSH reports of the surface (`windowSize()`, its scale)
@@ -679,7 +714,8 @@ fn reload(mtm: MainThreadMarker, config: &Config, id: u32) -> bool {
     });
     // Back in its place in the list, so the newest window stays the newest.
     WINDOWS.with_borrow_mut(|entries| entries.sort_by_key(|e| e.id));
-    if !load_bundle(&made.view, &config.bundle, &launch(&config.app_name, &size, false).to_string()) {
+    let at = kept.map_or(Position::Cascade, |k| top_left(mtm, k.frame));
+    if !load_bundle(&made.view, &config.bundle, &launch(&config.app_name, &size, false, at).to_string()) {
         give_up_reload(mtm, id);
         return true;
     }
