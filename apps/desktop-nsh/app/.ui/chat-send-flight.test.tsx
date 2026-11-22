@@ -18,7 +18,13 @@ test("a line you send ends in the transcript fully shown, with no stand-in left"
     await app.type("id:composer-input", line);
     await app.keyboard.press("enter");
     await app.waitUntil(() => app.shows("id:transcript") && app.texts().includes(line), { timeout: 15_000 });
-    await app.waitUntil(() => !app.shows("id:send-flight") && app.viewStyle(`text:${line}`)?.effectiveOpacity === 1, { timeout: 5_000 });
+    // The composer keeps the line until the Mac has answered the send, and the transcript can show it
+    // first: on a slower runner both held it for a moment, and `viewStyle` refuses a text two views
+    // show. Wait for the one line, then for it fully shown.
+    await app.waitUntil(
+      () => !app.shows("id:send-flight") && app.count(`text:${line}`) === 1 && app.viewStyle(`text:${line}`)?.effectiveOpacity === 1,
+      { timeout: 5_000 },
+    );
     expect(app.count(`text:${line}`)).toBe(1);
     expect(app.value("id:composer-input") ?? "").toBe("");
   } finally {
