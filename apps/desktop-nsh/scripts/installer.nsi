@@ -119,6 +119,11 @@ Section "Install"
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoModify" 1
   WriteRegDWORD HKCU "${UNINSTKEY}" "NoRepair" 1
   WriteRegDWORD HKCU "${UNINSTKEY}" "EstimatedSize" $0
+
+  ; The shortcuts, a taskbar pin and the uninstall entry take their icon from the program, which has
+  ; carried one since `host/build.rs`; 0.5.0 and 0.5.1's had none, and Explorer keeps showing the blank
+  ; icon it cached for them until it is told that icons changed (SHCNE_ASSOCCHANGED).
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
 SectionEnd
 
 Function un.onInit

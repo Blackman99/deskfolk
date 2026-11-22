@@ -409,6 +409,24 @@ function checkIdentity(shell: string) {
   }
 }
 
+/**
+ * The Windows shell's version information (`host/build.rs`): the product's name and version, as
+ * Explorer's Details tab reads them. It goes in with the rest of the exe's resources (its icon, its
+ * manifest), so an exe that says them has those too.
+ */
+function checkVersionInfo(exe: string, version: string) {
+  const script = "$i = (Get-Item -LiteralPath $env:DESKFOLK_EXE).VersionInfo; @{ name = $i.ProductName; version = $i.ProductVersion } | ConvertTo-Json -Compress";
+  const asked = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    env: { ...process.env, DESKFOLK_EXE: exe },
+    encoding: "utf8",
+  });
+  if (asked.status !== 0) throw new Error(`reading ${exe}'s version information failed:\n${asked.stdout}${asked.stderr}`);
+  const said = JSON.parse(asked.stdout.trim()) as { name?: string | null; version?: string | null };
+  if (said.name !== RELEASE_APP_NAME || said.version !== version) {
+    throw new Error(`${exe} says it is ${JSON.stringify(said)}, not ${RELEASE_APP_NAME} ${version}: its resources did not go in (host/build.rs)`);
+  }
+}
+
 function makensis(): string {
   for (const candidate of [process.env.MAKENSIS, "C:\\Program Files (x86)\\NSIS\\makensis.exe", "C:\\Program Files\\NSIS\\makensis.exe"]) {
     if (candidate && existsSync(candidate)) return candidate;
@@ -450,6 +468,7 @@ function packageReleaseWindows() {
   run(cargo, ["build", "--release", "--locked", "-p", "deskfolk-nsh"], { DESKFOLK_RELEASE: "1" });
   cpSync(join(root, "target", "release", "deskfolk-nsh.exe"), join(stage, "Deskfolk.exe"));
   checkIdentity(join(stage, "Deskfolk.exe"));
+  checkVersionInfo(join(stage, "Deskfolk.exe"), version);
   cpSync(join(repo, "apps/desktop-nsh/assets/icons/icon.ico"), join(stage, "icon.ico"));
 
   step("the installer (makensis)");
@@ -859,6 +878,8 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   }
   if (uninstallValue("MainBinaryName") !== mainName) throw new Error(`smoke: the entry names ${uninstallValue("MainBinaryName")}, not ${mainName}`);
   checkIdentity(exe);
+  // Over an earlier install too, whose program (0.5.0 and 0.5.1's) had no icon or version information.
+  checkVersionInfo(exe, productVersion(repo));
   const shortcut = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", "Deskfolk.lnk");
   if (!existsSync(shortcut)) throw new Error(`smoke: no Start menu shortcut at ${shortcut}`);
   console.log(`smoke: installed ${uninstallValue("DisplayVersion")} as ${mainName}; the Start menu shortcut is there`);

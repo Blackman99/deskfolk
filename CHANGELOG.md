@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Deskfolk has its icon on Windows again
+
+- On Windows, Deskfolk.exe (0.5.0 and 0.5.1) had no icon of its own: File Explorer, the Start menu and desktop shortcuts, a taskbar pin and the entry under Installed apps all showed the blank program icon, and the file's Properties → Details tab was empty. The program now carries the Deskfolk icon, its name and version (shown under Details and in Task Manager) and a manifest, and the installer tells File Explorer that icons changed, so shortcuts and pins made by 0.5.0 or 0.5.1 show the icon too.
+
 ### Endpoint cards on the phone are tidy again
 
 - In the phone's Settings → Endpoints, a card's buttons spelled out the endpoint's name too ("Set as default: My Anthropic", "Connection: My CPA"), and where that didn't fit the row it ran out past the card's edge. The buttons now say just "Set as default" and "Connection"; the name stays in what a screen reader hears. The card is laid out again as the phone page had it before NSH: the endpoint first, then its default model and its model list, then the buttons as a row of cells split by lines at the card's foot. The default model's field is a full 48-point touch row with 16-point text. On the phone the default endpoint's card is no longer tinted all over; its Default badge marks it.

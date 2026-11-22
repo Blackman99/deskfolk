@@ -14,8 +14,9 @@
 //! whether the material is there (`host.params.material`) and lets it through
 //! (`ui/glass.ts`).
 //!
-//! The executable cargo builds has no icon of its own, so the window gets the app's from a file
-//! (`app_icon`): without it the taskbar, Alt+Tab and the toasts show the system's blank one.
+//! The executable carries the app's icon (`build.rs`, resource 1), which Explorer shows for it and
+//! NSH gives the window (taskbar, Alt+Tab, title bar). The toasts and the notification area icon take
+//! it from a file (`app_icon`).
 
 use std::path::{Path, PathBuf};
 
@@ -154,10 +155,11 @@ pub fn nsh_window() -> Option<HWND> {
 /// The class NSH registers its windows under (`nsh-platform-windows`'s `window.rs`).
 const NSH_WINDOW_CLASS: windows::core::PCWSTR = windows::core::w!("NshWindow");
 
-/// The app's icon as a file in `dir`, for NSH to give the window (taskbar, Alt+Tab, title bar)
-/// and its toasts: NSH loads it only from a file, and only when the executable has none of its
-/// own. Written when missing or different, so a changed icon follows the build. `None` when it
-/// cannot be written: the window then shows the system's.
+/// The app's icon as a file in `dir`, for NSH's toasts and the notification area icon
+/// (`win_tray.rs`), which load it only from a file. NSH would give it to the window as well if the
+/// executable had no icon of its own (`build.rs` puts one in). Written when missing or different,
+/// so a changed icon follows the build. `None` when it cannot be written: the toasts and the
+/// notification area then show the system's.
 fn app_icon(dir: &Path) -> Option<PathBuf> {
     let path = dir.join("icon.ico");
     if std::fs::read(&path).ok().as_deref() != Some(APP_ICON) {

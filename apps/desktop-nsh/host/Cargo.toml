@@ -46,6 +46,12 @@ cpal = "0.18"
 opus = "0.4"
 ogg = "0.9"
 
+# The exe's icon, version information and manifest (`build.rs`), compiled with the Windows SDK's rc.exe.
+# A build dependency's `cfg` is the building machine's: these are built on Windows only.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+serde_json.workspace = true
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # `webview`: the HTML preview and annotator (WebKitGTK 6.0), the one web view the app has, as on
 # macOS and Windows.
