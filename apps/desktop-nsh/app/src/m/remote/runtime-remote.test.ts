@@ -482,7 +482,19 @@ test("a remote send carries its upload's progress on the conversation until it l
       return { v: 1, id: request.id, status: 202, body: { state: "upload_open" }, upload: { files: [{ ...declared, streamId: 1 }] } };
     },
   });
-  const api = new RemoteApi(liveEnrollment, { socketFactory: () => relay.socket as unknown as WebSocket });
+  // The upload's pace on a clock of the test's own, as transport.spec.ts paces it. On the wall clock
+  // a runner slower than the pace (sealing a 32 KiB chunk took ~24 ms of its 36 ms on a fast Mac,
+  // more on CI's macOS and Windows) never had to wait between chunks, so the poll below never ran
+  // until the last one had left.
+  const clock = { now: 1_000_000 };
+  const api = new RemoteApi(liveEnrollment, {
+    socketFactory: () => relay.socket as unknown as WebSocket,
+    now: () => clock.now,
+    sleep: async (ms) => {
+      clock.now += ms;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    },
+  });
   await api.connect(() => undefined);
   const runtime = new MessengerRuntime();
   runtimes.push(runtime);
