@@ -1238,7 +1238,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tungstenite",
- "ureq 3.5.1",
+ "ureq 3.5.2",
 ]
 
 [[package]]
@@ -3455,7 +3455,7 @@ dependencies = [
 [[package]]
 name = "nsh-base"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "chrono",
  "html5ever",
@@ -3485,7 +3485,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "cap-std",
  "chrono",
@@ -3518,7 +3518,7 @@ dependencies = [
  "ttf-parser",
  "unicode-linebreak",
  "unicode-properties",
- "ureq 3.5.1",
+ "ureq 3.5.2",
  "url",
  "windows-sys 0.61.2",
  "wuff",
@@ -3527,7 +3527,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -3547,7 +3547,7 @@ dependencies = [
  "rustc-hash 2.1.3",
  "serde_json",
  "tokio",
- "ureq 3.5.1",
+ "ureq 3.5.2",
  "wgpu",
  "windows",
  "windows-sys 0.61.2",
@@ -3556,12 +3556,12 @@ dependencies = [
 [[package]]
 name = "nsh-i18n"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 
 [[package]]
 name = "nsh-js"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "futures-util",
  "getrandom 0.4.3",
@@ -3573,18 +3573,20 @@ dependencies = [
  "quickjs-jit",
  "quickjs-jit-stdlib",
  "rustc-hash 2.1.3",
+ "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
  "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
 name = "nsh-macros"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "imagesize",
  "proc-macro2",
@@ -3597,7 +3599,7 @@ dependencies = [
 [[package]]
 name = "nsh-package"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -3612,7 +3614,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-apple"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "block2",
  "cc",
@@ -3636,7 +3638,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-linux"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "crossbeam-channel",
  "gstreamer",
@@ -3659,7 +3661,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-macos"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -3688,7 +3690,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-windows"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "crossbeam-channel",
  "image",
@@ -3709,7 +3711,7 @@ dependencies = [
 [[package]]
 name = "nsh-updater"
 version = "0.6.0"
-source = "git+https://github.com/longbridge/nsh?rev=d647ed5ae7661591f0fc162a3347f8499e391124#d647ed5ae7661591f0fc162a3347f8499e391124"
+source = "git+https://github.com/longbridge/nsh?rev=5db129133dfbe9bf8e15678b1047dc308d51ac87#5db129133dfbe9bf8e15678b1047dc308d51ac87"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -6438,9 +6440,9 @@ dependencies = [
 
 [[package]]
 name = "ureq"
-version = "3.5.1"
+version = "3.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7be76686bdf7198002062423ca0d8cf9b75a27c8e1de804513b97e97b555d9d"
+checksum = "3ac5cecf619ca81f66a96482db09687c9f7465af65f4300a8c30cca05bd5a59d"
 dependencies = [
  "base64 0.23.1",
  "cookie_store",

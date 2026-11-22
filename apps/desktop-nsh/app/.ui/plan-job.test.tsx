@@ -30,6 +30,10 @@ test("what you asked of the job: your words, how often, what it inherits and wha
 
 test("a press goes to the daemon and the plan that comes back replaces the ledger", async () => {
   const { app, logged } = await opened();
+  // The pointer comes to the button first, as a real one does: on NSH 5db12913 the headless driver
+  // loses a press that is the just-opened story's first step on this row (any hover before it, or
+  // 50 ms, and it lands).
+  await app.hover("id:requirement-offer-confirm");
   await app.press("id:requirement-offer-confirm");
   await app.waitUntil(() => logged("requirement:offer:confirm"));
   await app.waitFor("id:requirements-proposed", { state: "gone" });
