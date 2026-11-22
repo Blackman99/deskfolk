@@ -1200,12 +1200,16 @@ pub fn snapshot_all(dir: &Path) {
     });
 }
 
+/// Stops every engine, as the app quits. The entries leave `WINDOWS` before any engine stops:
+/// stopping one closes its window (NSH's window model), and that close comes back through `closed`,
+/// which borrows `WINDOWS`, before `stop` returns. Stopped under the borrow, that was a "RefCell
+/// already borrowed" panic inside an AppKit callback, which aborted the quit before
+/// `applicationWillTerminate` stopped the runtime (the release smoke's daemon outlived the quit).
 pub fn stop_all() {
-    WINDOWS.with_borrow_mut(|windows| {
-        for entry in windows.drain(..) {
-            entry.view.stop();
-        }
-    });
+    let entries = WINDOWS.with_borrow_mut(std::mem::take);
+    for entry in entries {
+        entry.view.stop();
+    }
 }
 
 #[cfg(test)]
