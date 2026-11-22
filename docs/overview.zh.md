@@ -24,7 +24,7 @@
 ## 适合谁
 
 - **适合**：已经在用 Claude Code、Codex 这类本机 Agent，或会自己配模型端点和 API key 的独立开发者、技术型个人和小工作室，手上有多天、多步、要返工、人又不能一直盯着的活，比如多集 AI 视频（镜头、渲染、审片、返工）、每天定点出的新闻简报、一套发布物料。内置的视频引擎就是按这类活的真实记录调的；代码引擎背后的记录还少，它的数还是原来的默认。一个 Bot 单干也行，几个 Bot 分工留给真要分工的活。
-- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 和 Linux 各有一条刚起步的实验性预览：每个 Release 都带未签名的 Windows 安装包（从 0.5.0 起是原生版），0.4.0 是最近一个带 Linux AppImage、deb 的版本（Linux 的原生版还没做完），有些功能还没有——见下方「获取」。
+- **暂不适合**：一次问答、半小时就能做完的小活（一个 Bot 就够，也有更轻的工具）；几个人共用一套、要 Mac 睡眠时也接着干活（插电时有活在跑，应用不让 Mac 因为闲置睡着；合上盖子、用电池时它还是会睡），或者既没有本机 Agent、也不想自己接模型端点。Windows 和 Linux 各有一条刚起步的实验性预览：每个 Release 都带未签名的 Windows 安装包（从 0.5.0 起是原生版），也带同一个原生应用的 x86_64 Linux deb 和 AppImage（0.5.0、0.5.1 没有），有些功能还没有——见下方「获取」。
 
 ## 它做什么
 
@@ -46,7 +46,7 @@
 
 ## 获取
 
-macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 和 Linux x86_64（glibc 2.35 及更新）各有一条刚起步的实验性预览（见下文）。
+macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x64 和 Linux x86_64（Ubuntu 24.04、Debian 13 或同样新的发行版）各有一条刚起步的实验性预览（见下文）。
 
 - **要准备什么**：下面三样有一样就能开始。
   - **本机 Agent，不用 API key**：这台电脑上装好并登录的 Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode（经社区的 `zcode-acp` 桥），或你在设置里加的任何讲 ACP 的程序。向导第 2 步列出找到且已登录的那些，选一个，Bot 就用你自己的登录和订阅跑（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。
@@ -66,8 +66,8 @@ pnpm dev
 `pnpm dev` 编出并打开原生桌面应用的开发版（「Deskfolk Dev」），运行时从源码起，用自己的一套实例（端口 17990、独立数据目录），所以能和装好的版本一起开。
 
 - **在 Windows 上从源码启动：** 同样 `git clone` / `pnpm install` / `pnpm dev`，用 Rust 的 MSVC 工具链加 Visual Studio Build Tools（勾选 "Desktop development with C++"）代替 Xcode，另外要 cmake，并先跑一次 `cargo build --manifest-path apps/conpty-helper/Cargo.toml` 编终端 helper。建议也装上 Git for Windows：Bot 的 shell 工具找得到 Git Bash 就在里面跑命令，找不到才用 PowerShell。本地打安装包用 `bun apps/desktop-nsh/scripts/package.ts --release`（要 NSIS 的 `makensis`）。
-- **Windows 上还没有的：** 独立运行时、应用内下载安装更新、桌面通知与角标、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](windows.zh.md)，前置条件和打包见[开发说明](development.md#windows实验性)。
-- **在 Linux 上：** 从 [0.4.0 Release](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0)（最近一个带 Linux 安装包的版本）下载 `Deskfolk_<版本>_amd64.AppImage`（加上执行权限直接运行）或 `Deskfolk_<版本>_amd64.deb`（`sudo apt install ./Deskfolk_<版本>_amd64.deb`）。数据在 `~/.local/share/real-bot`，密钥在系统密钥环（GNOME Keyring 或 KWallet）；Bot 的 shell 工具在 bash 里跑命令。Linux 上还没有：远程访问、桌面通知、应用内下载安装更新、图片缩略图。装法和差异见 [Linux 预览版](linux.zh.md)；从源码启动的前置条件和打包见[开发说明](development.md#linux实验性)。
+- **Windows 上还没有的：** 独立运行时、应用内下载安装更新、图片缩略图。数据在 `%LOCALAPPDATA%\real-bot`，密钥在 Windows 凭据管理器；装法、差异和缺口见 [Windows 预览版](windows.zh.md)，前置条件和打包见[开发说明](development.md#windows实验性)。
+- **在 Linux 上：** 从同一个 Release 下载 `Deskfolk_<版本>_amd64.deb`（`sudo apt install ./Deskfolk_<版本>_amd64.deb`；要 GTK 4.14 或更新，也就是 Ubuntu 24.04、Debian 13 或更新）或 `Deskfolk_<版本>_amd64.AppImage`（加上执行权限直接运行）。deb 能直接装在 0.4.0 上面。数据在 `~/.local/share/real-bot`，密钥在系统密钥环（GNOME Keyring 或 KWallet）；Bot 的 shell 工具在 bash 里跑命令。Linux 上还没有：应用内下载安装更新、图片缩略图；远程访问有了，但还没在真的 Linux 桌面上试过。装法和差异见 [Linux 预览版](linux.zh.md)；从源码启动的前置条件和打包见[开发说明](development.md#linux实验性)。
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时：开发运行时没有 watch 模式，改代码或 `git pull` 都不会重启守护进程，进行中的轮次不会被打断；要换上新代码，等没有活轮时自己重启它。想让源码版用你自己的对话、设置和已配对的手机（17890 端口、你的数据目录）时，先退出装好的应用，再跑 `bun apps/desktop-nsh/scripts/dev.ts --stable-instance`（见[原生应用说明](../apps/desktop-nsh/README.md)）。
 
@@ -86,7 +86,7 @@ Ollama、LM Studio、llama.cpp 的 `llama-server` 都能当端点用：向导里
 
 ## 状态
 
-macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 和 Linux 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）；Linux 还没在真的桌面上从头到尾用过。远程访问默认关闭，macOS 和 Windows 上可用（Linux 上还没有）；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 和 Linux 是刚起步的实验性预览，还有不少毛边和缺失功能（见上文「获取」）；Linux 还没在真的桌面上从头到尾用过。远程访问默认关闭，macOS、Windows 和 Linux 上都可用（还没在真的 Windows 电脑或 Linux 桌面上试过）；安装的应用就能配对：Mac 的远控身份存在一个私有文件里而不是钥匙串，每台设备用触控 ID 批准，Windows 上用 Windows Hello，Linux 上用 polkit 密码框（[ADR 0033](adr/0033-remote-credentials-in-a-file.md)、[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
 
 [哪些已接入、哪些不做](#哪些已经接入哪些还在建哪些不做) · [路线图](../ROADMAP.md) · [领域语言](../CONTEXT.md) · [中继部署](deploy-remote.md)
 
@@ -103,7 +103,7 @@ macOS 是主要目标，功能和数据格式在那边也仍会变化。Windows 
 | **安全与权限** | 应用和每个 Bot 的权限模式、批准卡、密钥进钥匙串（Windows 上是凭据管理器，Linux 上是系统密钥环）、私聊 Stop | 更细粒度的 MCP 权限治理 | 把 Bot 当安全沙箱、假装已具备完全自主权限 |
 | **对话管理应用** | 改人设和技能、建 Bot 和群、配端点、模型名单和 MCP，都可由 Bot 通过工具完成；你开口时 Bot 也能改应用的样子和用法（令牌、固定的用法清单、自定义 CSS、界面上的字），能撤销，停止和批准由代码守着盖不住（[ADR 0106](adr/0106-the-interface-is-yours-too.md)） | 全部应用操作的对话覆盖（含首启向导） | 每件事都要手点深层菜单 |
 | **工作方式模板** | 底线（批准、叫停、花费）写在代码里，不随什么变；跑不跑一件件事、应用自己的哪些环节跑、带什么数是引擎，内置通用、视频、代码三套同一种工作方式，和不用它的自由，按对话选，改了只存差别，也能另建，还能在应用已有的时机上加你自己的环节（按规则、命令或模型判，「不过」做什么只能从固定清单里选）；每个环节的模型和提示词在分工页上一起设，每一轮的系统指令和工具说明在设置里，提示词能改、能撤销、能恢复默认；Bot 能只读地查本机记录，拿依据提改提示词，在批准卡上由你放行；代码要读的输出格式锁着 | Bot 提议改引擎（走批准卡片）、拿过去的话回放评估一次改动、引擎的修改记录能撤销；局面块、回路里的提示和转录文案也做成可改的提示词；用你改过的提示词跑评估 | 没人开口就在后台自我调优、Bot 不经你放行就改提示词或引擎、用提示词或引擎放宽批准或门禁 |
-| **远程访问** | 默认关闭：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、叫停 Bot、翻工作区、用终端和 Mac 屏幕；安装的应用即可登记中继、配对设备，macOS 和 Windows 都能用 | Linux；把远控凭据从文件搬进钥匙串 | 项目方运营的云端中继 |
+| **远程访问** | 默认关闭：自托管中继、端到端 Noise 加密；配对过的手机能看会话、回消息、处理批准、叫停 Bot、翻工作区、用终端和 Mac 屏幕；安装的应用即可登记中继、配对设备，macOS、Windows 和 Linux 都能用 | 在真的 Linux 桌面上试一遍；把远控凭据从文件搬进钥匙串 | 项目方运营的云端中继 |
 
 ## 参与
 

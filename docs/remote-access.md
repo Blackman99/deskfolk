@@ -2,7 +2,7 @@
 
 [简体中文](remote-access.zh.md)
 
-> **Off by default.** Turn it on when you want it. The installed app sets it up and pairs devices: it keeps the Mac's remote identity in a private file in its data folder rather than the Keychain, and Touch ID (or your login password) approves each device ([ADR 0033](adr/0033-remote-credentials-in-a-file.md) says what that trades). On Windows it works the same way, with Windows Hello approving ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)); Linux does not have it yet. Keep public pairing off whenever you are not pairing.
+> **Off by default.** Turn it on when you want it. The installed app sets it up and pairs devices: it keeps the Mac's remote identity in a private file in its data folder rather than the Keychain, and Touch ID (or your login password) approves each device ([ADR 0033](adr/0033-remote-credentials-in-a-file.md) says what that trades). On Windows it works the same way, with Windows Hello approving ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)); on Linux the approval is a polkit password prompt (see [On Linux](#on-linux)). Keep public pairing off whenever you are not pairing.
 
 Remote access lets a phone, or a browser on another computer, reach the Deskfolk on your Mac: read and answer conversations, handle what is waiting on you, look through the workspace and type into your terminals. There is no Deskfolk cloud. You run the relay yourself, the Mac only ever dials out to it, and the relay passes along encrypted traffic it cannot read.
 
@@ -20,7 +20,7 @@ One owner, one Mac, at most 16 paired devices. Nothing is queued while the link 
 - **The workspace** — browse folders on the Mac and open or download files of any size. Every file you open can be downloaded: on a phone from the right end of the preview's top bar, on a wider screen from the row of buttons above the file, and on the flow board from the head of a file card. A file that can't be previewed, such as a subtitle file or an archive, says so and offers the download in the middle instead. Pictures arrive as scaled copies with the original one tap away. One tap downloads a file, on a phone too, however long it takes to come over. An enlarged picture, in a conversation or the workspace, has a download button that saves the original: on a phone it opens the share sheet, whose Save Image puts it in Photos. Pictures, videos, audio and PDFs you sent from the phone open from the phone's own copy until the page reloads, without coming back over the relay. Audio and video play while they load. On an Android phone, long-press a file or folder in the tree to move it to the Mac's Trash (iPhone Safari opens no menu on a long-press); it asks first, and Finder on the Mac can put it back.
 - **Your terminals** — watch and type into a shell the daemon holds, with a two-row key bar for Esc, Tab, Ctrl, arrows and Paste. Swipe to scroll back through the output, including inside a full-screen program such as Claude Code, vim or less.
 - **A Files conversation** of its own — a file sent there is copied into the workspace `inbox/`, text stays as a note to yourself, and neither wakes a Bot. Files go up at about 0.9 MB/s, inside the relay's shared limit, so a 20 MB video takes around 23 seconds. The send button fills a ring as they go and each file shows how much of it has gone; a send that fails keeps its files in the composer.
-- **Optional Mac screen** — see and operate this Mac's screen from the phone, typing the password at the lock screen too. The picture comes from macOS's own Screen Sharing (on Windows, from a VNC server you install); it is off by default and turned on at the Mac (below).
+- **Optional Mac screen** — see and operate this Mac's screen from the phone, typing the password at the lock screen too. The picture comes from macOS's own Screen Sharing (on Windows and Linux, from a VNC server you install or start); it is off by default and turned on at the Mac (below).
 - **Optional Web Push** — a generic "Deskfolk has pending items" reminder sent by the Mac. Tapping it reconnects and opens the chat list; it never approves anything.
 - **Maintenance** — status, redacted diagnostics, and a drain-then-restart of the runtime. These, and revoking another device, need WebAuthn user verification on the device (Face ID, Touch ID or a passcode). There is no click-to-confirm fallback; ordinary chat works without it.
 
@@ -147,6 +147,19 @@ Windows has no screen sharing of its own, so the picture and input come from a V
 - The key row reads Ctrl, Alt, Win and Shift, and **Ctrl+Alt+Del** is in the top bar. There is no **Smooth** mode: TightVNC sends JPEG, which is small already. While a phone is connected the PC's display and sleep timers are held off, as on a Mac.
 - The first direct connection may bring up a Windows Firewall prompt for `real-bot-rtc.exe`; allowing private networks is enough, and refusing it only means the picture goes via the relay.
 
+### On Linux
+
+Linux has no screen sharing of its own either, so the picture and input come from a VNC server you start; Deskfolk connects to it on `127.0.0.1:5900`, as on Windows. On the phone the page is called **Computer screen**. Which server depends on the session you log in to:
+
+- **An X11 session:** install `x11vnc`, run `x11vnc -storepasswd` once to set a password, then keep this running in the session: `x11vnc -localhost -rfbport 5900 -rfbauth ~/.vnc/passwd -forever -shared`. `-localhost` keeps port 5900 open to this computer alone.
+- **wlroots desktops (Sway, Hyprland):** use `wayvnc`, listening on `127.0.0.1:5900`. Password sign-in needs `enable_auth` and `relax_encryption` in its config, as its documentation describes.
+- **Recent distributions** may ship TigerVNC's `w0vncserver` as well.
+- **GNOME's Wayland session** has no VNC server that works: log in with "Ubuntu on Xorg" (or your distribution's Xorg session) and use `x11vnc`.
+- Turn on **Allow viewing and controlling this computer's screen** under Deskfolk's **Settings → Remote access**. While no VNC server answers, the card lists these steps.
+- The phone asks for the VNC server's password, not your Linux login password. The key row reads Ctrl, Alt, Super and Shift; there is no **Ctrl+Alt+Del** and no **Smooth** mode. While a phone is connected the screensaver and sleep are held off (through the desktop's screensaver service and logind).
+- **Approving a device** opens a polkit password prompt. It needs a polkit authentication agent running in your session (every full desktop has one) and the policy file the .deb installs; an AppImage copy cannot ask until the policy is put in place by hand ([Linux preview](linux.md#remote-access-and-the-remote-screen)), and the card says so.
+- None of this has been tried on a real Linux desktop yet: pairing a phone from the app end to end and the remote screen have only been built.
+
 ## When something is off
 
 - **Remote disconnected / host unreachable** — the Mac is asleep, Deskfolk is not running, or the relay is down. The phone retries with backoff on its own, and again as soon as it returns to the foreground. Right after the Mac's network drops or changes, give it a minute or two: the Mac checks with the relay every 15 seconds and reconnects on its own, but after a switch to another network the relay can hold the old connection for about a minute first.
@@ -156,6 +169,9 @@ Windows has no screen sharing of its own, so the picture and input come from a V
 - **Blank page after a rebuild** — the CSP header and the build it hashes were deployed separately.
 - **"Screen Sharing is off on the Mac" / "This Mac does not allow its screen to be shown"** — turn on what the page names at the Mac, then tap Reconnect. When the account name or password is refused, check that the account is allowed under Screen Sharing.
 - **"No VNC server found on the computer"** (Windows) — the TightVNC service is not running, or it refuses loopback connections: tick "Allow loopback connections" under its Access Control.
+- **"No VNC server found on the computer"** (Linux) — nothing listens on `127.0.0.1:5900` in the session you are logged in to: start `x11vnc` or `wayvnc` as above, and check it is not bound to another port.
+- **"No password prompt could open: this desktop has no polkit authentication agent running"** — start your desktop's own (a minimal window manager may not start one), then approve again.
+- **"This copy of Deskfolk can't ask for your password"** — the polkit policy is missing: install the .deb, or the policy file as the [Linux guide](linux.md#remote-access-and-the-remote-screen) says.
 - **"Windows Hello is not set up on this computer"** — set a PIN under Windows Settings → Accounts → Sign-in options, then approve again.
 
 Protocol, cryptography and the list of open gates: [remote protocol](remote-protocol.md).

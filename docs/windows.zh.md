@@ -25,9 +25,18 @@ Windows 版是刚起步的实验性预览：能装、能跑，但有几样功能
 
 Bot 的 `shell` 工具找得到 Git Bash 时用它跑命令，找不到才退到 PowerShell，所以建议装上 [Git for Windows](https://gitforwindows.org/)。环境变量 `REAL_BOT_TOOL_SHELL` 可以指定一个 `bash.exe`、`pwsh.exe` 或 `powershell.exe`，覆盖这个判断。
 
+## 窗口和通知区域
+
+- 关掉窗口只是把它收起来：Deskfolk 留在通知区域，Bot 继续干活。图标菜单里的「Quit Deskfolk」才会退出；菜单里还列着各个套餐用了多少，也有「Stop Everything」。（0.5.0 和 0.5.1 关窗口就退出应用，运行时也一起停掉。）
+- Ctrl+W 关掉眼前的标签；没有标签可关时，把窗口收起来。
+- 窗口在上次留下的大小和位置打开，上次是最大化的就还是最大化。
+- 语音输入能录音，从资源管理器拖到输入框或文件树上的文件能加上，用对应的应用打开文件、在文件夹中显示、选工作区文件夹也都能用，和 Mac 上一样。
+
+通知区域、选文件夹的对话框和语音输入还没在真的 Windows 电脑上试过。
+
 ## 远程访问和远程屏幕
 
-从 0.5.0 的原生版起，Windows 应用里还不能设置远程访问：设置里的配对设备、设备列表、中继都答不可用，之前配对过的手机照常能连。下面说的是 Tauri 版（0.4.0 及以前）的做法。远程访问和 Mac 上一样（[远程访问](remote-access.zh.md)），差两处。批准设备用 Windows Hello——人脸、指纹或 PIN，所以先在 Windows 设置 → 账户 → 登录选项 里设一个 PIN。远程屏幕要一个 VNC 服务，因为 Windows 没有自带的屏幕共享：把 TightVNC 装成系统服务，设好密码，只允许本机回环连接；步骤见[远程访问](remote-access.zh.md#windows-上)，没有 VNC 服务应答时设置里的卡片也会列出来。这两样都还没在真的 Windows 电脑上试过（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
+远程访问和 Mac 上一样（[远程访问](remote-access.zh.md)），差两处。配对手机、移除手机和其他远程访问的更改都用 Windows Hello 批准——人脸、指纹或 PIN，所以先在 Windows 设置 → 账户 → 登录选项 里设一个 PIN；没设 Hello 时卡片会写明。（第一批原生版 0.5.0 和 0.5.1 在 Windows 应用里配对会失败，之前配对过的手机照常能连。）远程屏幕要一个 VNC 服务，因为 Windows 没有自带的屏幕共享：把 TightVNC 装成系统服务，设好密码，只允许本机回环连接；步骤见[远程访问](remote-access.zh.md#windows-上)，没有 VNC 服务应答时设置里的卡片也会列出来。这两样都还没在真的 Windows 电脑上试过（[ADR 0059](adr/0059-windows-remote-access-and-screen.md)）。
 
 ## 让你自己的 Claude Code 跑 Bot
 
@@ -47,7 +56,6 @@ Deskfolk 的通知是 Windows 的通知（toast；0.5.1 及以前没有），带
 - 在应用里下载并安装更新：发现新版仍要去浏览器手动下载。
 - Windows 10 上没有毛玻璃：窗的材质是 Windows 11 的 Mica，Windows 10 的窗是实色底。
 - 图片缩略图。发给模型的图片不受影响。
-- 在 Windows 应用里设置远程访问（从 0.5.0 的原生版起）：设置里的配对设备、设备列表、中继都答不可用。之前配对过的手机照常能连。
 
 ## 从源码运行
 

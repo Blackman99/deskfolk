@@ -228,7 +228,7 @@ bun apps/desktop-nsh/scripts/package.ts --release
 
 产物在 `apps/desktop-nsh/build/release-linux/`：`Deskfolk_<版本>_amd64.deb` 和 `Deskfolk_<版本>_amd64.AppImage`（名字是更新检查认的）。要 `dpkg-shlibdeps` 等打包工具，缺哪个脚本会说。`build-native.ts` 在 Linux 上往 `native/` 里放三样：`bun build --compile --target=bun-linux-<arch>` 出的 `real-bot-daemon`，和 `apps/conpty-helper`、`apps/rtc-helper` 的 release 构建 `real-bot-pty`、`real-bot-rtc`（`native-package.ts` 的 `nativeFilesFor("linux")` 同一份清单）；不签名。包装进 `/usr/lib/Deskfolk/`（`native/` 在里面）。deb 的依赖由 `dpkg-shlibdeps` 读出、再并上手写的更严的下限（`libgtk-4-1 (>= 4.14)` 等），Recommends 有系统密钥环（`gnome-keyring | kwalletmanager`）、文件选择框用的 xdg-desktop-portal 后端和 `gstreamer1.0-plugins-good`（`scripts/package.ts` 的 `DEB_RECOMMENDS`）。桌面入口和 polkit 策略在 `apps/desktop-nsh/assets/linux`。
 
-窗：Linux 用系统标题栏，没有毛玻璃。托盘图标走 StatusNotifierItem（`app/src/platform/linux-tray.ts`）：GNOME 默认不显示托盘（要 AppIndicator 扩展），没有托盘时关窗口就是退出（`gtk.rs` 的 `tray_shown`）。快捷键只显示不注册，由界面自己接。
+窗：标题栏和另外两个平台一样藏起来（`gtk.rs` 给 NSH 的 `titleBar: hidden`），没有毛玻璃。托盘图标走 StatusNotifierItem（`app/src/platform/linux-tray.ts`）：GNOME 默认不显示托盘（要 AppIndicator 扩展），没有托盘时关窗口改成最小化，不退出（`gtk.rs` 的 `tray_shown` 经 `host.params.trayShown` 告诉界面，`platform/window-life.ts` 的 `closeAction`）。快捷键只显示不注册，由界面自己接。
 
 更新检查（`apps/desktop-nsh/host/src/updates.rs`）：从 AppImage 跑的（AppImage 运行时设了 `APPIMAGE`）找 `Deskfolk_<版本>_<arch>.AppImage`，否则找 `.deb`；x86_64 两者都拼 `amd64`，aarch64 时 deb 拼 `arm64`、AppImage 拼 `aarch64`。没有 Linux 包的 Release 不算新版。应用内下载安装只认 macOS 的 `.dmg`，Linux 上「下载更新」打开浏览器。
 

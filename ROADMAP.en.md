@@ -109,7 +109,7 @@ For the steps to deploy the relay, connect the Mac and pair a phone, see the [re
 
 - Local, single-person use; not a multi-user SaaS, and not a cloud virtual machine.
 - Bots share the workspace and tools; there is no permission isolation between Bots.
-- Running and verification currently target macOS first. Windows is an experimental preview, without the independent runtime, in-app update install or desktop notifications yet; Linux is an experimental preview too (an x86_64 AppImage and deb), without remote access, desktop notifications or in-app update install yet, and not yet used end to end on a real Linux desktop; there is no delivery commitment for signed Windows or Linux installers.
+- Running and verification currently target macOS first. Windows and Linux are experimental previews of the same native app as the Mac's: Windows has desktop notifications, the tray and remote access approved with Windows Hello; Linux (an x86_64 deb and AppImage) has the tray, desktop notifications and remote access approved in a polkit password prompt. Neither has the independent runtime or in-app update install yet. Windows Hello, the tray, the folder picker and voice input have not been tried on a real Windows PC; pairing and the remote screen on Linux have not been tried on a real Linux desktop, and the Linux build has not been used end to end yet. There is no delivery commitment for signed Windows or Linux installers.
 - Remote access is an experimental prototype, off by default; there is no cloud relay run by the project.
 - There is no commitment yet to a stable API, database compatibility or production readiness.
 

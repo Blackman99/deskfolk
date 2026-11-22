@@ -25,9 +25,18 @@ The docs and the [glossary](../CONTEXT.en.md) are written for macOS (Dock, Keych
 
 A Bot's `shell` tool runs commands in Git Bash when it finds one, and in PowerShell otherwise, so installing [Git for Windows](https://gitforwindows.org/) is recommended. The `REAL_BOT_TOOL_SHELL` environment variable can point at a `bash.exe`, `pwsh.exe` or `powershell.exe` to override that choice.
 
+## The window and the notification area
+
+- Closing the window puts it away: Deskfolk stays in the notification area and your Bots keep working. Quit Deskfolk in the icon's menu ends it; the menu also shows what is used of your plans and has Stop Everything. (0.5.0 and 0.5.1 closed the app and stopped the runtime.)
+- Ctrl+W closes the tab in front of you, and puts the window away once no tab is left.
+- The window opens at the size and place it was left, maximized if it was.
+- Voice input records, files dropped from File Explorer onto the message box or the file tree are added, and opening a file with its app, showing it in its folder and choosing a workspace folder work, as on the Mac.
+
+The notification area, the folder picker and voice input have not been tried on a real Windows PC yet.
+
 ## Remote access and the remote screen
 
-From 0.5.0 (the native app), remote access cannot be set up from the Windows app yet: pairing a device, the device list and the relay in Settings answer that it is not available, while phones paired before keep connecting. What follows is how the Tauri app (0.4.0 and earlier) did it. Remote access works as on the Mac ([remote access](remote-access.md)), with two differences. Approving a device uses Windows Hello — face, fingerprint or PIN — so set a PIN under Windows Settings → Accounts → Sign-in options first. And the remote screen needs a VNC server, since Windows has no screen sharing of its own: install TightVNC as a system service, set its password, and allow loopback connections only; the steps are in [remote access](remote-access.md#on-windows), and the card in Settings lists them while no VNC server answers. Neither has been tried on a real Windows PC yet ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)).
+Remote access works as on the Mac ([remote access](remote-access.md)), with two differences. Pairing a phone, removing one and the other remote access changes are approved with Windows Hello — face, fingerprint or PIN — so set a PIN under Windows Settings → Accounts → Sign-in options first; without Hello set up, the card says so. (In 0.5.0 and 0.5.1, the first native versions, pairing from the Windows app failed; phones paired before kept connecting.) And the remote screen needs a VNC server, since Windows has no screen sharing of its own: install TightVNC as a system service, set its password, and allow loopback connections only; the steps are in [remote access](remote-access.md#on-windows), and the card in Settings lists them while no VNC server answers. Neither has been tried on a real Windows PC yet ([ADR 0059](adr/0059-windows-remote-access-and-screen.md)).
 
 ## Letting your own Claude Code run a Bot
 
@@ -47,7 +56,6 @@ Deskfolk's notifications show as Windows toasts (up to 0.5.1 there were none), u
 - Downloading and installing an update inside the app: a new version still means a manual download in the browser.
 - Frosted glass on Windows 10: the window's material is Windows 11's Mica, and on Windows 10 the window has a solid ground.
 - Image thumbnails. Images sent to a model are not affected.
-- Setting up remote access from the Windows app (from 0.5.0, the native app): pairing a device, the device list and the relay in Settings answer that it is not available. Phones paired before keep connecting.
 
 ## Running from source
 

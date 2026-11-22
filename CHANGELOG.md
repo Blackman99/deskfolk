@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Linux gets the native app, as a deb and an AppImage
+
+- Each release now carries `Deskfolk_<version>_amd64.deb` and `Deskfolk_<version>_amd64.AppImage` for x86_64 Linux: the same native app as on the Mac and Windows, with the tray, notifications and phone pairing approved in the system's password prompt. It needs Ubuntu 24.04, Debian 13 or a distribution as recent (the deb asks for GTK 4.14 or newer); on Ubuntu 22.04 and Debian 12, stay on 0.4.0.
+- The deb installs over 0.4.0's in place and keeps your conversations, settings, keys and launch at login. It is still a preview: it has been checked on Ubuntu 24.04, but not yet used on a real Linux desktop, and pairing a phone and the remote screen have not been tried there.
+
 ### Deskfolk has its icon on Windows again
 
 - On Windows, Deskfolk.exe (0.5.0 and 0.5.1) had no icon of its own: File Explorer, the Start menu and desktop shortcuts, a taskbar pin and the entry under Installed apps all showed the blank program icon, and the file's Properties → Details tab was empty. The program now carries the Deskfolk icon, its name and version (shown under Details and in Task Manager) and a manifest, and the installer asks File Explorer to drop the blank icon it had cached for the program, which shortcuts and pins made by 0.5.0 or 0.5.1 kept showing.

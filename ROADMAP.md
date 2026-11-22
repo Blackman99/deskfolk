@@ -109,7 +109,7 @@
 
 - 本地单人使用，不是多人 SaaS，也不是云端虚拟机。
 - Bot 共享工作区与工具，不提供 Bot 之间的权限隔离。
-- 当前运行与验证以 macOS 为主。Windows 是实验性预览，还没有独立运行时、应用内安装更新和桌面通知；Linux 也是实验性预览（x86_64 的 AppImage 与 deb），还没有远程访问、桌面通知和应用内安装更新，也还没在真的 Linux 桌面上从头到尾用过；Windows 与 Linux 的签名安装包没有交付承诺。
+- 当前运行与验证以 macOS 为主。Windows 和 Linux 都是实验性预览，跑的是和 Mac 同一个原生应用：Windows 有桌面通知、托盘和用 Windows Hello 批准的远程访问；Linux（x86_64 的 deb 与 AppImage）有托盘、桌面通知和用 polkit 密码框批准的远程访问。两边都还没有独立运行时和应用内安装更新。Windows 上的 Windows Hello、托盘、选文件夹和语音输入还没在真的 Windows 电脑上试过；Linux 上的配对和远程屏幕还没在真的 Linux 桌面上试过，Linux 版也还没从头到尾用过。Windows 与 Linux 的签名安装包没有交付承诺。
 - 远程访问是默认关闭的实验原型，没有项目方运营的云端中继。
 - 尚不承诺稳定 API、数据库兼容性或生产环境可用性。
 
