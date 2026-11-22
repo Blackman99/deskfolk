@@ -6,6 +6,12 @@
 
 ## Unreleased
 
+（无）
+
+## 0.6.0 — 2026-11-22
+
+Linux 又有安装包了：原生应用的 deb 和 AppImage（预览版）。Windows 上又能用 Windows Hello 配对手机，通知、语音输入、托盘和打开文件也和 Mac 上一样能用。项目会话还能跑 Antigravity 和 Grok，能接着终端里的 Codex 会话做下去，agent 也能用卡片向你提问。手机上的页面换成了桌面应用自己的那一份，带终端和文件。macOS 已签名并经公证；Windows 和 Linux 的安装包未签名。
+
 ### Linux 用上原生应用，有 deb 和 AppImage 两种包
 
 - 每个 Release 现在都带 x86_64 Linux 的 `Deskfolk_<版本>_amd64.deb` 和 `Deskfolk_<版本>_amd64.AppImage`：和 Mac、Windows 上是同一个原生应用，有托盘、通知，配对手机用系统的密码框批准。要 Ubuntu 24.04、Debian 13 或同样新的发行版（deb 要求 GTK 4.14 或更新）；Ubuntu 22.04 和 Debian 12 上请留在 0.4.0。

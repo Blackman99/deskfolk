@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.6.0 — 2026-11-22
+
+Linux has packages again, the native app as a deb and an AppImage (a preview). On Windows, a phone pairs with Windows Hello again, and notifications, voice input, the tray and opening files work as on the Mac. Project sessions also run Antigravity and Grok, carry on a Codex session from your terminal, and their agents can ask you questions on cards. The phone's page is the desktop app's own, with its terminal and files. Signed and notarized for macOS; the Windows and Linux packages are unsigned.
+
 ### Linux gets the native app, as a deb and an AppImage
 
 - Each release now carries `Deskfolk_<version>_amd64.deb` and `Deskfolk_<version>_amd64.AppImage` for x86_64 Linux: the same native app as on the Mac and Windows, with the tray, notifications and phone pairing approved in the system's password prompt. It needs Ubuntu 24.04, Debian 13 or a distribution as recent (the deb asks for GTK 4.14 or newer); on Ubuntu 22.04 and Debian 12, stay on 0.4.0.
