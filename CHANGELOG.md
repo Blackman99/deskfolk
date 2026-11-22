@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Endpoint cards on the phone are tidy again
+
+- In the phone's Settings → Endpoints, a card's buttons spelled out the endpoint's name too ("Set as default: My Anthropic", "Connection: My CPA"), and where that didn't fit the row it ran out past the card's edge. The buttons now say just "Set as default" and "Connection"; the name stays in what a screen reader hears. The card is laid out again as the phone page had it before NSH: the endpoint first, then its default model and its model list, then the buttons as a row of cells split by lines at the card's foot. The default model's field is a full 48-point touch row with 16-point text. On the phone the default endpoint's card is no longer tinted all over; its Default badge marks it.
+
 ### On the phone, text no longer runs into the block under it
 
 - On the phone's page the last line of a paragraph or a list item sometimes lay over the next block, or a block had an empty line under it. NSH measured a text at one width and laid it out in a box rounded to the screen's pixels, a fraction of a pixel narrower or wider, so a line that only just fitted wrapped once more (or once less) than its box allowed. It now lays the text out at the width it measured (longbridge/nsh#2545), and the app builds on an NSH that has it. It showed on phones whose screens have a fractional pixel ratio (2.75, 3.5, 2.625), most of all in Markdown lists.

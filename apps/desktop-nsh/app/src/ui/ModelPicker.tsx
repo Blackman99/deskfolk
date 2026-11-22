@@ -36,7 +36,8 @@ export function ModelPicker(props: {
   title?: string;
   disabled?: boolean;
   error?: boolean;
-  size?: "default" | "sm";
+  /** `lg` is a phone's field of its own on a card: a 48-point touch row with 16-point text. */
+  size?: "default" | "sm" | "lg";
   class?: string;
   testID?: string;
   /** The model changed (not called when the row picked is the one chosen). */
@@ -67,6 +68,7 @@ export function ModelPicker(props: {
 
   const width = signal(0);
   const small = () => props.size === "sm";
+  const large = () => props.size === "lg";
   const scroller: { ref: ScrollRef | null } = { ref: null };
   const bounds = new Map<number, { y: number; height: number }>();
   const viewport = { y: 0, height: 0 };
@@ -115,14 +117,14 @@ export function ModelPicker(props: {
       onLayout={(e) => width.set(e.bounds.size.width)}
       onPress={() => (picker.phone() ? (picker.open() ? picker.close() : picker.openPicker()) : undefined)}
       class={`cursor-pointer select-none disabled:cursor-default w-full flex-row items-center gap-[8px] rounded-(--radius-md) border bg-input-bg disabled:opacity-[0.55] ${
-        small() ? "px-[10px] py-[6px]" : "px-[12px] py-[8px]"
+        small() ? "px-[10px] py-[6px]" : large() ? "min-h-12 px-[12px] py-[10px]" : "px-[12px] py-[8px]"
       } ${props.error ? "border-danger-line" : picker.open() ? "border-field-focus-border" : "border-line hover:border-line-hover hover:bg-line-subtle"} ${props.class ?? ""}`}
       style={{ boxShadow: shadow("xs") }}
     >
       <If when={picker.picked()?.source?.mark ?? picker.picked()?.row.mark}>{(mark) => <ModelSourceMark source={mark()} />}</If>
       <Text
         testID="model-picker-value"
-        class={`flex-1 min-w-0 line-clamp-1 ${small() ? "text-[13px]" : "text-[14px]"} ${!picker.picked() && !value() ? "text-ink-muted" : "font-medium text-ink"}`}
+        class={`flex-1 min-w-0 line-clamp-1 ${small() ? "text-[13px]" : large() ? "text-[16px]" : "text-[14px]"} ${!picker.picked() && !value() ? "text-ink-muted" : "font-medium text-ink"}`}
       >
         {picker.display()}
         <If when={picker.displayHint()}>{(hint) => <Text class="text-[12px] font-normal text-ink-muted">{`  ${hint()}`}</Text>}</If>

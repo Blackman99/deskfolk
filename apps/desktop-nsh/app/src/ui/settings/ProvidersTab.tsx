@@ -2,8 +2,10 @@
  * The model providers page (`settings/ProvidersTab.svelte`): the hint and the "add" button, then one
  * card per endpoint: its mark (a connector's logo or the first letter), name, plan and badges
  * (default, no key); "set as default", "connection" and delete; and its default model with the way
- * into its model list. On a desktop a card is one line; on a phone (680 or less) it stacks, the
- * actions as a row of cells and the model rail under them.
+ * into its model list. On a desktop a card is one line; on a phone (680 or less) it stacks as the
+ * Svelte page's did: who it is, the model rail, then the actions at its foot as a row of cells split
+ * by lines (each saying its short word, never the endpoint's name). On a phone the default card is
+ * not tinted; its badge says so.
  *
  * Reads `runtime.snapshot` itself. Props are the shell's actions, as in the Svelte tab:
  * `providerSaving`; `openAddProvider`; `openEditProvider(id)`; `openProviderModels(id)`;
@@ -31,25 +33,39 @@ function keyReady(provider: { key_set: boolean; base_url: string | null }): bool
   return provider.key_set || isLocalEndpoint(provider.base_url);
 }
 
-function Action(props: { testID: string; label: string; hover?: string; icon: "star" | "link" | "trash"; text: boolean; danger?: boolean; onPress: () => void }) {
+/**
+ * One of a card's actions. `label` names the endpoint too, for screen readers; `word` is what the
+ * button says (its tooltip, and its text on a phone). On a phone the actions are cells split by
+ * lines: every cell but the `first` has one on its left, delete always.
+ */
+function Action(props: {
+  testID: string;
+  label: string;
+  word: string;
+  icon: "star" | "link" | "trash";
+  text: boolean;
+  first?: boolean;
+  danger?: boolean;
+  onPress: () => void;
+}) {
   return (
     <View
       role="button"
       testID={props.testID}
       accessibilityLabel={props.label}
-      tooltip={tip(props.hover ?? props.label)}
+      tooltip={tip(props.word)}
       onPress={() => props.onPress()}
-      class={`cursor-pointer select-none group flex-row items-center justify-center gap-1 rounded-(--radius-sm) ${
+      class={`cursor-pointer select-none group flex-row items-center justify-center gap-1 ${
         narrowWindow()
-          ? `${props.danger ? "w-[52px]" : "flex-1"} min-h-12 p-2 gap-[6px]`
+          ? `${props.danger ? "w-[52px] border-l" : `flex-1 min-w-0 ${props.first ? "" : "border-l"}`} border-line min-h-12 p-2 gap-[6px]`
           : props.danger
-            ? "px-[6px] py-1 border border-transparent hover:bg-danger-bg hover:border-danger-line"
-            : `${props.text ? "px-2" : "px-[6px]"} py-1 border border-line bg-sidebar-bg hover:border-brand hover:bg-accent-tint`
+            ? "rounded-(--radius-sm) px-[6px] py-1 border border-transparent hover:bg-danger-bg hover:border-danger-line"
+            : `rounded-(--radius-sm) ${props.text ? "px-2" : "px-[6px]"} py-1 border border-line bg-sidebar-bg hover:border-brand hover:bg-accent-tint`
       }`}
     >
-      <Icon name={props.icon} size={12} class={props.danger ? "tint-ink-muted group-hover:tint-danger-text" : "tint-ink-secondary group-hover:tint-brand"} />
+      <Icon name={props.icon} size={narrowWindow() ? 16 : 12} class={props.danger ? "tint-ink-muted group-hover:tint-danger-text" : "tint-ink-secondary group-hover:tint-brand"} />
       <If when={props.text}>
-        <Text class={`${narrowWindow() ? "text-[13px]" : "text-[12px]"} font-medium text-ink-secondary group-hover:text-brand`}>{props.label}</Text>
+        <Text class={`${narrowWindow() ? "text-[13px]" : "text-[12px]"} shrink line-clamp-1 font-medium text-ink-secondary group-hover:text-brand`}>{props.word}</Text>
       </If>
     </View>
   );
@@ -100,10 +116,10 @@ function ProviderCard(props: {
   );
 
   const identity = () => (
-    <View class="flex-row items-center gap-[10px] flex-1 min-w-0">
+    <View class={`flex-row flex-1 min-w-0 ${phone() ? "items-start gap-3" : "items-center gap-[10px]"}`}>
       {mark()}
       <View class={`flex-row items-center min-w-0 shrink ${phone() ? "flex-wrap gap-[6px]" : "gap-4"}`}>
-        <Text testID={`provider-name-${provider().id}`} tooltip={tip(provider().base_url ?? "")} class={`font-semibold text-ink leading-[1.2] ${phone() ? "text-[18px] w-full" : "text-[14px] line-clamp-1 shrink"}`}>
+        <Text testID={`provider-name-${provider().id}`} tooltip={tip(provider().base_url ?? "")} class={`font-semibold text-ink ${phone() ? "text-[18px] leading-[1.4] w-full" : "text-[14px] leading-[1.2] line-clamp-1 shrink"}`}>
           {provider().name}
         </Text>
         <If when={planName()} else={
@@ -120,15 +136,15 @@ function ProviderCard(props: {
           )}
         </If>
         <If when={isDefault()}>
-          <View testID={`provider-badge-default-${provider().id}`} tooltip={tip(t().settings.providerDefault)} class="shrink-0 flex-row items-center gap-1 bg-accent-tint border border-accent-border rounded-full px-[3px] py-[1.5px]">
+          <View testID={`provider-badge-default-${provider().id}`} tooltip={tip(t().settings.providerDefault)} class={`shrink-0 flex-row items-center gap-1 bg-accent-tint border border-accent-border rounded-full ${phone() ? "px-[6px] py-[3px]" : "px-[3px] py-[1.5px]"}`}>
             <Icon name="star" size={12} filled class="tint-brand" />
             <If when={phone()}>
-              <Text class="text-[11px] font-semibold text-brand pr-1">{t().settings.providerDefault}</Text>
+              <Text class="text-[11px] font-semibold text-brand">{t().settings.providerDefault}</Text>
             </If>
           </View>
         </If>
         <If when={!keyReady(provider())}>
-          <View testID={`provider-badge-key-${provider().id}`} tooltip={tip(t().settings.keyUnset)} class="shrink-0 flex-row items-center gap-[5px] bg-warn-bg border border-warn-line rounded-full px-[7px] py-[1.5px]">
+          <View testID={`provider-badge-key-${provider().id}`} tooltip={tip(t().settings.keyUnset)} class={`shrink-0 flex-row items-center gap-[5px] bg-warn-bg border border-warn-line rounded-full ${phone() ? "px-[6px] py-[3px]" : "px-[7px] py-[1.5px]"}`}>
             <View class="w-3 h-3 rounded-full bg-warn shrink-0" />
             <Text class="text-[11px] font-medium text-warn-text">{t().settings.keyUnset}</Text>
           </View>
@@ -143,24 +159,26 @@ function ProviderCard(props: {
         <Action
           testID={`provider-default-${provider().id}`}
           label={`${t().settings.providerSetDefault}: ${provider().name}`}
-          hover={t().settings.providerSetDefault}
+          word={t().settings.providerSetDefault}
           icon="star"
           text={phone()}
+          first
           onPress={() => void props.setDefaultProvider(provider().id)}
         />
       </If>
       <Action
         testID={`provider-edit-${provider().id}`}
         label={`${t().settings.providerConnection}: ${provider().name}`}
-        hover={t().settings.providerConnection}
+        word={t().settings.providerConnection}
         icon="link"
         text={phone()}
+        first={isDefault()}
         onPress={() => props.openEditProvider(provider().id)}
       />
       <Action
         testID={`provider-delete-${provider().id}`}
         label={`${t().settings.providerDelete}: ${provider().name}`}
-        hover={t().settings.providerDelete}
+        word={t().settings.providerDelete}
         icon="trash"
         text={false}
         danger
@@ -178,7 +196,7 @@ function ProviderCard(props: {
         <View class={phone() ? "w-full" : "w-[168px]"}>
           <ModelPicker
             testID={`default-model-${provider().id}`}
-            size="sm"
+            size={phone() ? "lg" : "sm"}
             value={provider().default_model ?? ""}
             data={{ specials: [], sources: endpointPickerSources([provider()], t(), (_id, model) => model) }}
             title={t().settings.defaultModel}
@@ -210,18 +228,14 @@ function ProviderCard(props: {
   return (
     <View
       testID={`provider-card-${provider().id}`}
-      class={`bg-pane border rounded-(--radius-md) ${isDefault() ? "border-accent-border bg-accent-tint" : "border-line"} ${
+      class={`bg-pane border rounded-(--radius-md) ${isDefault() && !phone() ? "border-accent-border bg-accent-tint" : "border-line"} ${
         phone() ? "flex-col rounded-(--radius-lg) overflow-hidden" : "flex-row items-center gap-[10px] py-2 pr-2 pl-3"
       }`}
       style={{ boxShadow: phone() ? undefined : shadow("xs") }}
     >
       <View class={phone() ? "px-4 pt-[18px] pb-4" : "flex-1 min-w-0"}>{identity()}</View>
-      <If when={phone()} else={<>{rail()}{actions()}</>}>
-        <>
-          {actions()}
-          {rail()}
-        </>
-      </If>
+      {rail()}
+      {actions()}
     </View>
   );
 }

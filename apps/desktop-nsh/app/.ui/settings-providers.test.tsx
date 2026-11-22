@@ -382,6 +382,27 @@ test("on a phone the editor is a page: Back steps out of the model page, the sta
   }
 });
 
+test("on a phone a card's actions say their short word; the endpoint's name stays in their label", async () => {
+  const { app, api } = await opened({ width: 420, height: 820 });
+  try {
+    await addCustom(app, "T-words");
+    const id = (await idOf(api, "T-words"))!;
+    await app.press("id:modal-back");
+    await app.waitFor("id:provider-editor", { state: "gone" });
+    await app.waitFor(`id:provider-default-${id}`);
+    const texts = app.texts();
+    expect(texts).toContain("设为默认");
+    expect(texts).toContain("连接");
+    // "连接: T-words" is what a screen reader hears, never what the cell shows.
+    expect(texts.some((text) => text.startsWith("设为默认:") || text.startsWith("连接:"))).toBe(false);
+    expect(app.shows(`id:provider-default-${id}`)).toBe(true);
+    expect(app.shows(`id:provider-edit-${id}`)).toBe(true);
+    expect(app.shows(`id:provider-delete-${id}`)).toBe(true);
+  } finally {
+    await cleanUp(app);
+  }
+});
+
 test("MCP: adding a server asks twice, lists it, and a rename saves itself without a button", async () => {
   const { app, api } = await opened();
   try {
