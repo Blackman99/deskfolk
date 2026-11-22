@@ -8,7 +8,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ### Deskfolk has its icon on Windows again
 
-- On Windows, Deskfolk.exe (0.5.0 and 0.5.1) had no icon of its own: File Explorer, the Start menu and desktop shortcuts, a taskbar pin and the entry under Installed apps all showed the blank program icon, and the file's Properties → Details tab was empty. The program now carries the Deskfolk icon, its name and version (shown under Details and in Task Manager) and a manifest, and the installer tells File Explorer that icons changed, so shortcuts and pins made by 0.5.0 or 0.5.1 show the icon too.
+- On Windows, Deskfolk.exe (0.5.0 and 0.5.1) had no icon of its own: File Explorer, the Start menu and desktop shortcuts, a taskbar pin and the entry under Installed apps all showed the blank program icon, and the file's Properties → Details tab was empty. The program now carries the Deskfolk icon, its name and version (shown under Details and in Task Manager) and a manifest, and the installer asks File Explorer to drop the blank icon it had cached for the program, which shortcuts and pins made by 0.5.0 or 0.5.1 kept showing.
 
 ### Endpoint cards on the phone are tidy again
 
