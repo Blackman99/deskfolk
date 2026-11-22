@@ -27,7 +27,7 @@ use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization, NSAppearanceName, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
     NSApplication, NSBackingStoreType, NSScreen, NSVisualEffectState, NSVisualEffectView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowDidChangeScreenNotification, NSWindowDidEndLiveResizeNotification,
+    NSWindowAnimationBehavior, NSWindowCollectionBehavior, NSWindowDidChangeScreenNotification, NSWindowDidEndLiveResizeNotification,
     NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification, NSWindowDidResizeNotification,
     NSWindowOrderingMode, NSWindowStyleMask, NSWindowWillCloseNotification,
 };
@@ -460,6 +460,12 @@ fn adopt(mtm: MainThreadMarker, id: u32, window: &Retained<NSWindow>) {
         entry.unseen = false;
         (entry.kept.take(), entry.look.clone(), Some(entry.host_window.clone()), earlier)
     });
+    // It comes and goes without AppKit's animation. One started while the app is in the background
+    // stalls on its first frame (the window a little smaller on screen), and ordering the window out
+    // then ends it by putting the window back in the window server, where AppKit no longer sees it:
+    // every reload left its old window on screen behind the new one, and a window put away by
+    // closing its last tab stayed.
+    window.setAnimationBehavior(NSWindowAnimationBehavior::None);
     observe(mtm, window);
     // The material stays lit in an inactive window too, as the 0.4.0 window's did (NSH's follows the
     // window's state).
