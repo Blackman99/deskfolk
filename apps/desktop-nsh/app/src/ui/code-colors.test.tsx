@@ -1,7 +1,17 @@
 /** Code colours: the messenger's themes by place, your interface's choice over them, runs as decorations. */
 import { expect, test } from "nsh/test";
 import { setInterfaceBehaviour } from "../m/interface/behaviour.svelte.ts";
-import { codeThemes, colorDecorations, highlightCode } from "./code-colors";
+import { codeColorsAvailable, codeThemes, colorDecorations, highlightCode, warmCodeColors } from "./code-colors";
+
+/** The native side comes in when first wanted (`code-colors-native`), as on the desktops at start. */
+async function colorsIn(): Promise<void> {
+  warmCodeColors();
+  const until = Date.now() + 10_000;
+  while (!codeColorsAvailable()) {
+    if (Date.now() > until) throw new Error("the code colours never came");
+    await new Promise((done) => setTimeout(done, 10));
+  }
+}
 
 test("chat takes GitHub's colours and the editor Vitesse's, until your interface chooses a theme", () => {
   setInterfaceBehaviour({});
@@ -13,7 +23,8 @@ test("chat takes GitHub's colours and the editor Vitesse's, until your interface
   setInterfaceBehaviour({});
 });
 
-test("a keyword is a decoration in its theme's colour, and runs of one colour share a style", () => {
+test("a keyword is a decoration in its theme's colour, and runs of one colour share a style", async () => {
+  await colorsIn();
   const runs = highlightCode("const a = 1;\nconst b = 2;", "ts", "github-light", false);
   expect(runs).not.toBeNull();
   const decorations = colorDecorations(runs!);
@@ -24,7 +35,8 @@ test("a keyword is a decoration in its theme's colour, and runs of one colour sh
   expect(second.style).toBe(first.style);
 });
 
-test("an unknown language, or code past the limit, is left to NSH's colours", () => {
+test("an unknown language, or code past the limit, is left to NSH's colours", async () => {
+  await colorsIn();
   expect(highlightCode("x", "notes.unknownext", "github-light", false)).toBeNull();
   expect(highlightCode("x".repeat(200_001), "ts", "github-light", false)).toBeNull();
 });
