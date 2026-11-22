@@ -287,14 +287,18 @@ mod tests {
         }
     }
 
+    /// On NSH's window model these options are the engine's host's, a window that never shows, and
+    /// `defaultVisible` no longer decides anything (`visible_at_launch` is always false): the app puts
+    /// a login launch's window away itself (`window-life.ts`'s `launchedHidden`, from
+    /// `host.params.hidden`), and the release smoke checks that `--hidden` shows no window.
     #[test]
-    fn the_login_launch_makes_the_window_unseen() {
+    fn the_login_launch_says_so_in_options_nsh_reads() {
         let hidden = launch_window(true, true);
         assert_eq!(hidden["defaultVisible"], false);
-        let options = nsh_core::desktop::MainWindowOptions::from_json(&hidden).expect("NSH reads it");
-        assert!(!options.visible_at_launch());
-        let shown = nsh_core::desktop::MainWindowOptions::from_json(&launch_window(true, false)).expect("NSH reads it");
-        assert!(shown.visible_at_launch());
+        assert!(nsh_core::desktop::MainWindowOptions::from_json(&hidden).is_ok());
+        let shown = launch_window(true, false);
+        assert!(shown.get("defaultVisible").is_none());
+        assert!(nsh_core::desktop::MainWindowOptions::from_json(&shown).is_ok());
     }
 
     #[test]

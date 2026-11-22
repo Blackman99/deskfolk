@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { asksToQuit, closeAction, launchedToQuit } from "./window-life";
+import { asksToQuit, closeAction, launchedHidden, launchedToQuit } from "./window-life";
 
 test("the close button puts the window away on Windows and Linux, as 0.4.0 did", () => {
   expect(closeAction("windows", true, "closeButton")).toBe("hide");
@@ -16,6 +16,14 @@ test("a later launch with --quit ends the running copy", () => {
   expect(asksToQuit(["--quit"])).toBe(true);
   expect(asksToQuit(["--hidden"])).toBe(false);
   expect(asksToQuit([])).toBe(false);
+});
+
+// On NSH's window model the shell's `defaultVisible` no longer keeps the window unseen (it only
+// configures the engine's host): a login launch is put away by the app, from this.
+test("a login launch (--hidden) starts with its window put away", () => {
+  expect(launchedHidden({ hidden: true })).toBe(true);
+  expect(launchedHidden({})).toBe(false);
+  expect(launchedHidden({ hidden: "true" })).toBe(false);
 });
 
 test("a --quit that found no copy running ends at once", () => {

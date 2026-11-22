@@ -38,7 +38,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
 import { minimumMacOS } from "./native-package";
@@ -820,6 +820,60 @@ function windowsPressClose(pid: number): void {
   if (ps.status !== 0) throw new Error(`smoke: could not close the window: ${ps.stderr}`);
 }
 
+/**
+ * The process's unowned `NshWindow`s in `EnumWindows` order: the order `win.rs`'s `nsh_window()`
+ * meets them in, taking the first. On NSH's window model the engine's host is a window of that class
+ * too, one that never shows, beside the window the app opens; the tray's Show, the Windows Hello
+ * sheet's parent and the wheel all ask `nsh_window()`, so the app's window has to be the one it finds.
+ */
+function windowsNshWindows(pid: number): Array<{ hwnd: string; visible: boolean; title: string }> {
+  const script = join(tmpdir(), `deskfolk-smoke-windows-${process.pid}.ps1`);
+  writeFileSync(
+    script,
+    [
+      "Add-Type -TypeDefinition @'",
+      "using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;",
+      "public static class SmokeNshWindows {",
+      "  public delegate bool EnumProc(IntPtr h, IntPtr l);",
+      '  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc f, IntPtr l);',
+      '  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+      '  [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr h, uint cmd);',
+      '  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);',
+      '  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);',
+      '  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);',
+      "  public static List<string> Of(uint target) {",
+      "    var rows = new List<string>();",
+      "    EnumWindows((h, l) => {",
+      "      uint pid; GetWindowThreadProcessId(h, out pid);",
+      "      if (pid != target || GetWindow(h, 4) != IntPtr.Zero) return true;",
+      "      var c = new StringBuilder(64); GetClassName(h, c, 64);",
+      '      if (c.ToString() != "NshWindow") return true;',
+      "      var t = new StringBuilder(256); GetWindowText(h, t, 256);",
+      '      rows.Add(h.ToInt64() + "\\t" + (IsWindowVisible(h) ? 1 : 0) + "\\t" + t.ToString());',
+      "      return true;",
+      "    }, IntPtr.Zero);",
+      "    return rows;",
+      "  }",
+      "}",
+      "'@",
+      `[SmokeNshWindows]::Of(${pid}) | ForEach-Object { $_ }`,
+    ].join("\r\n"),
+  );
+  try {
+    const ps = spawnSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], { encoding: "utf8" });
+    if (ps.status !== 0) throw new Error(`smoke: could not list the app's windows: ${ps.stderr}`);
+    return ps.stdout
+      .split(/\r?\n/)
+      .filter((line) => line.includes("\t"))
+      .map((line) => {
+        const [hwnd = "", visible = "", title = ""] = line.split("\t");
+        return { hwnd, visible: visible === "1", title };
+      });
+  } finally {
+    rmSync(script, { force: true });
+  }
+}
+
 /** The launch-at-login value (`win_login.rs`), or "" when there is none. */
 function runValue(): string {
   const query = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Deskfolk"], { encoding: "utf8" });
@@ -935,6 +989,11 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   await Bun.sleep(2000);
   if (!alive(descriptor.pid) || !(await healthyAt17890())) throw new Error("smoke: the second launch stopped the runtime");
   console.log("smoke: a second launch showed the window and left the runtime running");
+  // The window `nsh_window()` finds is the app's, the one on screen, not the engine's unseen host.
+  const shownWindows = windowsNshWindows(shell.pid);
+  console.log(`smoke: NSH's windows, in the order nsh_window() meets them: ${JSON.stringify(shownWindows)}`);
+  const appWindow = shownWindows[0];
+  if (!appWindow?.visible) throw new Error("smoke: nsh_window() would find a window that is not the one on screen (the tray's Show would show the wrong one)");
 
   process.kill(descriptor.pid);
   let again = 0;
@@ -964,6 +1023,10 @@ async function smokeWindows(setup: string, upgradeFrom?: string) {
   if (windowsMainWindow(shell.pid) !== 0) throw new Error("smoke: the window still shows after its close button");
   if (!alive(again) || !(await healthyAt17890())) throw new Error("smoke: closing the window stopped the runtime");
   console.log("smoke: closing the window put it away; the runtime runs on");
+  // Put away, it is still the one `nsh_window()` finds: the one the tray's Show brings back.
+  const awayWindows = windowsNshWindows(shell.pid);
+  console.log(`smoke: NSH's windows with the window put away: ${JSON.stringify(awayWindows)}`);
+  if (awayWindows[0]?.hwnd !== appWindow.hwnd) throw new Error("smoke: with the window put away, nsh_window() would find another window (the tray's Show would show the wrong one)");
 
   // `--quit` asks the running copy to quit, as the tray's Quit does: the run ends, and the daemon
   // with it.
