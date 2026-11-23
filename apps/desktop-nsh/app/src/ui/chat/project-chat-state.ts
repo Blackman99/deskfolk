@@ -106,6 +106,13 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     if (claudeSession()) loadClaudeStatus(api);
     else loadAgentsStatus(api);
   }
+  /**
+   * The consultant menu's agents and their models (ADR 0116 addendum), whatever this session's own
+   * agent is: a Claude Code session never asks for the others otherwise.
+   */
+  function askConsultOptions(): void {
+    loadAgentsStatus(runtime.client);
+  }
   // Untracked, so what the asking writes does not ask again.
   effect(() => {
     void runtime.client;
@@ -329,6 +336,7 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     answerAsk,
     account,
     agent,
+    askConsultOptions,
     claudeSession,
     caps,
     agentName,

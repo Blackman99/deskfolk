@@ -368,3 +368,21 @@ test("a press outside the consultant menu puts it away; a pick in its add picker
   await app.waitFor("id:consult-member-0", { timeout: 5_000 });
   expect(app.shows("id:consult-menu")).toBe(true);
 });
+
+test("in a Claude Code session the consultant menu offers another agent's own models: Antigravity's, picked by name (ADR 0116 addendum)", async () => {
+  const app = await project();
+  await app.press("id:story-agents");
+  await app.press("id:project-consult");
+  await app.waitFor("id:consult-add", { timeout: 5_000 });
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-antigravity", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-antigravity");
+  // Its own list, asked for as the menu opened (nothing had asked before): not only the default.
+  await app.waitFor("id:tune-row-model-story-agy-alpha", { timeout: 10_000 });
+  expect(app.shows("id:tune-row-model-story-agy-beta")).toBe(true);
+  await app.press("id:tune-row-model-story-agy-alpha");
+  await app.waitUntil(() => app.shows("id:consult-member-0") || app.shows("id:tune-row-effort-high"), { timeout: 5_000 });
+  if (app.shows("id:tune-row-effort-high")) await app.press("id:tune-row-effort-high");
+  await app.waitFor("id:consult-member-0", { timeout: 5_000 });
+  expect(said(app)).toContain('"agent":"antigravity","model":"story-agy-alpha"');
+});

@@ -263,7 +263,7 @@ export function ProjectComposer(props: {
               disabled={!connected()}
               agents={agentsStatus()}
               client={runtime.client}
-              onOpen={s().askOptions}
+              onOpen={s().askConsultOptions}
               onChange={(next) => void s().setConsult(next)}
             />
             {/* An account changes for the next run: Claude Code keeps the session under the account it ran on. */}

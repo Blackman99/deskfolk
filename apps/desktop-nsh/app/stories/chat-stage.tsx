@@ -12,9 +12,11 @@
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
+import { LocalApi } from "../src/m/local-api.ts";
+import { forgetClaudeOptions } from "../src/m/chat/project-agent-options.svelte";
 import { deep } from "../src/lib/reactive";
 import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
@@ -357,6 +359,23 @@ api.answerAsk = function (this: unknown, ...args: unknown[]) {
   if (runAsks().every((ask) => askAnswers()[ask])) runOn.set("running");
   return Promise.resolve(askLine(id, "", D2));
 };
+// Your local agents as a fixed list (`story-agents`), so the consultant menu's models do not hang on
+// what this computer has installed; what was asked before (the Bot's picker asks as the story opens)
+// is forgotten, as a window that has shown no Bot yet has nothing asked.
+const fakeAgents = signal(false);
+const STORY_AGENTS: AgentsStatusResponse = {
+  items: [{
+    runner: "antigravity", custom_id: null, label: "Antigravity", path: "/usr/local/bin/agy", source: "path", version: "1.5.14", logged_in: true, auth: null,
+    login_command: null, models: [{ id: "story-agy-alpha", name: "Story Alpha (High)", efforts: [] }, { id: "story-agy-beta", name: "Story Beta (Low)", efforts: [] }],
+    default_model: null, proxy: null, proxy_source: null, checked_at: D2, error: null,
+  }],
+  custom_agents: [],
+};
+const local = LocalApi.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+const realAgents = local.agents!;
+local.agents = function (this: unknown, ...args: unknown[]) {
+  return fakeAgents() ? Promise.resolve(STORY_AGENTS) : realAgents.apply(this, args);
+};
 const realCommands = api.projectCommands!;
 api.projectCommands = function (this: unknown, ...args: unknown[]) {
   if (args[0] !== PROJECT_ID) return realCommands.apply(this, args);
@@ -480,6 +499,10 @@ export default function ChatStageStory() {
             {button("story-consult-members", "consult: opus + codex", () =>
               consultSetting.set({ on: true, members: [{ agent: "claude_code", model: "claude-opus-5-5", effort: null }, { agent: "codex", model: null, effort: "high" }] }),
             )}
+            {button("story-agents", "fixed agents", () => {
+              forgetClaudeOptions();
+              fakeAgents.set(true);
+            })}
             {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {
