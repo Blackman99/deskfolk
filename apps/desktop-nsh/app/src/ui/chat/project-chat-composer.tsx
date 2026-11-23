@@ -9,6 +9,10 @@
  * start lists the agent's commands (the box, `ComposerEditor`, owns that list and its keys);
  * Shift+Tab switches plan mode as in the terminal, where the agent has one.
  *
+ * On a phone one + holds the clip, plan mode, the consultants and the model (`ComposerPlus`): the
+ * row keeps Send, Stop and the microphone, and plan mode and the consultants as chips while they
+ * are on.
+ *
  * Differences from the Svelte box, from the platform: the line is the shared `ComposerEditor` (an
  * `Input`; no textarea, no `selectionStart`); the card sits under the transcript in the column
  * rather than floating over it (see `ChatStage`); Shift+Tab is a window key while the conversation
@@ -23,11 +27,15 @@ import type { WorkspaceDragItem } from "../../m/workspace-drag.svelte";
 import { ComposerVoice, insertHeardAt, spacedHeard, type Caret } from "../../m/chat/composer-voice.svelte";
 import { VoiceRecorder } from "../../m/chat/voice-recorder";
 import { copy, runtime } from "../../runtime";
+import { SheetItem } from "../BottomSheet";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
+import { ModelSourceMark } from "../ModelSourceMark";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentTune } from "./AgentTune";
-import { ConsultPill } from "./ConsultPill";
+import { ComposerPlus, Deeper, PlusSwitch } from "./ComposerPlus";
+import { ConsultChip, ConsultPill, consultNames, type ConsultHandle } from "./ConsultPill";
 import { ProjectContextPill } from "./ProjectContextPill";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
@@ -36,11 +44,13 @@ import type { SendFlight } from "./send-flight";
 import { ComposerEditor } from "../lazy-views";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
+import { tuneLine, type ShownTuneHandle } from "./TunePicker";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
 import { agentModels, agentsStatus } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
+import { phoneChips } from "../../m/chat/phone-chips";
 
 /** How the conversation hands this box files dropped elsewhere on it, and rows dragged from a file tree. */
 export type ProjectComposerHandle = {
@@ -173,12 +183,91 @@ export function ProjectComposer(props: {
   const docked = settled(() => width() > 0 && width() <= 480);
   const compact = settled(() => width() > 0 && width() <= 440);
   const edge = () => (width() <= 680 ? 12 : 24);
+  /**
+   * A phone: the + holds the clip, plan mode, the consultants and the model. Their sheets are opened
+   * through these handles: the model's and the consultants' from inside the +'s sheet, whose content
+   * holds them (in the phone e2e a dialog opened from under another one did not show on the web), the consultants'
+   * chip's from outside the row.
+   */
+  const phone = () => narrowWindow();
+  const tuneSheet = signal<ShownTuneHandle | null>(null);
+  const plusConsult = signal<ConsultHandle | null>(null);
+  let chipConsult: ConsultHandle | null = null;
+  const consultDetail = () => {
+    const names = consultNames(props.selected.project_consult);
+    if (!names) return t().project.consultNone;
+    return s().consulting() ? names : `${t().project.consultOff} · ${names}`;
+  };
+  const tuneMark = () => tuneSheet()?.shown().mark ?? null;
+  /** The phone row's width and what stands right of its chips, measured: the chips take what is left (`phone-chips.ts`). */
+  const rowWidth = signal(0);
+  const rightWidth = signal(0);
+  const chips = () =>
+    phoneChips(
+      rowWidth() - rightWidth() - 40 - 3 * 6,
+      s().caps().plan && s().planning(),
+      s().consulting() ? (props.selected.project_consult?.members.length ?? 0) : 0,
+    );
   const refused = () => {
     if (view().sendRefused === "too_many_files") return t().composer.tooManyFiles;
     if (sendFailed() || s().tuneFailed()) return t().project.actionFailed;
     if (s().accountRefused()) return t().project.accountBusy;
     return null;
   };
+
+  /**
+   * Plan mode, the session's own: on, it plans and asks before changing anything, where the agent has
+   * one (`caps().plan`). Without its word (the phone's chip beside the consultants'), the icon alone.
+   */
+  const planPill = (words = true) => (
+    <View
+      role="button"
+      testID="project-plan"
+      tooltip={tip(s().planning() ? t().project.planOnHint(s().agentName()) : t().project.planOffHint(s().agentName()))}
+      accessibilityLabel={t().project.plan}
+      accessibilityState={{ selected: s().planning(), disabled: !connected() }}
+      disabled={!connected()}
+      onPress={s().togglePlan}
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 flex-row items-center gap-1 ${phone() ? "h-[36px]" : "h-[28px]"} ${words ? "pl-[7px] pr-[9px]" : "px-[7px]"} rounded-full border disabled:opacity-[0.4] ${s().planning() ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-line-subtle"}`}
+    >
+      <Icon name="list" size={16} class={s().planning() ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />
+      <If when={words}>
+        <Text class={`text-[12px] font-medium ${s().planning() ? "text-brand" : "text-ink-muted group-hover:text-ink"}`}>{t().project.plan}</Text>
+      </If>
+    </View>
+  );
+  /** The consultants' sheet alone, with no pill (the phone's): opened through `onHandle`. */
+  const consultPill = (onHandle: (handle: ConsultHandle | null) => void) => (
+    <ConsultPill
+      pill={false}
+      onHandle={onHandle}
+      setting={props.selected.project_consult}
+      agentName={s().agentName()}
+      disabled={!connected()}
+      agents={agentsStatus()}
+      client={runtime.client}
+      onOpen={s().askConsultOptions}
+      onChange={(next) => void s().setConsult(next)}
+    />
+  );
+  /** The account, model and level; bare on a phone, where the + opens its sheet. */
+  const agentTune = (bare: boolean) => (
+    <AgentTune
+      testID="project-tune"
+      agent={s().agent()}
+      agentName={s().agentName()}
+      models={s().claudeSession() ? undefined : agentModels(s().agent())}
+      tune={{ account: s().account(), model: props.selected.project_model ?? "", effort: props.selected.project_effort ?? "" }}
+      accounts={s().accountShown() ? s().accountOptions() : null}
+      accountLocked={s().live()}
+      disabled={!connected()}
+      client={runtime.client}
+      onPick={(change) => void s().tune(change)}
+      onOpen={s().askOptions}
+      bare={bare}
+      onHandle={bare ? (handle) => tuneSheet.set(handle) : undefined}
+    />
+  );
 
   return (
     <View
@@ -230,80 +319,127 @@ export function ProjectComposer(props: {
             onPaste={onPaste}
             onHandle={(handle) => (editor = handle)}
           />
-          <View class="flex-row items-center w-full gap-[6px]">
-            <View
-              role="button"
-              testID="project-attach"
-              tooltip={tip(t().composer.attach)}
-              accessibilityLabel={t().composer.attach}
-              disabled={!connected() || Boolean(view().sending)}
-              onPress={() => void pickFiles()}
-              class="cursor-pointer select-none disabled:cursor-default group shrink-0 w-[34px] h-[34px] items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] hover:bg-line-subtle"
+          <View class="flex-row items-center w-full gap-[6px]" onLayout={(e) => rowWidth.set(e.bounds.size.width)}>
+            <If
+              when={phone()}
+              else={
+                <>
+                  <View
+                    role="button"
+                    testID="project-attach"
+                    tooltip={tip(t().composer.attach)}
+                    accessibilityLabel={t().composer.attach}
+                    disabled={!connected() || Boolean(view().sending)}
+                    onPress={() => void pickFiles()}
+                    class="cursor-pointer select-none disabled:cursor-default group shrink-0 w-[34px] h-[34px] items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] hover:bg-line-subtle"
+                  >
+                    <Icon name="paperclip" size={20} class="tint-ink-muted group-hover:tint-ink" />
+                  </View>
+                  <If when={s().caps().plan}>{planPill()}</If>
+                  {/* The consultant switch (ADR 0116), the session's own: on, every line goes to the chosen consultants first. Every agent has it. */}
+                  <ConsultPill
+                    setting={props.selected.project_consult}
+                    agentName={s().agentName()}
+                    disabled={!connected()}
+                    agents={agentsStatus()}
+                    client={runtime.client}
+                    onOpen={s().askConsultOptions}
+                    onChange={(next) => void s().setConsult(next)}
+                  />
+                  {/* An account changes for the next run: Claude Code keeps the session under the account it ran on. */}
+                  <View class="shrink min-w-0 flex-row">{agentTune(false)}</View>
+                </>
+              }
             >
-              <Icon name="paperclip" size={20} class="tint-ink-muted group-hover:tint-ink" />
-            </View>
-            {/* Plan mode, the session's own: on, it plans and asks before changing anything. Claude Code's only. */}
-            <If when={s().caps().plan}>
-              <View
-                role="button"
-                testID="project-plan"
-                tooltip={tip(s().planning() ? t().project.planOnHint(s().agentName()) : t().project.planOffHint(s().agentName()))}
-                accessibilityLabel={t().project.plan}
-                accessibilityState={{ selected: s().planning(), disabled: !connected() }}
-                disabled={!connected()}
-                onPress={s().togglePlan}
-                class={`cursor-pointer select-none disabled:cursor-default group shrink-0 flex-row items-center gap-1 h-[28px] pl-[7px] pr-[9px] rounded-full border disabled:opacity-[0.4] ${s().planning() ? "bg-accent-tint border-accent-border" : "border-transparent hover:bg-line-subtle"}`}
-              >
-                <Icon name="list" size={16} class={s().planning() ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />
-                <Text class={`text-[12px] font-medium ${s().planning() ? "text-brand" : "text-ink-muted group-hover:text-ink"}`}>{t().project.plan}</Text>
+              <ComposerPlus testID="project-plus" disabled={!connected()}>
+                {(close) => (
+                  <>
+                    {/* The sheets the rows open, held here so they go over this one. */}
+                    {agentTune(true)}
+                    {consultPill((handle) => plusConsult.set(handle))}
+                    <SheetItem
+                      role="menuitem"
+                      testID="project-plus-attach"
+                      icon="paperclip"
+                      label={t().composer.attach}
+                      disabled={!connected() || Boolean(view().sending)}
+                      onPress={() => {
+                        close();
+                        void pickFiles();
+                      }}
+                    />
+                    <If when={s().caps().plan}>
+                      <PlusSwitch
+                        testID="project-plus-plan"
+                        icon="list"
+                        label={t().project.planMode}
+                        detail={t().project.planModeDetail(s().agentName())}
+                        checked={s().planning()}
+                        disabled={!connected()}
+                        onChange={() => s().togglePlan()}
+                      />
+                    </If>
+                    <SheetItem
+                      role="menuitem"
+                      testID="project-plus-consult"
+                      icon="users"
+                      label={t().project.consult}
+                      detail={consultDetail()}
+                      active={s().consulting()}
+                      disabled={!connected()}
+                      onPress={() => plusConsult()?.open()}
+                      trailing={<Deeper />}
+                    />
+                    <SheetItem
+                      role="menuitem"
+                      testID="project-plus-tune"
+                      icon={tuneMark() ? undefined : "sparkle"}
+                      leading={tuneMark() ? <ModelSourceMark source={tuneMark()!} tile size={20} /> : undefined}
+                      label={t().composer.model}
+                      detail={tuneSheet() ? tuneLine(tuneSheet()!.shown()) : undefined}
+                      disabled={!connected()}
+                      onPress={() => tuneSheet()?.open()}
+                      trailing={<Deeper />}
+                    />
+                  </>
+                )}
+              </ComposerPlus>
+              {/* What changes what Send does stays in sight while it is on: one press turns plan mode off, the consultants' chip opens their sheet.
+                  They take the room the row leaves them (`phone-chips.ts`): the consultants' logos give way to their number, then plan mode's
+                  word to its icon, so at 360 pt with both on, the context ring, the microphone and a run's stop menu the row still fits; on a
+                  narrower phone the chips give way (clipped) before Send or Stop would leave it. */}
+              <View class="shrink min-w-0 flex-row items-center gap-[6px] overflow-hidden">
+                <If when={s().caps().plan && s().planning()}>{planPill(chips().planWords)}</If>
+                <If when={s().consulting()}>
+                  <ConsultChip look={chips().consultLogos ? "logos" : "count"} setting={props.selected.project_consult} agentName={s().agentName()} disabled={!connected()} onPress={() => chipConsult?.open()} />
+                </If>
               </View>
             </If>
-            {/* The consultant switch (ADR 0116), the session's own: on, every line goes to the chosen consultants first. Every agent has it. */}
-            <ConsultPill
-              setting={props.selected.project_consult}
-              agentName={s().agentName()}
-              disabled={!connected()}
-              agents={agentsStatus()}
-              client={runtime.client}
-              onOpen={s().askConsultOptions}
-              onChange={(next) => void s().setConsult(next)}
-            />
-            {/* An account changes for the next run: Claude Code keeps the session under the account it ran on. */}
-            <View class="shrink min-w-0 flex-row">
-              <AgentTune
-                testID="project-tune"
-                agent={s().agent()}
-                agentName={s().agentName()}
-                models={s().claudeSession() ? undefined : agentModels(s().agent())}
-                tune={{ account: s().account(), model: props.selected.project_model ?? "", effort: props.selected.project_effort ?? "" }}
-                accounts={s().accountShown() ? s().accountOptions() : null}
-                accountLocked={s().live()}
-                disabled={!connected()}
-                client={runtime.client}
-                onPick={(change) => void s().tune(change)}
-                onOpen={s().askOptions}
+            <View class="flex-1" />
+            {/* Right of the spring, measured as one: what the phone's chips leave room for. */}
+            <View class="shrink-0 flex-row items-center gap-[6px]" onLayout={(e) => rightWidth.set(e.bounds.size.width)}>
+              <ProjectContextPill context={props.selected.project_context} compact={compact()} />
+              <If when={voiceOffered() || voice.busy}>
+                <VoiceButton voice={voice} disabled={!connected()} />
+              </If>
+              <If when={s().stopItems().length > 0}>
+                <StopMenu items={s().stopItems()} disabled={!connected()} onPick={s().pickStop} />
+              </If>
+              {/* Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. */}
+              <SendButton
+                connected={connected()}
+                primaryAction={{ kind: "send", disabled: !sendable() || Boolean(view().sending) || !connected() }}
+                directStop={s().live() && s().stopItems().length === 0}
+                stepsAside={false}
+                sending={view().sending}
+                upload={view().upload}
+                onStop={() => void s().stop()}
+                onSend={() => void send()}
               />
             </View>
-            <View class="flex-1" />
-            <ProjectContextPill context={props.selected.project_context} compact={compact()} />
-            <If when={voiceOffered() || voice.busy}>
-              <VoiceButton voice={voice} disabled={!connected()} />
-            </If>
-            <If when={s().stopItems().length > 0}>
-              <StopMenu items={s().stopItems()} disabled={!connected()} onPick={s().pickStop} />
-            </If>
-            {/* Stop beside Send while the agent works, as in a Bot's direct: a line sent meanwhile goes into the run. */}
-            <SendButton
-              connected={connected()}
-              primaryAction={{ kind: "send", disabled: !sendable() || Boolean(view().sending) || !connected() }}
-              directStop={s().live() && s().stopItems().length === 0}
-              stepsAside={false}
-              sending={view().sending}
-              upload={view().upload}
-              onStop={() => void s().stop()}
-              onSend={() => void send()}
-            />
           </View>
+          {/* The consultants' chip's sheet: outside the row, so switching them off there takes the chip, not the sheet. */}
+          <If when={phone()}>{consultPill((handle) => (chipConsult = handle))}</If>
           <DropVeil shown={dropShown()} testID="project-drop-veil" />
         </View>
       </View>

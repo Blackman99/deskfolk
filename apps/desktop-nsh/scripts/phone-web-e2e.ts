@@ -17,7 +17,8 @@
  * file away), Back to the roster, the terminal page reattaching to a shell the Mac already holds
  * (none started beside it; the key bar's Return reaches it; Back leaves it running), the workspace with a file picked in it that stays while the Mac
  * moves on, a project's folder over its conversation (from its row's menu, and from its directory's +, a sheet from the
- * bottom that Back puts away first), a reload that is still enrolled and under the service worker
+ * bottom that Back puts away first), a project session's composer and its + (the row fitting the phone, plan mode and the
+ * consultants set from it reaching the Mac, Back sheet by sheet), a reload that is still enrolled and under the service worker
  * (`/sw.js`, which the app's realm reaches as its own), a project session read back past its first
  * page that keeps the reader's place when a line comes into another conversation and when the relay
  * goes out of reach and the link comes back to the snapshot; a reload on the terminal page's address
@@ -283,6 +284,12 @@ const widthOf = async (page: Page, testID: string) => (await testid(page, testID
 /** Whether a finger in the middle of the screen lands inside `testID`: what is on top, not what the page holds. */
 const onTop = (page: Page, testID: string) =>
   page.evaluate((id) => Boolean(document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest(`[data-testid="${id}"]`)), testID);
+/** The newest sheet from the bottom has slid in to the foot of the screen (it comes in by a transition). */
+const sheetIn = (page: Page, what: string) =>
+  until(`${what} at the bottom of the screen`, 5_000, async () => {
+    const box = await testid(page, "bottom-sheet-panel").last().boundingBox();
+    return box !== null && Math.abs(box.y + box.height - page.viewportSize()!.height) <= 2;
+  });
 
 let failed = false;
 let browser: Browser | undefined;
@@ -691,6 +698,44 @@ try {
   await Bun.sleep(1500);
   await page.screenshot({ path: shot("3-conversation") });
 
+  // A Bot's direct on the phone (ADR 0116 addendum 2026-11-23, the phone's +): the clip and the Bot's
+  // model are in one +, the text above the row; the model's sheet goes over the +'s,
+  // Back comes back to it and Back again closes it, the conversation staying; the clip's row puts the
+  // sheet away and asks the browser for files.
+  {
+    const directPlus = testid(page, "composer-plus").filter({ visible: true }).first();
+    await directPlus.waitFor({ timeout: 10_000 });
+    for (const id of ["attach-button", "bot-tune"]) {
+      if (await testid(page, id).filter({ visible: true }).count()) throw new Error(`the phone's direct still shows ${id} on its row`);
+    }
+    // A draft long enough to wrap, in the box above the row (no newline: Enter sends).
+    await composer.fill("这是一段写得很长的草稿，长到在手机上要折成好几行，看它在那一排上面怎么长高，下面的按钮还在原处");
+    await Bun.sleep(600);
+    await page.screenshot({ path: shot("3k-direct-composer") });
+    await composer.fill("");
+    const openDirectPlus = async () => {
+      await directPlus.tap();
+      await testid(page, "composer-plus-sheet").waitFor({ timeout: 10_000 });
+      await sheetIn(page, "the direct's + sheet");
+    };
+    await openDirectPlus();
+    await page.screenshot({ path: shot("3l-direct-plus") });
+    await testid(page, "composer-plus-tune").tap();
+    await testid(page, "tune-sheet").waitFor({ timeout: 10_000 });
+    await sheetIn(page, "the Bot's model sheet");
+    await back();
+    await until("the Bot's model sheet put away by Back, the + under it", 10_000, async () => (await testid(page, "tune-sheet").count()) === 0 && (await testid(page, "composer-plus-sheet").count()) === 1);
+    await back();
+    await until("the direct's + put away by Back", 10_000, async () => (await testid(page, "composer-plus-sheet").count()) === 0);
+    if (!(await testid(page, "conversation").count()) || !page.url().startsWith(origin)) throw new Error(`Back from the direct's + left the conversation (${page.url()})`);
+    await openDirectPlus();
+    const chooser = page.waitForEvent("filechooser", { timeout: 10_000 });
+    await testid(page, "composer-plus-attach").tap();
+    await chooser;
+    await until("the direct's + put away for the file pick", 10_000, async () => (await testid(page, "composer-plus-sheet").count()) === 0);
+    step("a Bot's direct on the phone: the clip and the model are in the +, the model's sheet over it and Back back to it, then closed; the clip's row asks the browser for files");
+  }
+
   const status = (await setup({ operation: "status" })) as { state: string; devices: number };
   const devices = (await setup({ operation: "list_devices" })) as { items: Array<{ name?: string }> };
   step(`the Mac: remote ${status.state}, ${status.devices} device(s) enrolled (${devices.items.map((d) => d.name).join(", ")})`);
@@ -910,6 +955,136 @@ try {
   await testid(page, "nav-sessions").tap();
   await row.waitFor({ timeout: 10_000 });
   step("a project directory's + is a sheet from the bottom: Back puts it away and the list stays; its folder entry covers the conversation, and Back puts the folder away");
+
+  // A project session's composer on the phone (ADR 0116 addendum 2026-11-23, the phone's +): its row
+  // is the +, the chips of what is on, the microphone and Send, all inside the screen and none over
+  // another; the + is a sheet from the bottom holding the clip, plan mode, the consultants and the
+  // model, and what is set there reaches the Mac. Plan mode and the consultants stay on the row as
+  // chips while on: the plan chip turns it off, the consultants' chip opens their sheet, which stays
+  // when their switch goes off. The model's and the consultants' sheets go over the +'s, and Back
+  // comes back to it, then closes it, the conversation staying.
+  {
+    type ProjectRead = { project_mode?: string | null; project_consult?: { on: boolean; members: Array<{ agent: string }> } | null };
+    const projectRead = () => mac.api<ProjectRead>("GET", `/v1/sessions/${mac.claudeProject}`);
+    await testid(page, "nav-projects").tap();
+    const projectRow = testid(page, `session-${mac.claudeProject}`).filter({ visible: true }).first();
+    await projectRow.waitFor({ timeout: 15_000 });
+    await projectRow.click();
+    const plus = testid(page, "project-plus").filter({ visible: true }).first();
+    await plus.waitFor({ timeout: 15_000 });
+    for (const id of ["project-attach", "project-tune", "project-plan", "project-consult"]) {
+      if (await testid(page, id).filter({ visible: true }).count()) throw new Error(`the phone's project composer still shows ${id} on its row`);
+    }
+    /** The row's buttons where they are drawn, in CSS pixels. */
+    const rowFrames = () =>
+      page.evaluate(() =>
+        ["project-plus", "project-plan", "project-consult", "voice-button", "stop-menu", "stop-button", "send-button"].flatMap((id) =>
+          [...document.querySelectorAll(`[data-testid="${id}"]`)]
+            .map((el) => el.getBoundingClientRect())
+            .filter((r) => r.width > 0 && r.height > 0)
+            .map((r) => ({ id, left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), height: Math.round(r.height) })),
+        ),
+      );
+    const rowFits = async (what: string) => {
+      const frames = await rowFrames();
+      const width = page.viewportSize()!.width;
+      const out = frames.filter((f) => f.left < 0 || f.right > width);
+      const sorted = [...frames].sort((a, b) => a.left - b.left);
+      const over = sorted.filter((f, i) => i > 0 && f.left < sorted[i - 1]!.right);
+      if (out.length || over.length) throw new Error(`${what}: the composer's row does not fit: ${JSON.stringify(frames)}`);
+      return frames;
+    };
+    await rowFits("plain");
+    await page.screenshot({ path: shot("3f-project-composer") });
+    const openPlus = async () => {
+      await plus.tap();
+      await testid(page, "project-plus-sheet").waitFor({ timeout: 10_000 });
+      await sheetIn(page, "the +'s sheet");
+      await until("the +'s history entry", 5_000, () => page.evaluate(() => ((history.state as { nsh?: number } | null)?.nsh ?? 0) >= 1));
+    };
+    await openPlus();
+    for (const id of ["project-plus-attach", "project-plus-plan", "project-plus-consult", "project-plus-tune"]) {
+      if (!(await page.locator(`[data-testid="bottom-sheet-panel"] [data-testid="${id}"]`).count())) throw new Error(`the +'s sheet has no ${id}`);
+    }
+    await page.screenshot({ path: shot("3g-project-plus") });
+    // Plan mode flips in the sheet and reaches the Mac; the sheet stays.
+    await testid(page, "project-plus-plan").tap();
+    await until("plan mode on, on the Mac", 15_000, async () => (await projectRead()).project_mode === "plan");
+    if (!(await testid(page, "project-plus-sheet").count())) throw new Error("the + sheet went with plan mode's switch");
+    // The model's sheet goes over the +'s; Back comes back to the +, and Back again closes it.
+    await testid(page, "project-plus-tune").tap();
+    await testid(page, "tune-sheet").waitFor({ timeout: 10_000 });
+    await sheetIn(page, "the model's sheet");
+    await page.screenshot({ path: shot("3h-project-plus-model") });
+    // Back after Back as a phone does it, nothing pressed between: the model's sheet, then the +.
+    const walkedPlus = await backTwice("the model's sheet over the +", `${absent("tune-sheet")} && ${present("project-plus-sheet")}`, `${absent("project-plus-sheet")} && ${present("conversation")}`);
+    if (!walkedPlus) {
+      await back();
+      await until("the + put away by Back", 10_000, async () => (await testid(page, "project-plus-sheet").count()) === 0);
+    }
+    if (!(await testid(page, "conversation").count()) || !page.url().startsWith(origin)) throw new Error(`Back from the + left the conversation (${page.url()})`);
+    // On, plan mode is a chip on the row; one press turns it off on the Mac.
+    const planChip = testid(page, "project-plan").filter({ visible: true }).first();
+    await planChip.waitFor({ timeout: 10_000 });
+    await rowFits("plan on");
+    await planChip.tap();
+    await until("plan mode off, on the Mac", 15_000, async () => !(await projectRead()).project_mode);
+    // Consultants chosen on the Mac come over; their chip opens their sheet.
+    await mac.api("PATCH", `/v1/project-sessions/${mac.claudeProject}`, { consult: { on: true, members: [{ agent: "codex", model: null, effort: "high" }, { agent: "antigravity", model: null, effort: null }] } });
+    const consultChip = testid(page, "project-consult").filter({ visible: true }).first();
+    await consultChip.waitFor({ timeout: 15_000 });
+    await page.screenshot({ path: shot("3i-project-consult-chip") });
+    await rowFits("consultants on");
+    await consultChip.tap();
+    await testid(page, "consult-sheet").waitFor({ timeout: 10_000 });
+    await sheetIn(page, "the consultants' sheet");
+    await page.screenshot({ path: shot("3j-project-consult-sheet") });
+    // Their switch off: the Mac has it, the chip goes, the sheet stays; a × takes one out.
+    await testid(page, "consult-switch").tap();
+    await until("the consultants off, on the Mac", 15_000, async () => (await projectRead()).project_consult?.on === false);
+    await until("the consultants' chip gone, their sheet up", 10_000, async () => (await testid(page, "project-consult").filter({ visible: true }).count()) === 0 && (await testid(page, "consult-sheet").count()) === 1);
+    await testid(page, "consult-remove-0").tap();
+    await until("one consultant out, on the Mac", 15_000, async () => (await projectRead()).project_consult?.members.length === 1);
+    await back();
+    await until("the consultants' sheet put away by Back", 10_000, async () => (await testid(page, "consult-sheet").count()) === 0);
+    if (!(await testid(page, "conversation").count()) || !page.url().startsWith(origin)) throw new Error(`Back from the consultants' sheet left the conversation (${page.url()})`);
+    // The clip's row puts the + away and asks the browser for files.
+    await openPlus();
+    const projectChooser = page.waitForEvent("filechooser", { timeout: 10_000 });
+    await testid(page, "project-plus-attach").tap();
+    await projectChooser;
+    await until("the + put away for the file pick", 10_000, async () => (await testid(page, "project-plus-sheet").count()) === 0);
+    // The row takes what it has: with plan mode on, three consultants and the microphone, at 360 the
+    // chips keep their word and logos; narrower, the logos give way to the consultants' number, then
+    // plan mode's word to its icon (`phone-chips.ts`, which also covers the context ring and a run's
+    // stop menu). At each width nothing leaves the screen or lies over another.
+    await mac.api("PATCH", "/v1/speech", { enabled: true, base_url: "http://127.0.0.1:9/v1", model: "whisper-1" });
+    await mac.api("PATCH", `/v1/project-sessions/${mac.claudeProject}`, { mode: "plan", consult: { on: true, members: [{ agent: "codex", model: null, effort: "high" }, { agent: "antigravity", model: null, effort: null }, { agent: "grok", model: null, effort: null }] } });
+    const planWord = () => page.locator('[data-testid="project-plan"]').filter({ visible: true }).filter({ hasText: /计划|Plan/ }).count();
+    const consultLogos = () => page.locator('[data-testid="project-consult"] [data-testid^="agent-logo-"]').filter({ visible: true }).count();
+    const consultCount = () => testid(page, "consult-count").filter({ visible: true }).count();
+    for (const [width, words, logos] of [[360, true, true], [300, true, false], [260, false, false]] as const) {
+      await page.setViewportSize({ width, height: 780 });
+      await until(`the chips at ${width}: plan mode's word ${words ? "kept" : "gone"}, the consultants' ${logos ? "logos" : "number"}`, 15_000, async () =>
+        (await testid(page, "voice-button").filter({ visible: true }).count()) === 1 &&
+        (await testid(page, "project-plan").filter({ visible: true }).count()) === 1 &&
+        ((await planWord()) === 1) === words &&
+        (logos ? (await consultLogos()) === 3 && (await consultCount()) === 0 : (await consultLogos()) === 0 && (await consultCount()) === 1),
+      );
+      await Bun.sleep(300);
+      await rowFits(`plan mode, three consultants and the microphone at ${width}`);
+      await page.screenshot({ path: shot(`3k-project-fullest-${width}`) });
+    }
+    await mac.api("PATCH", "/v1/speech", { enabled: false });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mac.api("PATCH", `/v1/project-sessions/${mac.claudeProject}`, { mode: null, consult: null });
+    await until("plan mode's and the consultants' chips gone", 15_000, async () => (await testid(page, "project-plan").filter({ visible: true }).count()) + (await testid(page, "project-consult").filter({ visible: true }).count()) === 0);
+    await testid(page, "top-back").click();
+    await until("the project's conversation put down", 10_000, async () => (await testid(page, "conversation").count()) === 0);
+    await testid(page, "nav-sessions").tap();
+    await row.waitFor({ timeout: 10_000 });
+    step("a project session's composer on the phone: the +, the chips, the microphone and Send fit the row; the + holds the clip, plan mode, the consultants and the model, the Mac has what is set there, and Back steps out sheet by sheet");
+  }
 
   // The terminal page reattaches to the shell the Mac already holds (as a desktop tab would), with
   // its screen read back over the relay; it starts none beside it, the bar's Return reaches it, and

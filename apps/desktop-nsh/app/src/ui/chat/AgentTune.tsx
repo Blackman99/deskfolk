@@ -12,7 +12,7 @@ import { runnerSource } from "../../m/model-source";
 import type { AgentTune as Tune } from "../../m/chat/project-agent-tune";
 import { copy } from "../../runtime";
 import { agentTuneLabels, agentTuneTree, type AgentTuneSource } from "./agent-tune-tree";
-import { TunePicker } from "./TunePicker";
+import { TunePicker, type ShownTuneHandle } from "./TunePicker";
 
 export function AgentTune(props: {
   /** Whose runs they are: its mark on the picker. */
@@ -31,6 +31,9 @@ export function AgentTune(props: {
   onPick: (change: PatchProjectSessionRequest) => void;
   /** Called as the picker opens, to ask again for the accounts and models it lists. */
   onOpen?: () => void;
+  /** The phone's: no closed picker, only its sheet, opened (and read) through `onHandle` from the composer's +. */
+  bare?: boolean;
+  onHandle?: (handle: ShownTuneHandle | null) => void;
   testID?: string;
 }) {
   const source: AgentTuneSource = {
@@ -59,12 +62,13 @@ export function AgentTune(props: {
   };
   const tree = agentTuneTree(source);
   const shown = () => agentTuneLabels(source);
+  const mark = () => runnerSource(props.agent, props.agentName, copy());
 
   return (
     <TunePicker
       tree={tree}
       label={copy().project.tuneLabel}
-      mark={runnerSource(props.agent, props.agentName, copy())}
+      mark={mark()}
       value={shown().value}
       level={shown().level}
       aside={shown().aside}
@@ -72,6 +76,8 @@ export function AgentTune(props: {
       sheetTitle={props.agentName}
       disabled={props.disabled}
       onOpen={props.onOpen}
+      bare={props.bare}
+      onHandle={props.onHandle ? (handle) => props.onHandle?.(handle && { open: handle.open, shown: () => ({ mark: mark(), ...shown() }) }) : undefined}
       testID={props.testID ?? "agent-tune"}
     />
   );

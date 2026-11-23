@@ -13,7 +13,8 @@
  * says what it could not. The frosted ring (no backdrop blur) is left out; the stage places it and
  * reserves its height (`onHeight`). One row up to 480 wide, two rows above, the floating card's
  * margin 12 up to 680, as the container queries say; at 480 and under it is a bar across the
- * bottom rather than a card.
+ * bottom rather than a card. On a phone a direct's clip and model picker go into one +
+ * (`ComposerPlus`), as a project session's composer does.
  */
 import { cleanup, computed, effect, platform, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
@@ -27,11 +28,15 @@ import { conversationStopItems, type StopMenuItem } from "../../m/chat/stop-menu
 import { VoiceRecorder } from "../../m/chat/voice-recorder";
 import type { WorkspaceDragItem } from "../../m/workspace-drag.svelte";
 import { copy, runtime } from "../../runtime";
+import { SheetItem } from "../BottomSheet";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
+import { ModelSourceMark } from "../ModelSourceMark";
 import { tip } from "../tip";
 import { shadow } from "../styles";
 import { BotTune } from "./BotTune";
 import { ComposerAttachments } from "./ComposerAttachments";
+import { ComposerPlus, Deeper } from "./ComposerPlus";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
 import type { SendFlight } from "./send-flight";
@@ -41,6 +46,7 @@ import { ComposerSuggestions } from "./ComposerSuggestions";
 import { ScrollBottomButton } from "./ScrollBottomButton";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
+import { tuneLine, type ShownTuneHandle } from "./TunePicker";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
 import { WaitingJump } from "./WaitingJump";
@@ -208,6 +214,10 @@ export function Composer(props: {
     const state = d();
     return state.kind === "you-bot" && !state.locked && !state.fileDrop && state.peerBot && !state.peerBot.archived_at ? state.peerBot : null;
   };
+  /** On a phone the + holds the clip and the model (`ComposerPlus`); the model's sheet, held in the +'s, is opened through this. */
+  const phonePlus = () => narrowWindow() && Boolean(tuneBot());
+  const tuneSheet = signal<ShownTuneHandle | null>(null);
+  const tuneMark = () => tuneSheet()?.shown().mark ?? null;
   async function tuneModel(botId: string, change: PatchBotRequest): Promise<void> {
     const failure = await runtime.patchBot(botId, change);
     tuneFailedFor.set(failure ? botId : tuneFailedFor() === botId ? null : tuneFailedFor());
@@ -315,7 +325,8 @@ export function Composer(props: {
   /**
    * The text on a line of its own above the tool row: always where the composer is wide, and where
    * it is docked (a phone) too once the row carries the Bot's model, as the Svelte's `.has-tune`
-   * row wraps the editor to the top; a docked row without one keeps the text between its buttons.
+   * row wraps the editor to the top, and on a phone, whose + holds the model, it stays there, as in a
+   * project session's composer; a docked row without one keeps the text between its buttons.
    */
   const editorAbove = () => wide() || Boolean(tuneBot());
   // One editor per conversation: the box stays across a switch of conversations (the stage turns to
@@ -418,17 +429,55 @@ export function Composer(props: {
             <If when={toolRow() && editorAbove()}>{editorBox()}</If>
             <If when={toolRow()}>
               <View class="flex-row items-center w-full gap-2">
-                <ToolButton
-                  testID="attach-button"
-                  icon="paperclip"
-                  label={copy().composer.attach}
-                  disabled={!connected() || !props.selected || d().locked || Boolean(view()?.sending)}
-                  onPress={() => void pickFiles()}
-                />
-                <If when={tuneBot()}>
-                  <View class="shrink min-w-0 flex-row">
-                    <BotTune bot={tuneBot()!} disabled={!connected()} onPick={(change) => void tuneModel(tuneBot()!.id, change)} />
-                  </View>
+                <If
+                  when={phonePlus()}
+                  else={
+                    <>
+                      <ToolButton
+                        testID="attach-button"
+                        icon="paperclip"
+                        label={copy().composer.attach}
+                        disabled={!connected() || !props.selected || d().locked || Boolean(view()?.sending)}
+                        onPress={() => void pickFiles()}
+                      />
+                      <If when={tuneBot()}>
+                        <View class="shrink min-w-0 flex-row">
+                          <BotTune bot={tuneBot()!} disabled={!connected()} onPick={(change) => void tuneModel(tuneBot()!.id, change)} />
+                        </View>
+                      </If>
+                    </>
+                  }
+                >
+                  <ComposerPlus testID="composer-plus" disabled={!connected() || !props.selected}>
+                    {(close) => (
+                      <>
+                        {/* The model's sheet, held here so it goes over this one. */}
+                        <BotTune bare onHandle={(handle) => tuneSheet.set(handle)} bot={tuneBot()!} disabled={!connected()} onPick={(change) => void tuneModel(tuneBot()!.id, change)} />
+                        <SheetItem
+                          role="menuitem"
+                          testID="composer-plus-attach"
+                          icon="paperclip"
+                          label={copy().composer.attach}
+                          disabled={!connected() || !props.selected || d().locked || Boolean(view()?.sending)}
+                          onPress={() => {
+                            close();
+                            void pickFiles();
+                          }}
+                        />
+                        <SheetItem
+                          role="menuitem"
+                          testID="composer-plus-tune"
+                          icon={tuneMark() ? undefined : "sparkle"}
+                          leading={tuneMark() ? <ModelSourceMark source={tuneMark()!} tile size={20} /> : undefined}
+                          label={copy().composer.model}
+                          detail={tuneSheet() ? tuneLine(tuneSheet()!.shown()) : undefined}
+                          disabled={!connected()}
+                          onPress={() => tuneSheet()?.open()}
+                          trailing={<Deeper />}
+                        />
+                      </>
+                    )}
+                  </ComposerPlus>
                 </If>
                 <If when={editorAbove()} else={editorBox()}>
                   <View class="flex-1" />

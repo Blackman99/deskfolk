@@ -26,6 +26,10 @@ export const zh = {
   modWaitingHint: "回复结束后可发送 · Enter 换行",
   modSendShortcut: (key: string) => `发送（${key}）`,
   attach: "添加附件",
+  /** The phone's + in the composer: the clip, the model and the modes in one sheet. */
+  more: "更多",
+  /** Its row for the model picker. */
+  model: "模型",
   removeAttachment: "移除附件",
   /** On a file dragged in from the workspace tree: it goes out as its path. */
   workspaceRef: "工作区里的原文件，发出时不复制",
@@ -80,6 +84,8 @@ export const en: CopyShape<typeof zh> = {
   modWaitingHint: "Send after the reply ends · Enter for newline",
   modSendShortcut: (key: string) => `Send (${key})`,
   attach: "Add attachment",
+  more: "More",
+  model: "Model",
   removeAttachment: "Remove attachment",
   workspaceRef: "The file in the workspace itself; nothing is copied",
   dropWorkspaceItems: "Drop to attach · nothing is copied",

@@ -5,7 +5,8 @@
  * runner its endpoints or its agent's models, an account its models, a model the levels it takes)
  * when it is pointed at or pressed; only a row with nothing under it is a pick, which takes the path
  * up to it and closes. ↑↓ walk a column, → goes into a row, ← back a column, Enter picks, Esc closes.
- * On a phone a sheet from the bottom that goes into a row the same way, Back going up one. What each
+ * On a phone a sheet from the bottom that goes into a row the same way, Back going up one; there a
+ * composer's + may hold the picker instead (`bare`: the sheet alone, opened through `onHandle`). What each
  * level lists and what a pick does is the tree's (`AgentTune`, `BotTune`); the walking is
  * `tune-picker-state.ts`.
  *
@@ -38,6 +39,14 @@ import { tip } from "../tip";
 import { InModal, narrowWindow as phoneSheet } from "../Modal";
 import { POPOVER_MARGIN, columnFit, columnHeight, columnShifts, createTune, type ColumnFrame } from "./tune-picker-state";
 
+/** What opens the picker from elsewhere (the phone composer's +, which holds a bare one). */
+export type TuneHandle = { open(): void };
+/** What the closed picker says, for the row that stands in for it on the phone's + (`AgentTune`, `BotTune`). */
+export type TuneShown = { mark: ModelSource | null; value: string; level: string | null; aside: string | null };
+export type ShownTuneHandle = TuneHandle & { shown(): TuneShown };
+/** The model, its level and the account in one line, as the closed picker reads. */
+export const tuneLine = (shown: TuneShown) => [shown.value, shown.level, shown.aside].filter(Boolean).join(" · ");
+
 export function TunePicker(props: {
   tree: TuneTree;
   /** The picker's name, for readers. */
@@ -58,10 +67,15 @@ export function TunePicker(props: {
   onOpen?: () => void;
   /** Whether its columns are out now: a menu it sits in leaves a press on them alone. */
   onOpenChange?: (open: boolean) => void;
+  /** No closed picker of its own: only the phone's sheet, which `onHandle`'s opener opens (the composer's +). */
+  bare?: boolean;
+  onHandle?: (handle: TuneHandle | null) => void;
   testID?: string;
 }) {
   const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle, onOpen: () => props.onOpen?.() });
   effect(() => props.onOpenChange?.(tune.open()));
+  props.onHandle?.({ open: () => tune.openPicker() });
+  cleanup(() => props.onHandle?.(null));
   const phone = phoneSheet;
   // The phone sheet's levels have history entries of their own on the hosted page; Back there steps up one.
   cleanup(holdLevels({ name: "tune-sheet", depth: () => tune.sheetDepth(), inModal: true, stepOut: () => tune.sheetBack() }));
@@ -134,11 +148,12 @@ export function TunePicker(props: {
       accessibilityState={{ expanded: tune.open(), disabled: props.disabled }}
       disabled={props.disabled}
       onPress={() => (tune.open() ? tune.close() : tune.openPicker())}
-      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.45] hover:bg-line-subtle ${tune.open() ? "bg-line-subtle" : ""}`}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center w-full disabled:opacity-[0.45] hover:bg-line-subtle ${phone() ? "gap-3 min-h-[48px] px-3 py-[10px] rounded-(--radius-md) active:bg-line-subtle" : "gap-2 px-[10px] py-[6px] rounded-(--radius-sm)"} ${tune.open() ? "bg-line-subtle" : ""}`}
     >
-      <Icon name="plus" size={16} class="tint-ink opacity-75" />
-      <Text class="flex-1 min-w-0 text-[13px] font-medium text-ink line-clamp-1">{word}</Text>
-      <Icon name="chevron-right" size={12} class="tint-ink-muted" />
+      {/* In a phone's sheet it is one of the sheet's rows (`SheetItem`'s size). */}
+      <Icon name="plus" size={phone() ? 20 : 16} class="tint-ink opacity-75" />
+      <Text class={`flex-1 min-w-0 text-ink line-clamp-1 ${phone() ? "text-[15px]" : "text-[13px] font-medium"}`}>{word}</Text>
+      <Icon name="chevron-right" size={phone() ? 16 : 12} class="tint-ink-muted" />
     </View>
   );
 
@@ -250,6 +265,58 @@ export function TunePicker(props: {
     </View>
   );
 
+  const sheet = (
+    <If when={phone() && tune.open()}>
+      <BottomSheet
+        title={tune.sheetTitle()}
+        closeLabel={copy().common.close}
+        onClose={() => tune.close()}
+        onBack={tune.shown().length > 1 ? () => tune.sheetBack() : undefined}
+        backLabel={copy().common.back}
+        testID="tune-sheet"
+      >
+        <View>
+          <Text class="px-3 pt-[2px] pb-[6px] text-[12px] text-ink-muted">{tune.sheetLevel().heading}</Text>
+          <View testID={`tune-list-${tune.sheetLevel().key}`} accessibilityLabel={tune.sheetLevel().heading}>
+            <Each of={tune.rowsOf(tune.sheetLevel().key)} key={(row) => row.value}>
+              {(row) => {
+                const level = () => tune.sheetLevel();
+                const checked = () => row().value === tune.checkedOf(level().key);
+                return (
+                  <SheetItem
+                    role="option"
+                    testID={`tune-row-${level().key}-${row().value || "default"}`}
+                    label={row().label}
+                    detail={row().detail}
+                    active={checked()}
+                    disabled={row().disabled}
+                    onPress={() => tune.press(level().key, row())}
+                    leading={row().mark ? <ModelSourceMark source={row().mark!} tile size={20} /> : undefined}
+                    trailing={
+                      <>
+                        <If when={checked()}>
+                          <Icon name="check" size={16} class="tint-brand" />
+                        </If>
+                        <If when={!level().leaf && tune.opensMore(level().key, row().value)}>
+                          <Icon name="chevron-right" size={16} class="tint-ink-muted" />
+                        </If>
+                      </>
+                    }
+                  />
+                );
+              }}
+            </Each>
+          </View>
+          <If when={tune.sheetLevel().note}>{(note) => <Text class="mx-3 my-[6px] text-[12px] text-ink-muted">{note()}</Text>}</If>
+        </View>
+      </BottomSheet>
+    </If>
+  );
+
+  // Bare, it takes no room where it sits: only its sheet, opened by its owner, which on the desktop
+  // shows the closed picker instead (`bare` is the phone's).
+  if (props.bare) return sheet;
+
   // `shrink` on the picker and on the popover's own box: NSH's flex items keep their content's width
   // unless told to give way (CSS's default `flex-shrink: 1` is 0 here), and the closed picker ran
   // past the send button instead of cutting its account first.
@@ -278,51 +345,7 @@ export function TunePicker(props: {
           <Panel />
         </Popover>
       </If>
-      <If when={phone() && tune.open()}>
-        <BottomSheet
-          title={tune.sheetTitle()}
-          closeLabel={copy().common.close}
-          onClose={() => tune.close()}
-          onBack={tune.shown().length > 1 ? () => tune.sheetBack() : undefined}
-          backLabel={copy().common.back}
-          testID="tune-sheet"
-        >
-          <View>
-            <Text class="px-3 pt-[2px] pb-[6px] text-[12px] text-ink-muted">{tune.sheetLevel().heading}</Text>
-            <View testID={`tune-list-${tune.sheetLevel().key}`} accessibilityLabel={tune.sheetLevel().heading}>
-              <Each of={tune.rowsOf(tune.sheetLevel().key)} key={(row) => row.value}>
-                {(row) => {
-                  const level = () => tune.sheetLevel();
-                  const checked = () => row().value === tune.checkedOf(level().key);
-                  return (
-                    <SheetItem
-                      role="option"
-                      testID={`tune-row-${level().key}-${row().value || "default"}`}
-                      label={row().label}
-                      detail={row().detail}
-                      active={checked()}
-                      disabled={row().disabled}
-                      onPress={() => tune.press(level().key, row())}
-                      leading={row().mark ? <ModelSourceMark source={row().mark!} tile size={20} /> : undefined}
-                      trailing={
-                        <>
-                          <If when={checked()}>
-                            <Icon name="check" size={16} class="tint-brand" />
-                          </If>
-                          <If when={!level().leaf && tune.opensMore(level().key, row().value)}>
-                            <Icon name="chevron-right" size={16} class="tint-ink-muted" />
-                          </If>
-                        </>
-                      }
-                    />
-                  );
-                }}
-              </Each>
-            </View>
-            <If when={tune.sheetLevel().note}>{(note) => <Text class="mx-3 my-[6px] text-[12px] text-ink-muted">{note()}</Text>}</If>
-          </View>
-        </BottomSheet>
-      </If>
+      {sheet}
     </View>
   );
 }

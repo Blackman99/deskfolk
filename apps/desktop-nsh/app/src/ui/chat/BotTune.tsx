@@ -12,9 +12,16 @@ import { loadClaudeModels } from "../../m/claude-models.svelte";
 import { agentsStatus, claudeStatus, loadAgentsStatus, loadClaudeStatus } from "../../m/chat/project-agent-options.svelte";
 import { copy, runtime } from "../../runtime";
 import { botTuneLabels, botTuneTree, type BotTuneSource } from "./bot-tune-tree";
-import { TunePicker } from "./TunePicker";
+import { TunePicker, type ShownTuneHandle } from "./TunePicker";
 
-export function BotTune(props: { bot: Bot; disabled: boolean; onPick: (change: PatchBotRequest) => void }) {
+export function BotTune(props: {
+  bot: Bot;
+  disabled: boolean;
+  onPick: (change: PatchBotRequest) => void;
+  /** The phone's: no closed picker, only its sheet, opened (and read) through `onHandle` from the composer's +. */
+  bare?: boolean;
+  onHandle?: (handle: ShownTuneHandle | null) => void;
+}) {
   const runner = () => (props.bot.runner && isBotRunner(props.bot.runner) ? props.bot.runner : null);
   const account = () => props.bot.agent_config_dir ?? "";
 
@@ -73,6 +80,8 @@ export function BotTune(props: { bot: Bot; disabled: boolean; onPick: (change: P
       sheetTitle={props.bot.name}
       disabled={props.disabled}
       onOpen={() => untracked(askOptions)}
+      bare={props.bare}
+      onHandle={props.onHandle ? (handle) => props.onHandle?.(handle && { open: handle.open, shown: () => shown() }) : undefined}
       testID="bot-tune"
     />
   );
