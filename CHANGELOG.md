@@ -9,7 +9,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### A project session's agent can read your agents' session records
 
 - Asked why a Claude session showed a 200k context, an Antigravity project session ran a read-only script over the newest Claude Code session files in `~/.claude/projects`, and the turn was stopped: your agents' own settings and credentials are off limits. The app counted each agent's whole home folder as its settings and sign-in, the conversation records kept there included; Claude Code in a project session was refused the same files.
-- Now every project session's agent (Claude Code, Codex, Antigravity, Grok) reads your agents' session records: Claude Code's `projects/` and Grok's `sessions/`, in the default folders and in each account folder listed in Settings. Claude Code reads them with Read, Glob and Grep; the other agents' commands may name them too and go by the permission mode as any command does.
+- Now every project session's agent (Claude Code, Codex, Antigravity, Grok) reads your agents' session records: Claude Code's `projects/` and Grok's `sessions/`, in the default folders and in each account folder listed in Settings. Claude Code reads them with Read, Glob and Grep; the other agents' commands may name them too, every account's at once with a glob such as `~/.claude*/projects`, and go by the permission mode as any command does.
 - They are opened for reading only: writing a file there is still refused in every mode, and the settings and sign-in beside them (`settings.json`, `.credentials.json`, `~/.claude.json`, Grok's `auth.json`), a link leading out, or a `..` climbing out stay off limits. Bots are unchanged.
 
 ### UI polish across desktop and mobile

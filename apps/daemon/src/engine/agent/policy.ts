@@ -6,14 +6,14 @@
  * Bot's permission mode says (ADR 0092), the same recursive-search refusal, nothing in the
  * background, and never any agent's own credentials. Pure, like Claude's.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { posix } from "node:path";
 import { recursiveSearchGuard, searchGuardMessage } from "../../search-guard";
 import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../workspace-paths";
 import type { PermissionMode } from "@real-bot/protocol";
 import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, touchesAgentCredentials, withoutOpenDirs } from "./credentials";
+import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -55,7 +55,26 @@ export type ActionContext = {
    * leave them, as an open folder, and then goes by the permission mode as any command does.
    */
   readableDirs?: string[];
+  /** The folders in a folder, links to folders too; this machine's disk when absent. */
+  foldersIn?: (dir: string) => string[];
 };
+
+/** The folders in `dir` on this machine's disk, a link counted by where it leads. */
+function foldersIn(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((entry) => {
+      if (entry.isDirectory()) return true;
+      if (!entry.isSymbolicLink()) return false;
+      try {
+        return statSync(posix.join(dir, entry.name)).isDirectory();
+      } catch {
+        return false;
+      }
+    }).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
 
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
 export function decideAction(action: AppAction, ctx: ActionContext): AgentDecision {
@@ -72,7 +91,10 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     const command = action.command ?? "";
     if (touchesAgentCredentials(command, home, platform, configDirs)) {
       const open = [...(ctx.openDirs ?? []), ...(ctx.readableDirs ?? [])];
-      const rest = withoutOpenDirs(command, open, home, platform, (abs) => inMemoryDir(abs, open, host));
+      const named = withoutOpenDirs(command, open, home, platform, (abs) => inMemoryDir(abs, open, host));
+      // Every account's folder at once (`~/.claude*/projects`): each folder the glob matches is read as if named.
+      const rest = named === null || open.length === 0 ? named
+        : withoutHomeGlobs(named, home, platform, ctx.foldersIn ?? foldersIn, (abs) => inMemoryDir(abs, open, host) || !isAgentCredentialPath(abs, home, platform, configDirs));
       if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) {
         return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
       }

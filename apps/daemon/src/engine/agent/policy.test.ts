@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentRecordDirs, withoutOpenDirs } from "./credentials";
+import { agentRecordDirs, withoutHomeGlobs, withoutOpenDirs } from "./credentials";
 import { decideAction, type ActionContext, type AppAction } from "./policy";
 
 // A fake home on this machine's disk, so links can be followed: an agent's own folder in it, with
@@ -170,6 +170,53 @@ posixTest("the records are read, never written, and nothing beside them opens", 
   ]) {
     expect([command, decideAction(shell(command), session).kind]).toEqual([command, "deny"]);
   }
+});
+
+// A second Claude account you listed, an old folder named like one you did not, and the sign-in file the glob below could match.
+mkdirSync(join(home, ".claude-b", "projects", "-p"), { recursive: true });
+writeFileSync(join(home, ".claude-b", "projects", "-p", "a.jsonl"), "{}\n");
+writeFileSync(join(home, ".claude-b", ".credentials.json"), "{}");
+mkdirSync(join(home, ".claude-old", "projects"), { recursive: true });
+writeFileSync(join(home, ".claude.json"), "{}");
+const accounts: ActionContext = {
+  ...base, configDirs: [join(home, ".claude-b")],
+  readableDirs: agentRecordDirs(home, (runner) => (runner === "claude_code" ? [join(home, ".claude-b")] : [])),
+};
+
+posixTest("a glob over every account's folder at once reads each one it matches; one reaching anything else stays shut", () => {
+  // As agy ran it next on 2026-11-23, told 「继续」: the transcripts of every Claude account.
+  const everyAccount = transcripts.replace("~/.claude/projects/*/*.jsonl", "~/.claude*/projects/*/*.jsonl");
+  expect(decideAction(shell(everyAccount), accounts)).toMatchObject({ kind: "allow" });
+  for (const command of ["ls -t ~/.claude*/projects | head", "cat $HOME/.claude*/projects/-p/a.jsonl", `wc -l ${home}/.claude?b/projects/-p/*.jsonl`]) {
+    expect([command, decideAction(shell(command), accounts).kind]).toEqual([command, "allow"]);
+  }
+  // A Bot, as before; a glob reaching settings or sign-in, the folders themselves, a climb, a cd, a path built on it.
+  expect(decideAction(shell(everyAccount), { ...base, configDirs: [join(home, ".claude-b")] }).kind).toBe("deny");
+  for (const command of [
+    "cat ~/.claude*/settings.json",
+    "cat ~/.claude*/.credentials.json",
+    "ls ~/.claude*",
+    "ls ~/.claude*/",
+    "cat ~/.claude*/projects/../settings.json",
+    "cd ~/.claude*/projects && cat ../settings.json",
+    "cat ~/.claude*/projects/$NAME",
+    "cat ~/.claude*/projects/-p/a.jsonl ~/.claude.json",
+  ]) {
+    expect([command, decideAction(shell(command), accounts).kind]).toEqual([command, "deny"]);
+  }
+});
+
+test("withoutHomeGlobs takes out a glob under home only where every folder it matches is fine", () => {
+  const folders = () => [".claude", ".claude-b", ".codex", "work"];
+  const fine = (abs: string) => !abs.startsWith("/h/.codex");
+  expect(withoutHomeGlobs("cat ~/.claude*/projects/a.jsonl", "/h", "darwin", folders, fine)).toBe("cat OPEN_DIR");
+  expect(withoutHomeGlobs("cat ~/.c*/x", "/h", "darwin", folders, fine)).toBe("cat ~/.c*/x");
+  // A glob not starting with a dot matches no dot folder; one matching nothing names nothing.
+  expect(withoutHomeGlobs("cat ~/*/x", "/h", "darwin", () => [".codex", "work"], fine)).toBe("cat OPEN_DIR");
+  expect(withoutHomeGlobs("cat ~/.nothing*/x", "/h", "darwin", folders, fine)).toBe("cat OPEN_DIR");
+  expect(withoutHomeGlobs("cat ~/.claude*/projects/../../.codex/auth.json", "/h", "darwin", folders, fine)).toBeNull();
+  expect(withoutHomeGlobs("cat ~/.claude/projects/a.jsonl", "/h", "darwin", folders, fine)).toBe("cat ~/.claude/projects/a.jsonl");
+  expect(withoutHomeGlobs("type C:\\Users\\h\\.claude*\\projects\\a", "C:\\Users\\h", "win32", folders, fine)).toBe("type C:\\Users\\h\\.claude*\\projects\\a");
 });
 
 test("withoutOpenDirs takes out only what stays in", () => {

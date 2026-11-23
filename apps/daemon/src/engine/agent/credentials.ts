@@ -185,6 +185,49 @@ export function withoutOpenDirs(command: string, openDirs: string[], home: strin
   return out;
 }
 
+/** A path past a glob: none of a shell word's ends, and not ending on a slash. */
+const PATH_REST = String.raw`(/+[^\s'"\x60;|&<>()]*[^\s'"\x60;|&<>()/])`;
+
+/**
+ * The command with each path that globs the folder right under your home (`.claude*` there, then
+ * `projects/…`: every account's records at once) taken out where each folder there the glob matches (`foldersIn`),
+ * with the rest of the path, is `fine`; a glob matching nothing names nothing. Null when such a path
+ * could leave: a `..` anywhere, or as {@link leavesFrom} has it. A glob that is the whole path
+ * (`~/.claude*`) stays in, as does any path with no glob there: the rules read those as written.
+ * POSIX shells only.
+ */
+export function withoutHomeGlobs(command: string, home: string, platform: NodeJS.Platform, foldersIn: (dir: string) => string[], fine: (abs: string) => boolean): string | null {
+  if (platform === "win32") return command;
+  const found = new RegExp(String.raw`(?:~|\$HOME|\$\{HOME\}|${escapeRegExp(home)})/+([^\s'"\x60;|&<>()/]*[*?[][^\s'"\x60;|&<>()/]*)${PATH_REST}`, "g");
+  if (!new RegExp(found.source).test(command)) return command;
+  if (/(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
+  let leaves = false;
+  const out = command.replace(found, (match: string, glob: string, rest: string, at: number, whole: string) => {
+    const pattern = globPattern(glob);
+    if (!foldersIn(home).filter((name) => pattern.test(name)).every((name) => fine(posix.join(home, name, rest)))) return match;
+    if (leavesFrom(whole, at, at + match.length, false)) leaves = true;
+    return "OPEN_DIR";
+  });
+  return leaves ? null : out;
+}
+
+/** One folder name's shell glob as a regular expression: a leading dot is matched only by a glob that starts with one. */
+function globPattern(glob: string): RegExp {
+  let source = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    const ch = glob[i]!;
+    const end = ch === "[" ? glob.indexOf("]", i + 2) : -1;
+    if (ch === "*") source += "[^/]*";
+    else if (ch === "?") source += "[^/]";
+    else if (end > 0) {
+      const body = glob.slice(i + 1, end).replace(/\\/g, "\\\\");
+      source += body.startsWith("!") ? `[^${body.slice(1)}]` : `[${body}]`;
+      i = end;
+    } else source += escapeRegExp(ch);
+  }
+  return new RegExp(glob.startsWith(".") ? `^${source}$` : `^(?!\\.)${source}$`);
+}
+
 /** Where one command of a list ends and the next begins: `&&`, `||`, `;`, `|`, `&`, a new line. */
 const BETWEEN_COMMANDS = /&&|\|\||[;|&\r\n]/g;
 
