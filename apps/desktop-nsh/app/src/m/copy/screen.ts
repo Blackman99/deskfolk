@@ -39,6 +39,16 @@ export const zh = {
   smoothAlreadyLow: "这台 Mac 的屏幕已经不是 Retina 分辨率，没有可降的",
   smoothFailed: "Mac 没能降低分辨率，画面照旧",
   smoothUnsupported: "这台 Mac 上的 Deskfolk 还不支持流畅模式",
+  displayTitle: "显示哪块屏幕",
+  displayTip: "这台 Mac 接了几块屏幕，选手机上看哪一块",
+  displayMain: "主屏",
+  displayNumbered: (n: number) => `屏幕 ${n}`,
+  displayAll: "全部屏幕",
+  displayAllDetail: "拼在一起显示，每块都会变小",
+  displayWhere: (h: "left" | "right" | null, v: "above" | "below" | null) => {
+    const side = h && v ? `${h === "left" ? "左" : "右"}${v === "above" ? "上" : "下"}方` : h ? (h === "left" ? "左侧" : "右侧") : v ? (v === "above" ? "上方" : "下方") : "";
+    return side ? `在主屏${side}` : "";
+  },
   macLowered: (to: string, from: string) => `为了手机上的画面流畅，屏幕临时从 ${from} 降到 ${to}，手机断开后恢复`,
   modifier: (name: string) => `${name}：作用于下一个键`,
   macToggle: `允许看和操作这台${zhHost}的屏幕`,
@@ -102,6 +112,14 @@ export const en: CopyShape<typeof zh> = {
   smoothAlreadyLow: "This Mac's screen is not at a Retina resolution; there is nothing to lower",
   smoothFailed: "The Mac could not lower its resolution; the picture is as before",
   smoothUnsupported: "Deskfolk on this Mac does not support smooth mode yet",
+  displayTitle: "Which screen to show",
+  displayTip: "This Mac has several screens; choose the one to see on the phone",
+  displayMain: "Main screen",
+  displayNumbered: (n: number) => `Screen ${n}`,
+  displayAll: "All screens",
+  displayAllDetail: "Side by side, each one smaller",
+  displayWhere: (h: "left" | "right" | null, v: "above" | "below" | null) =>
+    h && v ? `${v} and to the ${h} of the main screen` : h ? `to the ${h} of the main screen` : v ? `${v} the main screen` : "",
   macLowered: (to: string, from: string) => `For a smooth picture on the phone, the screen is at ${to} instead of ${from} until it disconnects`,
   modifier: (name: string) => `${name} for the next key`,
   macToggle: `Allow viewing and controlling this ${enHost}'s screen`,

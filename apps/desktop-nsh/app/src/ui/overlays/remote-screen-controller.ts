@@ -12,6 +12,7 @@ import { ApiError } from "../../m/api.ts";
 import { connectScreen, type ScreenApi, type ScreenConnection, type SmoothResult } from "../../m/remote/screen-connect.ts";
 import type { RememberedSignIn } from "../../m/remote/screen-sign-in.ts";
 import { loadScreenFlag, saveScreenFlag } from "../../m/overlays/screen-prefs.ts";
+import { loadDisplayChoice, saveDisplayChoice, type DisplayChoice, type ScreenDisplay } from "../../m/overlays/screen-displays.ts";
 import { loadTrackpadMode, saveTrackpadMode, type Point } from "../../m/overlays/screen-trackpad.ts";
 import { PointerOut } from "../../m/overlays/screen-pointer.ts";
 import type { Modifier } from "../../m/overlays/remote-screen-keys.ts";
@@ -76,6 +77,10 @@ export class ScreenController {
   readonly keyboardUp = signal(false);
   /** Whether the failed sign-in was the Mac refusing it (the form says so). */
   readonly refused = signal(false);
+  /** A Mac's screens as it last listed them, the one it is sending (`null`: all), and the picker. */
+  readonly displays = signal<ScreenDisplay[]>([]);
+  readonly currentDisplay = signal<number | null>(null);
+  readonly displayMenu = signal(false);
 
   readonly out = new PointerOut((bytes) => {
     const at = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -136,6 +141,9 @@ export class ScreenController {
     for (const reset of this.resetters) reset();
     this.out.reset();
     this.dragging.set(false);
+    this.displays.set([]);
+    this.currentDisplay.set(null);
+    this.displayMenu.set(false);
     const held = this.#connection;
     this.#connection = null;
     const session = this.#session;
@@ -188,7 +196,7 @@ export class ScreenController {
       this.#connection = opened;
       this.route.set(opened.mode);
       this.#smoothAnswer = opened.smooth;
-      const session = new ScreenSession(opened.channel, (event) => this.#onEvent(session, event));
+      const session = new ScreenSession(opened.channel, (event) => this.#onEvent(session, event), loadDisplayChoice());
       this.#session = session;
       this.session.set(session);
       this.#awaitAnswer(session);
@@ -240,6 +248,10 @@ export class ScreenController {
         return;
       case "resized":
         this.#onSize(event.width, event.height);
+        return;
+      case "displays":
+        this.displays.set(event.displays);
+        this.currentDisplay.set(event.current);
         return;
       case "failed":
         if (event.securityFailure) {
@@ -385,6 +397,13 @@ export class ScreenController {
     saveScreenFlag("smooth", this.smooth());
     const phase = this.phase();
     if (phase === "live" || phase === "connecting" || phase === "signin") void this.start();
+  }
+
+  /** The picker's row: kept on this phone for the next connection, and asked of the Mac now. */
+  chooseDisplay(choice: DisplayChoice): void {
+    this.displayMenu.set(false);
+    saveDisplayChoice(choice);
+    this.#session?.selectDisplay(choice);
   }
 
   #smoothText(answer: SmoothResult | null): string {

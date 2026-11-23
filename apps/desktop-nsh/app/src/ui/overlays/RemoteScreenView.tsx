@@ -4,7 +4,8 @@
  * `m/remote/screen-connect.ts`) and drawn by the app's own RFB client (`app/native/src/rfb`, where
  * the messenger drives noVNC). Taps are clicks where the finger lands, two fingers a right click or a
  * scroll; in trackpad mode the glass moves a pointer instead. Smooth mode asks the Mac to lower its
- * resolution while connected. The row at the bottom has the keys a soft keyboard lacks.
+ * resolution while connected. A Mac with several screens shows one at a time, picked by the title.
+ * The row at the bottom has the keys a soft keyboard lacks.
  *
  * The state and the connection live in `remote-screen-controller.ts`, the picture and its gestures
  * in `remote-screen-stage.tsx`, the key row in `remote-screen-keys-row.tsx`; this is the header and
@@ -24,6 +25,7 @@ import { ScreenController, type ScreenViewApi } from "./remote-screen-controller
 import { ScreenKeys } from "./remote-screen-keys-row.tsx";
 import { ScreenStage } from "./remote-screen-stage.tsx";
 import { TextButton } from "./remote-screen-parts.tsx";
+import { DisplayMenu, ScreenTitle } from "./remote-screen-displays.tsx";
 
 export function RemoteScreenView(props: {
   api: ScreenViewApi;
@@ -64,7 +66,7 @@ export function RemoteScreenView(props: {
       <View class="flex-row items-center gap-2 px-2 py-[6px] border-b border-line">
         <IconButton icon="chevron-left" size="lg" label={copy().common.back} testID="screen-back" onPress={props.onClose} />
         <View class="flex-1 min-w-0 flex-row items-center gap-2">
-          <Text class="shrink text-[15px] font-semibold text-ink" style={{ numberOfLines: 1 }}>{words().title}</Text>
+          <ScreenTitle screen={screen} />
           <If when={live() ? screen.route() : null}>
             {(route: () => string) => (
               <View
@@ -118,6 +120,7 @@ export function RemoteScreenView(props: {
       <If when={live()}>
         <ScreenKeys screen={screen} />
       </If>
+      <DisplayMenu screen={screen} />
     </View>
   );
 }

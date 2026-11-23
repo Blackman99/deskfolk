@@ -3,7 +3,8 @@
  * app's native client (the handshake, ServerInit of 64 × 48, then one raw rect and one copyrect), and
  * records what the client sends (keys, pointer events, clipboard) as readable lines. Scenarios are
  * buttons: None auth (the picture), ARD (the sign-in, then a refusal), a Mac with Screen Sharing off,
- * a Mac that never answers, and a Windows PC.
+ * a Mac that never answers, a Windows PC, and a Mac with two screens (`displays`: RFB 003.889, its
+ * display layout, SetDisplay answered as a real Mac does, with the new size in the layout only).
  */
 import { signal, Text, View } from "nsh";
 import { RemoteScreenView } from "../src/ui/overlays/RemoteScreenView";
@@ -21,7 +22,31 @@ const u32 = (n: number): number[] => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>>
 const u16 = (n: number): number[] => [(n >> 8) & 255, n & 255];
 const hex = (n: number): string => n.toString(16);
 
-type Scenario = "none" | "ard" | "silent";
+type Scenario = "none" | "ard" | "silent" | "displays";
+
+/** The two-screen Mac: its main screen (id 7) and a smaller one left of it (id 5), at one pixel a point. */
+const SCREENS = [
+  { id: 7, main: true, top: 0, left: 0, bottom: 48, right: 64 },
+  { id: 5, main: false, top: 0, left: -32, bottom: 24, right: 0 },
+];
+const VIEWS: Record<string, [number, number]> = { all: [96, 48], 7: [64, 48], 5: [32, 24] };
+
+/** A FramebufferUpdate holding Apple's display layout (encoding 0x451) for the view being sent. */
+function layoutUpdate(view: "all" | number): number[] {
+  const [w, h] = VIEWS[String(view)]!;
+  const i16 = (n: number) => u16(n & 0xffff);
+  const records = SCREENS.flatMap((s) => [
+    ...[63, 240, 0, 0, 0, 0, 0, 0], // density 1.0
+    ...[63, 240, 0, 0, 0, 0, 0, 0], // scale 1.0
+    ...u32(s.id),
+    ...[s.top, s.left, s.bottom, s.right].flatMap(i16),
+    ...[s.top, s.left + 32, s.bottom, s.right + 32].flatMap(i16),
+    ...u32(s.main ? 1 : 0),
+    ...new Array<number>(16).fill(0),
+  ]);
+  const payload = [...u16(5), ...u16(96), ...u16(48), ...u16(w), ...u16(h), ...u32(view === "all" ? 0xffffffff : view), ...u32(4), ...u16(SCREENS.length), ...records];
+  return [0, 0, ...u16(1), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0x451), ...u16(payload.length), ...payload];
+}
 
 /** A channel with a scripted Mac at the other end. It holds what the Mac says until the client listens. */
 export class FakeChannel implements ScreenChannel {
@@ -37,9 +62,11 @@ export class FakeChannel implements ScreenChannel {
   #from: Uint8Array = new Uint8Array(0);
   #phase: "version" | "security" | "ard" | "init" | "live" = "version";
   #updates = 0;
+  /** The two-screen Mac's view being sent. */
+  #view: "all" | number = "all";
 
   constructor(private readonly scenario: Scenario) {
-    if (scenario !== "silent") this.#say(ascii("RFB 003.008\n"));
+    if (scenario !== "silent") this.#say(ascii(scenario === "displays" ? "RFB 003.889\n" : "RFB 003.008\n"));
   }
 
   get onmessage(): ScreenChannel["onmessage"] {
@@ -114,8 +141,9 @@ export class FakeChannel implements ScreenChannel {
       case "init": {
         if (!this.#take(1)) return false;
         const name = ascii("Story Mac");
-        // 64 × 48; the pixel format the client replaces at once: 32 bpp, depth 24, true colour.
-        this.#say([...u16(64), ...u16(48), 32, 24, 0, 1, ...u16(255), ...u16(255), ...u16(255), 16, 8, 0, 0, 0, 0, ...u32(name.length), ...name]);
+        const [w, h] = this.scenario === "displays" ? VIEWS.all! : [64, 48];
+        // 64 × 48 (both screens: 96 × 48); the pixel format the client replaces at once: 32 bpp, depth 24, true colour.
+        this.#say([...u16(w), ...u16(h), 32, 24, 0, 1, ...u16(255), ...u16(255), ...u16(255), 16, 8, 0, 0, 0, 0, ...u32(name.length), ...name]);
         this.#phase = "live";
         return true;
       }
@@ -131,11 +159,25 @@ export class FakeChannel implements ScreenChannel {
     if (type === 0) return this.#take(20) !== null;
     if (type === 2) {
       if (this.#from.length < 4) return false;
-      return this.#take(4 + 4 * view.getUint16(2)) !== null;
+      const m = this.#take(4 + 4 * view.getUint16(2));
+      // A Mac lists its screens once the client asks for its layout.
+      if (m && this.scenario === "displays" && new DataView(m.buffer).getInt32(m.length - 4) === 0x451) this.#say(layoutUpdate(this.#view));
+      return m !== null;
     }
     if (type === 3) {
-      if (!this.#take(10)) return false;
-      this.#update();
+      const m = this.#take(10);
+      if (!m) return false;
+      if (this.scenario === "displays") {
+        if (m[1] === 0) this.#picture();
+      } else this.#update();
+      return true;
+    }
+    if (type === 0x0d) {
+      const m = this.#take(8);
+      if (!m) return false;
+      this.#view = m[1] ? "all" : new DataView(m.buffer).getUint32(4);
+      note(`display:${this.#view}`);
+      this.#say(layoutUpdate(this.#view));
       return true;
     }
     if (type === 4) {
@@ -175,6 +217,15 @@ export class FakeChannel implements ScreenChannel {
     ]);
   }
 
+  /** The two-screen Mac answers a request for the whole screen with the view it is sending, in one raw rect. */
+  #picture(): void {
+    const [w, h] = VIEWS[String(this.#view)]!;
+    const colour = this.#view === "all" ? [0, 0, 255, 0] : this.#view === 7 ? [255, 0, 0, 0] : [0, 160, 0, 0];
+    const pixels: number[] = [];
+    for (let i = 0; i < w * h; i++) pixels.push(...colour);
+    this.#say([0, 0, ...u16(1), ...u16(0), ...u16(0), ...u16(w), ...u16(h), ...u32(0), ...pixels]);
+  }
+
   close(): void {
     this.readyState = "closed";
   }
@@ -187,7 +238,8 @@ const remembered: RememberedSignIn = {
 };
 
 export default function RemoteScreenStory() {
-  const scenario = signal<"none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered" | null>(null);
+  type Pick = "none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered" | "displays";
+  const scenario = signal<Pick | null>(null);
   const stops = signal(0);
   const api = {
     screenStart: async () => {
@@ -206,10 +258,10 @@ export default function RemoteScreenStory() {
   const connect = async (_api: unknown, _options?: { smooth?: boolean }): Promise<ScreenConnection> => {
     const which = scenario();
     if (which === "off") throw new ApiError(409, "screen_sharing_off", "off");
-    const channel = new FakeChannel(which === "ard" || which === "remembered" ? "ard" : which === "silent" ? "silent" : "none");
+    const channel = new FakeChannel(which === "ard" || which === "remembered" ? "ard" : which === "silent" ? "silent" : which === "displays" ? "displays" : "none");
     return { sessionId: "S1", mode: "direct", channel };
   };
-  const pick = (next: "none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered") => () => {
+  const pick = (next: Pick) => () => {
     log.set([]);
     scenario.set(next);
   };
@@ -223,12 +275,13 @@ export default function RemoteScreenStory() {
         <Button testID="story-windows" onPress={pick("windows")}>Windows</Button>
         <Button testID="story-linux" onPress={pick("linux")}>Linux</Button>
         <Button testID="story-remembered" onPress={pick("remembered")}>Remembered</Button>
+        <Button testID="story-displays" onPress={pick("displays")}>Two screens</Button>
         <Text testID="story-log" class="text-[12px] text-ink-muted">{`log:${log().join(" ")}`}</Text>
         <Text testID="story-stops" class="text-[12px] text-ink-muted">{`stops:${stops()}`}</Text>
       </View>
       <View class="flex-1 min-h-0">
         <If when={scenario()}>
-          {(which: () => "none" | "ard" | "silent" | "off" | "windows" | "linux" | "remembered") => (
+          {(which: () => Pick) => (
             <RemoteScreenView
               api={api}
               host={which() === "windows" || which() === "linux" ? (which() as "windows" | "linux") : "mac"}

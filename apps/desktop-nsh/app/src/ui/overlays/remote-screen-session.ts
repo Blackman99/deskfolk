@@ -8,12 +8,15 @@
 import { signal, untracked, type Signal } from "nsh";
 import { Screens } from "deskfolk/native";
 import type { ScreenChannel } from "../../m/remote/rfb-channel.ts";
+import { choiceNumber, type DisplayChoice, type ScreenDisplay } from "../../m/overlays/screen-displays.ts";
 
 /** What the Rust client reports (`feed` and `credentials` return them as a JSON array). */
 export type ScreenEvent =
   | { type: "credentials"; needs: string[] }
   | { type: "connected"; width: number; height: number; name: string }
   | { type: "resized"; width: number; height: number }
+  /** A Mac's screens and the one being sent (`null`: all of them); `asking`: another was just asked for. */
+  | { type: "displays"; current: number | null; displays: ScreenDisplay[]; asking: boolean }
   | { type: "bell" }
   | { type: "clipboard"; text: string }
   | { type: "failed"; reason: string; securityFailure?: boolean }
@@ -27,6 +30,9 @@ type RawTile = { x: number; y: number; w: number; h: number; uri: string };
 
 let counter = 0;
 
+/** How long the picture waits for the Mac to answer a switch of screen before asking for the whole screen itself. */
+const DISPLAY_ANSWER_MS = 3000;
+
 export class ScreenSession {
   readonly id = `screen-${++counter}`;
   /** The tiles the picture is made of, a new list only when the picture's size changed. */
@@ -34,13 +40,17 @@ export class ScreenSession {
   #byKey = new Map<string, Tile>();
   #drawDue = false;
   #closed = false;
+  #displayWait: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly channel: ScreenChannel,
     private readonly onEvent: (event: ScreenEvent) => void,
+    /** Which of a Mac's screens to ask for once it lists them. */
+    display: DisplayChoice = "main",
   ) {
     Screens.open(this.id);
     Screens.seed(this.id, crypto.getRandomValues(new Uint8Array(32)));
+    Screens.selectDisplay(this.id, choiceNumber(display));
     channel.binaryType = "arraybuffer";
     channel.onmessage = (message) => this.#feed(new Uint8Array(message.data));
     channel.onclose = () => this.#end();
@@ -73,6 +83,28 @@ export class ScreenSession {
     this.#flush();
   }
 
+  /** Another of the Mac's screens: the Mac's answering layout brings `resized` and `displays`. */
+  selectDisplay(choice: DisplayChoice): void {
+    if (this.#closed) return;
+    if (Screens.selectDisplay(this.id, choiceNumber(choice))) this.#awaitDisplay();
+    this.#flush();
+  }
+
+  /**
+   * While a switch of screen is out the client asks the Mac for no picture (its answer comes by
+   * itself, and a request beside it would bring the whole screen twice). A Mac that never answers
+   * would leave the picture still: after a while the page asks for the whole screen itself.
+   */
+  #awaitDisplay(): void {
+    if (this.#displayWait) clearTimeout(this.#displayWait);
+    this.#displayWait = setTimeout(() => {
+      this.#displayWait = null;
+      if (this.#closed) return;
+      Screens.requestUpdate(this.id, true);
+      this.#flush();
+    }, DISPLAY_ANSWER_MS);
+  }
+
   /** The clipboard text for the Mac. */
   cutText(text: string): void {
     if (this.#closed) return;
@@ -89,6 +121,8 @@ export class ScreenSession {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#displayWait) clearTimeout(this.#displayWait);
+    this.#displayWait = null;
     channelQuiet(this.channel);
     Screens.close(this.id);
     this.#byKey.clear();
@@ -133,6 +167,12 @@ export class ScreenSession {
         this.#byKey.clear();
         this.tiles.set([]);
         this.#scheduleDraw();
+        this.onEvent(event);
+      } else if (event.type === "displays") {
+        // Each layout answers whatever was out; one that asks again waits anew.
+        if (this.#displayWait) clearTimeout(this.#displayWait);
+        this.#displayWait = null;
+        if (event.asking) this.#awaitDisplay();
         this.onEvent(event);
       } else this.onEvent(event);
     }

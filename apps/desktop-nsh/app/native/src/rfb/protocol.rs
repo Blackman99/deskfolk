@@ -11,6 +11,11 @@ pub const PSEUDO_QUALITY_0: i32 = -32;
 pub const PSEUDO_COMPRESS_0: i32 = -256;
 pub const PSEUDO_DESKTOP_SIZE: i32 = -223;
 pub const PSEUDO_EXTENDED_DESKTOP_SIZE: i32 = -308;
+/// Apple's older display list. Listing it is what makes a Mac report its displays at all; with
+/// the layout listed too, the layout is what it sends (see `displays`).
+pub const APPLE_DISPLAY_INFO: i32 = 0x44d;
+/// Apple's display layout: the Mac's screens and which of them it is sending.
+pub const APPLE_DISPLAY_LAYOUT: i32 = 0x451;
 
 /// noVNC's defaults.
 pub const QUALITY_LEVEL: i32 = 6;
@@ -35,9 +40,10 @@ pub fn pixel_format() -> Vec<u8> {
     m
 }
 
-/// Only the encodings this client decodes, in noVNC's preference order.
-pub fn encodings() -> Vec<u8> {
-    let encs = [
+/// Only the encodings this client decodes, in noVNC's preference order; to a Mac (`apple`), also
+/// the two that make it report its displays.
+pub fn encodings(apple: bool) -> Vec<u8> {
+    let mut encs = vec![
         ENC_COPYRECT,
         ENC_TIGHT,
         ENC_ZRLE,
@@ -50,6 +56,9 @@ pub fn encodings() -> Vec<u8> {
         PSEUDO_DESKTOP_SIZE,
         PSEUDO_EXTENDED_DESKTOP_SIZE,
     ];
+    if apple {
+        encs.extend([APPLE_DISPLAY_INFO, APPLE_DISPLAY_LAYOUT]);
+    }
     let mut m = vec![2, 0];
     m.extend_from_slice(&(encs.len() as u16).to_be_bytes());
     for e in encs {
@@ -62,6 +71,13 @@ pub fn update_request(incremental: bool, w: usize, h: usize) -> Vec<u8> {
     let mut m = vec![3, incremental as u8, 0, 0, 0, 0];
     m.extend_from_slice(&(w.min(65535) as u16).to_be_bytes());
     m.extend_from_slice(&(h.min(65535) as u16).to_be_bytes());
+    m
+}
+
+/// Apple's SetDisplay: share one screen (`Some(id)`, an id from the layout) or all of them combined.
+pub fn set_display(id: Option<u32>) -> Vec<u8> {
+    let mut m = vec![0x0d, id.is_none() as u8, 0, 0];
+    m.extend_from_slice(&id.unwrap_or(0).to_be_bytes());
     m
 }
 

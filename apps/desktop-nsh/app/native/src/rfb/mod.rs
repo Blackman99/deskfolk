@@ -12,6 +12,7 @@
 
 mod auth;
 mod decoders;
+mod displays;
 mod init;
 mod inflate;
 mod protocol;
@@ -22,6 +23,8 @@ mod tiles;
 mod tests;
 #[cfg(test)]
 mod tests_decoders;
+#[cfg(test)]
+mod tests_displays;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -97,6 +100,22 @@ impl Screens {
     /// Sends the clipboard text to the server (Latin-1).
     pub fn cut_text(id: String, text: String) {
         with(&id, |s| s.cut_text(&text));
+    }
+
+    /// Which of a Mac's screens to show: `display` is a display id from a `displays` event, 0 for
+    /// the main screen (the default), or below 0 for all of them. A connected session asks the Mac
+    /// at once; its next `displays` event (and `resized`) says when the picture has changed.
+    /// Whether it asked: the picture then waits for the answer, as after a `displays` event that
+    /// says `asking` (call `request_update(full)` if none comes).
+    pub fn select_display(id: String, display: f64) -> bool {
+        let want = if display < 0.0 {
+            displays::Want::All
+        } else if display == 0.0 {
+            displays::Want::Main
+        } else {
+            displays::Want::Id(display as u32)
+        };
+        with(&id, |s| s.select_display(want)).unwrap_or(false)
     }
 
     /// Asks for the whole screen's next update, incremental unless `full`. (The client already asks after ServerInit and after each update.)

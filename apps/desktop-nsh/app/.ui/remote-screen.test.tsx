@@ -153,6 +153,40 @@ test("a Linux desktop has Ctrl, Alt and Super, and neither Ctrl+Alt+Del nor smoo
   expect(app.texts()).toContain("Super");
 });
 
+test("a Mac with two screens shows its main one, the header switches screens, and the choice is kept", async () => {
+  const displays = (app: Awaited<ReturnType<typeof openStory>>) => logged(app).split(" ").filter((l) => l.startsWith("display:"));
+  const app = await connected("displays");
+  // The Mac opens on both screens side by side; the page asks for the main one at once.
+  await app.waitUntil(() => displays(app).join(" ") === "display:7");
+  await app.waitFor("id:screen-display");
+  await app.waitUntil(() => app.texts().includes("主屏"));
+  // Windows and Linux VNC servers, and a Mac with one screen, have no such button (the other tests).
+  await app.press("id:screen-display");
+  await app.waitFor("id:screen-display-menu");
+  expect(app.texts()).toContain("显示哪块屏幕");
+  expect(app.texts()).toContain("屏幕 2");
+  expect(app.texts()).toContain("在主屏左侧 · 32 × 24");
+  expect(app.texts()).toContain("全部屏幕");
+  await app.press("id:screen-display-5");
+  await app.waitFor("id:screen-display-menu", { state: "gone" });
+  await app.waitUntil(() => displays(app).join(" ") === "display:7 display:5");
+  await app.waitUntil(() => app.texts().includes("屏幕 2"));
+  // The next connection asks for the screen picked last.
+  await app.press("id:screen-disconnect");
+  await app.waitFor("id:screen-reconnect");
+  await app.press("id:screen-reconnect");
+  await app.waitUntil(() => displays(app).join(" ") === "display:7 display:5 display:5", { timeout: 10_000 });
+  await app.waitFor("id:screen-display");
+  await app.press("id:screen-display");
+  await app.press("id:screen-display-all");
+  await app.waitUntil(() => displays(app).at(-1) === "display:all");
+  await app.waitUntil(() => app.texts().includes("全部屏幕"));
+  // Back to the main screen, which is also what the next test's page starts from.
+  await app.press("id:screen-display");
+  await app.press("id:screen-display-7");
+  await app.waitUntil(() => displays(app).at(-1) === "display:7");
+});
+
 test("the back button leaves the page and lets the Mac go", async () => {
   const app = await connected("none");
   await app.press("id:screen-back");

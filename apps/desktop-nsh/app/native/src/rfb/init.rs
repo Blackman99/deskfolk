@@ -41,6 +41,8 @@ impl Session {
                 return Err(Failure::new(format!("Invalid server version {shown}")));
             }
         };
+        // macOS Screen Sharing offers Apple's own revision; it is answered with 3.8 all the same.
+        self.apple = version == Some("003.889");
         self.out.extend(version_message(self.minor));
         self.phase = Phase::Security;
         Ok(Step::Done(12))
@@ -195,7 +197,7 @@ impl Session {
         let (w, h) = (be16(data, 0), be16(data, 2));
         self.resize(w, h)?;
         self.out.extend(pixel_format());
-        self.out.extend(encodings());
+        self.out.extend(encodings(self.apple));
         self.out.extend(update_request(false, w, h));
         self.phase = Phase::Normal;
         self.emit(json!({"type": "connected", "width": w, "height": h, "name": name}));

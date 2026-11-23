@@ -4,6 +4,7 @@
 use serde_json::{Value, json};
 
 use super::decoders::{Decoders, Rect};
+use super::displays::{Layout, Want};
 use super::protocol::*;
 use super::tiles::Framebuffer;
 
@@ -58,6 +59,15 @@ pub struct Session {
     pub(super) decoders: Decoders,
     pub(super) rects_remaining: u32,
     changed: bool,
+    /// The server is macOS Screen Sharing (it offers RFB 003.889), which can send one screen at a time.
+    pub(super) apple: bool,
+    /// The screen the page wants, and the Mac's last layout (`displays`).
+    pub(super) want: Want,
+    pub(super) layout: Option<Layout>,
+    /// A SetDisplay sent and not yet answered: the view it asked for (`None`, all screens).
+    pub(super) display_asked: Option<Option<u32>>,
+    /// The next update request asks for the whole screen, not for what changed.
+    pub(super) repaint: bool,
 }
 
 impl Session {
@@ -76,6 +86,11 @@ impl Session {
             decoders: Decoders::default(),
             rects_remaining: 0,
             changed: false,
+            apple: false,
+            want: Want::Main,
+            layout: None,
+            display_asked: None,
+            repaint: false,
         }
     }
 
@@ -196,10 +211,17 @@ impl Session {
         }
     }
 
-    /// noVNC asks for the next (incremental) update as soon as one is complete.
+    /// noVNC asks for the next (incremental) update as soon as one is complete; after a Mac's
+    /// display layout, for the whole screen. While a SetDisplay is out it asks for nothing: the
+    /// Mac's answering layout comes unasked, and a request sent now would bring a second whole
+    /// screen after the switch (`displays`).
     fn finish_update(&mut self) {
-        self.out.extend(update_request(true, self.fb.w, self.fb.h));
         self.changed = true;
+        if self.display_asked.is_some() {
+            return;
+        }
+        let incremental = !std::mem::take(&mut self.repaint);
+        self.out.extend(update_request(incremental, self.fb.w, self.fb.h));
     }
 
     fn rect(&mut self, data: &[u8]) -> Result<Step, Failure> {
@@ -226,6 +248,30 @@ impl Session {
                 // request of ours changes nothing.
                 if !(x == 1 && y != 0) {
                     self.resize(w, h)?;
+                }
+                total
+            }
+            // Apple's metadata: a `u16` counting what follows, then the layout.
+            APPLE_DISPLAY_LAYOUT if self.apple => {
+                if body.len() < 2 {
+                    return Ok(Step::Need);
+                }
+                let len = be16(body, 0);
+                if body.len() < 2 + len {
+                    return Ok(Step::Need);
+                }
+                self.on_layout(&body[2..2 + len])?;
+                2 + len
+            }
+            // The older list, which a Mac sends only to a client that did not list the layout:
+            // 10 bytes of header ending in the count, then 0x1c bytes a screen. Stepped over.
+            APPLE_DISPLAY_INFO if self.apple => {
+                if body.len() < 10 {
+                    return Ok(Step::Need);
+                }
+                let total = 10 + be16(body, 8) * 0x1c;
+                if body.len() < total {
+                    return Ok(Step::Need);
                 }
                 total
             }
@@ -287,7 +333,12 @@ impl Session {
         }
     }
 
+    /// Also ends a wait for the Mac's answer to SetDisplay: the page gave up on it.
     pub fn request_update(&mut self, full: bool) {
+        self.display_asked = None;
+        if full {
+            self.repaint = false;
+        }
         if self.connected() {
             self.out.extend(update_request(!full, self.fb.w, self.fb.h));
         }
