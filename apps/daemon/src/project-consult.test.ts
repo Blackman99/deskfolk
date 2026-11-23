@@ -228,6 +228,114 @@ test("a consultant still at it past the wait says so; called again, the agent ge
   expect(results[1]).toContain("想好了");
 });
 
+test("while a consultant works, its task says what it is at and opens onto what it has said and started so far", async () => {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  const h = start(async (ctx) => {
+    await consult(ctx, { agent: "claude_code", message: "看看界面哪里能改" });
+    return "好";
+  }, async () => {
+    await released;
+    return "三条建议";
+  });
+  closes.push(() => release());
+  const parent = await h.session();
+  await h.say(parent, "请参谋看看");
+  let consultant = "";
+  await h.until(() => {
+    consultant = h.store.consultantsOf(parent)[0] ?? "";
+    return consultant !== "" && h.store.latestAgentRun(consultant)?.status === "running";
+  });
+  const own = h.store.latestAgentRun(consultant)!;
+  // Started with its run; the one done took a minute.
+  const at = (ms: number) => new Date(Date.parse(own.created_at) + ms).toISOString();
+  const sub = (id: string, description: string, more: Record<string, unknown>) => ({
+    id, tool_use_id: null, kind: "subagent" as const, status: "running" as const, description, command: null, agent_type: "Explore",
+    activity: null, summary: null, tool_uses: null, tokens: null, started_at: at(0), ended_at: null, output_file: null, ...more,
+  });
+  // As its runner writes them: what it has said so far, the call it is on, the subagents it started.
+  h.store.updateAgentRun(own.id, {
+    partial: "正在通读界面代码。\n\n分两路读：布局、设置。",
+    activity: "Grep shadow(",
+    tasks: [
+      sub("sub-a", "读设置", { status: "completed", summary: "设置有 11 个标签", ended_at: at(60_000) }),
+      sub("sub-b", "读布局", { activity: "Read Sidebar.tsx" }),
+    ],
+  });
+  const task = async () => (await h.run(parent))!.tasks!.find((one) => one.id.startsWith("consult_"))!;
+  await h.until(async () => (await task()).activity === "Grep shadow(");
+  expect((await task()).status).toBe("running");
+
+  const runId = (await h.run(parent))!.id;
+  const detail = async () => (await h.call<AgentTaskDetail>("GET", `/v1/agent-runs/${runId}/tasks/${encodeURIComponent((await task()).id)}`)).body;
+  const live = await detail();
+  expect(live.prompt).toBe("看看界面哪里能改");
+  expect(live.steps).toMatchObject([
+    { kind: "call", tool: "Agent", label: "Agent 读设置", ok: true, duration_ms: 60_000, output: "设置有 11 个标签" },
+    { kind: "call", tool: "Agent", label: "Agent 读布局 · Read Sidebar.tsx", ok: null },
+    { kind: "say", text: "正在通读界面代码。\n\n分两路读：布局、设置。" },
+  ]);
+
+  // Between calls: the subagent it waits on, then, with none, the last thing it said.
+  h.store.updateAgentRun(own.id, { activity: null });
+  await h.until(async () => (await task()).activity === "读布局");
+  h.store.updateAgentRun(own.id, { tasks: [sub("sub-b", "读布局", {}), sub("sub-c", "读弹窗", {})] });
+  await h.until(async () => (await task()).activity === "在等它的 2 个子任务：读布局、读弹窗");
+  h.store.updateAgentRun(own.id, { tasks: [] });
+  await h.until(async () => (await task()).activity === "分两路读：布局、设置。");
+
+  release();
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  const done = await task();
+  expect(done).toMatchObject({ status: "completed", activity: null, summary: "三条建议" });
+  // Done, what it said to the line is its answer: what it said along the way was only its run's.
+  expect((await detail()).steps.filter((step) => step.kind === "say").map((step) => (step.kind === "say" ? step.text : ""))).toEqual(["三条建议"]);
+});
+
+test("what a consultant says while its subagents run in the background is not its answer; what it says once they are back is", async () => {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  let answer: string | null = null;
+  const h = start(async (ctx) => {
+    answer = (await consult(ctx, { agent: "claude_code", message: "两种写法哪个好" })).text;
+    return "好";
+  }, async () => {
+    await released;
+    return "收尾";
+  });
+  closes.push(() => release());
+  const parent = await h.session();
+  await h.say(parent, "请参谋看看");
+  let consultant = "";
+  await h.until(() => {
+    consultant = h.store.consultantsOf(parent)[0] ?? "";
+    return consultant !== "" && h.store.latestAgentRun(consultant)?.status === "running";
+  });
+  const own = h.store.latestAgentRun(consultant)!;
+  const subagent = {
+    id: "sub-a", tool_use_id: "toolu_x", kind: "subagent" as const, status: "running" as const, description: "读 a.ts", command: null, agent_type: "Explore",
+    activity: null, summary: null, tool_uses: null, tokens: null, started_at: own.created_at, ended_at: null, output_file: null,
+  };
+  // As Claude Code 2.1.329 does: the subagent goes to the background, its turn ends on "still reading".
+  h.store.insertMessage({ sessionId: consultant, kind: "bot", author: "agent", body: "子代理还在读，回来再说。" });
+  h.store.updateAgentRun(own.id, { idle: true, tasks: [subagent] });
+  const task = async () => (await h.run(parent))!.tasks!.find((one) => one.id.startsWith("consult_"))!;
+  await h.until(async () => (await task()).activity === "读 a.ts");
+  await Bun.sleep(100);
+  expect(answer).toBeNull();
+  // Back, and nothing said since: still not its answer.
+  await Bun.sleep(5);
+  h.store.updateAgentRun(own.id, { tasks: [{ ...subagent, status: "completed", ended_at: new Date().toISOString() }] });
+  await Bun.sleep(100);
+  expect(answer).toBeNull();
+  // What it says after is.
+  await Bun.sleep(5);
+  h.store.insertMessage({ sessionId: consultant, kind: "bot", author: "agent", body: "结论：b.ts。" });
+  await h.until(() => answer !== null);
+  expect(answer!).toContain("子代理还在读，回来再说。");
+  expect(answer!).toContain("结论：b.ts。");
+});
+
 test("Stop on the asking run stops its consultants with it", async () => {
   let result: { text: string; isError: boolean } | null = null;
   const h = start(async (ctx) => {

@@ -170,6 +170,25 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
     return said.join("\n\n");
   }
 
+  /**
+   * Whether a consultant at rest has said its last word on a line. Claude Code sends subagents to the
+   * background by itself (2.1.329, without `run_in_background`), ends its turn on "they are still
+   * reading", and goes on by itself once they are back: that first reply is not its answer. So none of
+   * its tasks may still be going, and it must have spoken since the last of them ended.
+   */
+  function doneWithTasks(run: AgentRun, consultant: string, line: string): boolean {
+    const tasks = run.tasks ?? [];
+    if (tasks.some((task) => task.status === "running")) return false;
+    const lastEnd = tasks.reduce((latest, task) => (task.ended_at && task.ended_at > latest ? task.ended_at : latest), "");
+    if (!lastEnd) return true;
+    let spoke = "";
+    for (const row of linesAfter(consultant, seqOf(line))) {
+      if (row.kind === "user") break;
+      if (row.kind === "bot" && row.body.trim() && row.created_at > spoke) spoke = row.created_at;
+    }
+    return spoke >= lastEnd;
+  }
+
   /** The app's own last line about a run that ended badly (why it stopped), when there is one. */
   function lastNote(consultant: string, line: string): string | null {
     const notes = linesAfter(consultant, seqOf(line)).filter((row) => row.kind === "system");
@@ -205,7 +224,7 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
       }
       return null;
     }
-    if (run.status === "completed" || (run.status === "running" && run.idle)) return { kind: "answer", text: replyTo(consultant, line) };
+    if (run.status === "completed" || (run.status === "running" && run.idle && doneWithTasks(run, consultant, line))) return { kind: "answer", text: replyTo(consultant, line) };
     if (run.status === "stopped" || run.status === "interrupted") return { kind: "stopped", text: replyTo(consultant, line) };
     if (run.status === "failed") return { kind: "failed", text: [run.error ?? lastNote(consultant, line) ?? "", replyTo(consultant, line)].filter(Boolean).join("\n\n") };
     return null;
@@ -333,6 +352,8 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
     const budget = deps.waitMs ?? CONSULT_WAIT_MS[parent.agent];
     const started = Date.now();
     let result: Outcome = { kind: "working" };
+    // What the consultant is at, kept on the task while it works: a long consultation is never a blank row.
+    let doing = task.activity;
     while (Date.now() - started < budget) {
       let host: AgentRun | null = null;
       try {
@@ -350,6 +371,11 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
         result = now;
         break;
       }
+      const at = consultantDoing(store.latestAgentRun(consultant), en());
+      if (at !== null && at !== doing) {
+        doing = at;
+        putTask(runId, { ...task, status: "running", ended_at: null, activity: doing });
+      }
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
 
@@ -357,6 +383,7 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
     putTask(runId, {
       ...task,
       status: result.kind === "answer" ? "completed" : result.kind === "failed" ? "failed" : result.kind === "stopped" ? "stopped" : "running",
+      activity: ended ? null : doing,
       summary: result.kind === "working" ? null : clipLine(result.text),
       ended_at: ended ? isoNow() : null,
     });
@@ -436,6 +463,66 @@ export function withoutOpener(text: string): string {
   return text.replace(OPENER, "");
 }
 
+const ACTIVITY_MAX = 160;
+const isLive = (run: AgentRun | null | undefined): run is AgentRun => !!run && (run.status === "running" || run.status === "waiting_approval");
+
+/**
+ * What a consultant's run is at now, as one line for its task on the asking run: the call it is on,
+ * else the tasks it waits on, else the last thing it said; null once it is not at work.
+ */
+export function consultantDoing(run: AgentRun | null | undefined, en: boolean): string | null {
+  if (!isLive(run)) return null;
+  if (!run.idle && run.activity?.trim()) return clipTo(run.activity, ACTIVITY_MAX);
+  // At rest with tasks in the background, it is waiting on them.
+  const going = (run.tasks ?? []).filter((task) => task.status === "running");
+  if (going.length === 1) return clipTo(going[0]!.description, ACTIVITY_MAX);
+  if (going.length > 1) {
+    const names = going.map((task) => task.description.trim()).filter(Boolean);
+    return clipTo(en ? `Waiting on ${going.length} tasks of its own: ${names.join(", ")}` : `在等它的 ${going.length} 个子任务：${names.join("、")}`, ACTIVITY_MAX);
+  }
+  if (run.idle) return null;
+  const said = run.partial?.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean).at(-1);
+  return said ? clipTo(said, ACTIVITY_MAX) : null;
+}
+
+/** A task of the consultant's run (a subagent, a command) as a call of its record. */
+function taskStep(task: AgentTask): AgentTaskStep {
+  const going = task.status === "running";
+  const span = task.ended_at ? Date.parse(task.ended_at) - Date.parse(task.started_at) : NaN;
+  const tool = task.kind === "subagent" ? "Agent" : task.kind === "monitor" ? "Monitor" : "Bash";
+  const what = task.kind === "subagent" ? task.description : (task.command ?? task.description);
+  return {
+    kind: "call", id: task.id, at: task.started_at, tool,
+    label: clipTo(`${tool} ${what}${going && task.activity ? ` · ${task.activity}` : ""}`.replace(/\s+/g, " ").trim(), ACTIVITY_MAX),
+    ok: going ? null : task.status === "completed",
+    duration_ms: Number.isFinite(span) ? Math.max(0, span) : 0,
+    output: task.summary,
+  };
+}
+
+/**
+ * The run of the consultant's that took a line: the first one started at or after it (before its next
+ * line), or — for a line answering its question, which goes on in the run that asked — its newest
+ * while that one is still at work.
+ */
+function runOfLine(store: Store, consultant: string, line: { created_at: string; message_seq: number }, next: string | null): AgentRun | null {
+  const row = store.db
+    .query<{ id: string }, [string, string, string]>(`SELECT id FROM agent_runs WHERE session_id = ? AND created_at >= ? AND created_at < ? ORDER BY created_at, id LIMIT 1`)
+    .get(consultant, line.created_at, next ?? "￿");
+  try {
+    if (row) return store.getAgentRun(row.id);
+  } catch {
+    return null;
+  }
+  const latest = next ? null : store.latestAgentRun(consultant);
+  return isLive(latest) ? latest : null;
+}
+
+function clipTo(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
 function firstLine(text: string): string | null {
   const line = text.trim().split(/\r?\n/).find((part) => part.trim())?.trim();
   return line ? (line.length > 120 ? `${line.slice(0, 119)}…` : line) : null;
@@ -461,14 +548,29 @@ export function consultDetail(store: Store, task: AgentTask): AgentTaskDetail | 
   try {
     // What the asking agent said; the app's opener before it is the app's, not the question.
     prompt = withoutOpener(store.getMessage(parts.message).body);
-    const seq = store.db.query<{ message_seq: number }, [string]>(`SELECT message_seq FROM messages WHERE id = ?`).get(parts.message)?.message_seq ?? 0;
+    const line = store.db
+      .query<{ created_at: string; message_seq: number }, [string]>(`SELECT created_at, message_seq FROM messages WHERE id = ?`)
+      .get(parts.message);
+    const seq = line?.message_seq ?? 0;
     const rows = store.db
       .query<{ kind: string; body: string; created_at: string }, [string, number]>(`SELECT kind, body, created_at FROM messages WHERE session_id = ? AND message_seq > ? ORDER BY message_seq`)
       .all(parts.consultant, seq);
+    let next: string | null = null;
     for (const row of rows) {
-      if (row.kind === "user") break;
+      if (row.kind === "user") {
+        next = row.created_at;
+        break;
+      }
       if (!row.body.trim()) continue;
       steps.push({ kind: "say", at: row.created_at, text: row.kind === "ask" ? `？ ${row.body}` : row.body });
+    }
+    // What its run did for this line: the subagents and commands it started, and while it is still at
+    // it, what it has said so far, which becomes its line only when it is done.
+    const run = line ? runOfLine(store, parts.consultant, line, next) : null;
+    if (run) {
+      for (const one of run.tasks ?? []) if (one.started_at >= line!.created_at) steps.push(taskStep(one));
+      if (isLive(run) && !next && run.partial?.trim()) steps.push({ kind: "say", at: run.updated_at, text: run.partial.trim() });
+      steps.sort((a, b) => a.at.localeCompare(b.at));
     }
   } catch {
     // its session is gone: the task says what it can
