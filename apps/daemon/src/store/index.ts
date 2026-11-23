@@ -435,6 +435,9 @@ export class Store {
   readonly projectDirs = this.bind(projectSessions.projectDirs);
   readonly recordProjectAgentSession = this.bind(projectSessions.recordProjectAgentSession);
   readonly knownAgentSessions = this.bind(projectSessions.knownAgentSessions);
+  readonly projectPermissionMode = this.bind(projectSessions.projectPermissionMode);
+  readonly consultantsOf = this.bind(projectSessions.consultantsOf);
+  readonly createConsultantSession = this.bind(projectSessions.createConsultantSession);
   readonly tuneProjectSession = this.bind(projectSessions.tuneProjectSession);
   readonly nameProjectSessionIfUnnamed = this.bind(projectSessions.nameProjectSessionIfUnnamed);
   readonly insertAgentLine = this.bind(projectSessions.insertAgentLine);

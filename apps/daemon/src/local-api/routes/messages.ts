@@ -81,6 +81,12 @@ export function messageRoutes(ctx: RouteCtx): Response | Promise<Response> | nul
       engine.stop(t.id, { allowGroup: true });
     }
     projects.stopSession(params.id!);
+    // Its consultants (ADR 0116) go with it: they were never conversations of their own.
+    const consultants = session.kind === "project" ? store.consultantsOf(params.id!) : [];
+    for (const consultant of consultants) {
+      store.deleteSession(consultant, { eraseQuotes: false });
+      publish({ event: "session.removed", occurred_at: occurred(), id: consultant });
+    }
     const quoted = eraseQuotes ? plansQuotedIn(store, params.id!) : [];
     const dormant = store.deleteSession(params.id!, { eraseQuotes });
     store.afterCommit(() => engine.forgetPlans(dormant));

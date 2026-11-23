@@ -203,6 +203,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_model TEXT,
   project_effort TEXT,
   project_mode TEXT,
+  -- A consultant's (ADR 0116): the project session whose agent asked it in. Null on every other.
+  project_parent_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

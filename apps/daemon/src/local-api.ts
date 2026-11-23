@@ -289,6 +289,8 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     ...(options.projectGrok ? { resolveGrok: options.projectGrok } : {}),
     ...(options.projectGrokHoldMs !== undefined ? { grokHoldMs: options.projectGrokHoldMs } : {}),
     ...(options.projectGrokBilling ? { grokBilling: options.projectGrokBilling } : {}),
+    ...(options.projectConsultPollMs !== undefined ? { consultPollMs: options.projectConsultPollMs } : {}),
+    ...(options.projectConsultWaitMs !== undefined ? { consultWaitMs: options.projectConsultWaitMs } : {}),
     agyCommands: options.agyCommands, grokCommands: options.grokCommands });
 
   options.beforeScheduler?.(engine);

@@ -31,10 +31,13 @@ import { acpCommandsOf, createCommandMemory, frameOf, lineBlocks, spawnRecorded,
 import { nodePathHost } from "./workspace-paths";
 import { questionDesk, type AgentAnswer, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
+import { CONSULT_SERVER, CONSULT_TOOL, type ConsultDesk } from "./project-consult";
 import type { Store } from "./store";
 
 export type AgyProjectDeps = {
   store: Store;
+  /** The consult tool each run of a session of yours gets (ADR 0116). */
+  consult?: ConsultDesk;
   /** The `agy` a run starts, found as a Bot's is; a test brings its stand-in. */
   resolve?: () => Promise<ResolvedAgent>;
   /** `agy --version`; a test's stand-in. */
@@ -98,6 +101,10 @@ type Live = {
 };
 
 const ACTIVITY_MAX = 160;
+/** How `agy` titles a call of an MCP tool: `Run mcp_<server>_<tool>`. */
+const MCP_CALL = "Run mcp_";
+/** The consult tool's call (ADR 0116): `Run mcp_deskfolk_consult`. */
+const CONSULT_CALL = `${MCP_CALL}${CONSULT_SERVER}_${CONSULT_TOOL}`;
 const PARTIAL_MAX = 4000;
 const STDERR_KEEP = 8 * 1024;
 const SETTLE_MS = 2500;
@@ -120,6 +127,9 @@ export function agyBrainDir(session: string, home = homedir()): string {
 /** What a call does, as the app's rules count it: by its kind, the files it names and its input (`CommandLine`, `Path`, …). */
 export function agyActionOf(tool: Pick<Tool, "kind" | "title" | "rawInput" | "locations">, cwd: string): AppAction {
   const raw = tool.rawInput;
+  // The app's own consult call is never a shell command or a file read, whatever its arguments are
+  // called (ADR 0116); any other MCP tool is read by what it names, as before.
+  if (tool.title === CONSULT_CALL) return { appName: "other", vendorTool: tool.title, paths: [], cwd };
   const command = typeof raw.CommandLine === "string" ? raw.CommandLine : typeof raw.command === "string" ? raw.command : null;
   const where = typeof raw.Cwd === "string" && raw.Cwd ? raw.Cwd : cwd;
   const paths = tool.locations.length > 0 ? tool.locations : pathsOf(raw);
@@ -344,7 +354,15 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     void exited.then(() => rpc.close(new Error("agy exited")));
     live.rpc = rpc;
 
-    const permission = store.appPermissionMode();
+    const permission = store.projectPermissionMode(live.sessionId);
+    // A session of yours gets the consult tool through a stdio shim; a consultant's run gets no tools of its own (ADR 0116).
+    const consultant = project.parentId !== null;
+    const mount = consultant ? null : (deps.consult?.mount(live.sessionId, live.runId) ?? null);
+    const mcpServers = (() => {
+      if (!mount) return [];
+      const { command, args, env } = mount.stdio();
+      return [{ name: CONSULT_SERVER, command, args, env: Object.entries(env).map(([name, value]) => ({ name, value })) }];
+    })();
     const configDirs = store.allAgentConfigDirs();
     const home = homedir();
     const tools = new Map<string, Tool>();
@@ -366,6 +384,11 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     const decide = (tool: Tool) => {
       const action = agyActionOf(tool, project.dir);
       const own = brain();
+      // The consult tool of a session of yours always passes; a consultant only looks, so no MCP tool passes for it (ADR 0116).
+      if (mount && tool.title === CONSULT_CALL) return { action, decision: { kind: "allow" as const, effect: false, appName: action.appName } };
+      if (consultant && tool.title.startsWith(MCP_CALL)) {
+        return { action, decision: { kind: "deny" as const, reason: en ? "a consultant only looks: it may not call tools" : "参谋只看不动：不能调用工具" } };
+      }
       // Its own notes and plans are its to write, as Claude Code's plan file and to-do list are, in every mode.
       if (action.appName === "write_file" && action.paths.length > 0 && action.paths.every((path) => inMemoryDir(path, own, nodePathHost))) {
         return { action, decision: { kind: "allow" as const, effect: false, appName: action.appName } };
@@ -567,7 +590,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       let opened: Opened;
       if (project.agentSession) {
         live.acpSession = project.agentSession;
-        const asked = { sessionId: project.agentSession, cwd: project.dir, mcpServers: [] };
+        const asked = { sessionId: project.agentSession, cwd: project.dir, mcpServers };
         if (caps.resume) opened = await rpc.request<Opened>("session/resume", asked, REQUEST_TIMEOUT_MS * 2);
         else {
           // `session/load` replays the whole conversation first: that is history, not this run.
@@ -579,7 +602,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
           }
         }
       } else {
-        opened = await rpc.request<Opened>("session/new", { cwd: project.dir, mcpServers: [] }, REQUEST_TIMEOUT_MS * 2);
+        opened = await rpc.request<Opened>("session/new", { cwd: project.dir, mcpServers }, REQUEST_TIMEOUT_MS * 2);
         if (!opened?.sessionId) throw new Error(en ? "agy opened no session" : "agy 没有开出会话");
         live.acpSession = opened.sessionId;
         store.recordProjectAgentSession(live.sessionId, opened.sessionId);
@@ -702,6 +725,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     } catch (error) {
       if (!live.stopped) failure ??= classifyAcpError(error).detail ?? firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? "error";
     } finally {
+      mount?.close();
       tuning.delete(live.runId);
       if (selfTimer) clearTimeout(selfTimer);
       for (const tool of tools.values()) ended(tool, false);

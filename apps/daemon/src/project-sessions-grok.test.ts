@@ -105,7 +105,8 @@ test("a Grok session: your own Grok in its directory, every call held by the app
   expect(h.log(0)[0]?.cwd).toBe(h.dir);
   expect(h.sent(0, "initialize")[0]).toMatchObject({ clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } });
   const opened = h.sent(0, "session/new")[0]!;
-  expect(opened).toMatchObject({ cwd: h.dir, mcpServers: [], _meta: { "x.ai/hooks": { pre_tool_use: [{ matcher: "*", hookCallbackIds: ["deskfolk"], timeout: 600 }] } } });
+  // A session of yours carries the app's consult tool (ADR 0116).
+  expect(opened).toMatchObject({ cwd: h.dir, mcpServers: [{ name: "deskfolk" }], _meta: { "x.ai/hooks": { pre_tool_use: [{ matcher: "*", hookCallbackIds: ["deskfolk"], timeout: 600 }] } } });
   expect(h.hooks(0).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["read_file", "continue"]]);
   expect(h.sent(0, "session/prompt")[0]?._meta).toEqual({ mode: "agent" });
   // Its read is on the task map, as the other agents' are.
@@ -444,6 +445,57 @@ test("read-only refuses every change and command; a tool the app cannot tell is 
   await h.settled(id);
   // A skill changes nothing by being invoked.
   expect(h.hooks(1).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["notes__save", "continue"], ["use_skill", "continue"]]);
+});
+
+const CONSULT_INPUT = { tool_name: "deskfolk__consult", tool_input: { agent: "codex", question: "what do you think?" } };
+
+test("a session of yours opens with the consult tool mounted, at session/new and at a later run's session/resume (ADR 0116)", async () => {
+  const h = start([{ prompts: [[{ say: "one" }]] }, { prompts: [[{ say: "two" }]] }]);
+  const id = await h.open();
+  await h.say(id, "hi");
+  await h.settled(id);
+  const servers = h.sent(0, "session/new")[0]!.mcpServers as Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+  expect(servers.map((server) => server.name)).toEqual(["deskfolk"]);
+  expect(typeof servers[0]!.command).toBe("string");
+  expect(servers[0]!.env.map((one) => one.name)).toEqual(expect.arrayContaining(["DESKFOLK_AGENT_MCP_URL", "DESKFOLK_AGENT_MCP_TOKEN"]));
+  await h.say(id, "again");
+  await h.settled(id);
+  const resumed = h.sent(1, "session/resume")[0]!.mcpServers as Array<{ name: string; env: Array<{ name: string }> }>;
+  expect(resumed.map((server) => server.name)).toEqual(["deskfolk"]);
+  expect(resumed[0]!.env.map((one) => one.name)).toEqual(expect.arrayContaining(["DESKFOLK_AGENT_MCP_URL", "DESKFOLK_AGENT_MCP_TOKEN"]));
+});
+
+test("the consult call always passes the hook, with no card, in read-only, ask-first and plan mode; another MCP tool is still refused", async () => {
+  const call = { tool: { name: "deskfolk__consult", input: CONSULT_INPUT } };
+  const other = { tool: { name: "other__x", input: { tool_name: "other__x", tool_input: {} } } };
+  const h = start([{ prompts: [[call, other, { say: "ok" }]] }, { prompts: [[call, { say: "ok" }]] }, { prompts: [[call, { say: "ok" }]] }]);
+  h.store.patchSettings({ permission_mode: "read_only" });
+  const id = await h.open();
+  await h.say(id, "go");
+  await h.settled(id);
+  expect(h.hooks(0).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["deskfolk__consult", "continue"], ["other__x", "deny"]]);
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  await h.say(id, "again");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.hooks(1).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["deskfolk__consult", "continue"]]);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(200);
+  await h.say(id, "plan");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.hooks(2).map((entry) => [entry.hook, entry.answer?.decision])).toEqual([["deskfolk__consult", "continue"]]);
+});
+
+test("a consultant's run opens with no MCP servers, and out of usage it fails: no other account, no resume", async () => {
+  const h = start([{ prompts: [[{ fail: { code: -32003, message: "Rate limited", data: "subscription:free-usage-exhausted" } }]] }], { billing: { percent: 100, end: Date.now() + 3_600_000 } });
+  const parent = await h.open();
+  const consultant = h.store.createConsultantSession({ parentId: parent, agent: "grok", model: null, effort: null, name: "参谋 · Grok" }).id;
+  await h.say(consultant, "what do you think?");
+  await h.settled(consultant);
+  expect(h.sent(0, "session/new")[0]).toMatchObject({ mcpServers: [] });
+  expect((await h.run(consultant))?.status).toBe("failed");
+  expect(h.store.projectResumes()).toEqual([]);
+  expect(h.store.accountsOut().map((row) => row.runner)).toEqual(["grok"]);
 });
 
 test("a permission Grok asks for by its own settings is answered allow-once, never an option it would keep", async () => {

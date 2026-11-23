@@ -170,6 +170,7 @@ export type SessionRow = {
   project_model?: string | null;
   project_effort?: string | null;
   project_mode?: ProjectAgentMode | null;
+  project_parent_id?: string | null;
   created_at: string;
   updated_at: string;
 };

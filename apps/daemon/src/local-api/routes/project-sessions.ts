@@ -11,6 +11,7 @@ import { readAgyReplay } from "../../agents/agy-replay";
 import { readCodexReplay } from "../../agents/codex-replay";
 import { readAgentReplay } from "../../claude-code/replay";
 import { projectAgyOf } from "../../project-runner-agy";
+import { consultDetail } from "../../project-consult";
 import { grokCommandList, grokUpdates, projectGrokOf, withGrokAcp } from "../../agents/grok-acp";
 import { readGrokReplay, grokSubagentTrail } from "../../agents/grok-replay";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
@@ -246,6 +247,9 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
     const run = store.getAgentRun(params.id!);
     const task = run.tasks?.find((row) => row.id === params!.task);
     if (!task) throw new HttpError(404, "not_found", "no such task");
+    // A consultant's (ADR 0116): read from its own session, which the app keeps.
+    const consulted = consultDetail(store, task);
+    if (consulted) return jsonResponse(consulted, 200, null);
     if (task.kind === "subagent") {
       const project = store.projectOf(run.session_id);
       // A Codex subagent is a thread of its own, read through Codex's app-server (ADR 0099 addendum).

@@ -41,11 +41,14 @@ import { questionDesk, type QuestionDesk } from "./project-asks";
 import { continueNote, outOfUsageLine, switchedLine } from "./project-limits";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
+import { CONSULT_SERVER, CONSULT_TOOL, type ConsultDesk } from "./project-consult";
 import type { Store } from "./store";
 import { nodePathHost } from "./workspace-paths";
 
 export type GrokProjectDeps = {
   store: Store;
+  /** The consult tool each run of a session of yours gets (ADR 0116). */
+  consult?: ConsultDesk;
   /** The Grok a run starts on an account (null: the daemon's own), found as a Bot's is; a test brings its stand-in. */
   resolve?: (configDir: string | null) => Promise<ResolvedAgent>;
   /** Each call starting and ending, with where it works, for the task map (ADR 0095): never stored. */
@@ -311,7 +314,17 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
     void exited.then(() => rpc.close(new Error("grok exited")));
     live.rpc = rpc;
 
-    const permission = store.appPermissionMode();
+    // A consultant is asked for its view and only looks (ADR 0116): its permission is read-only and it has no `consult` of its own.
+    const consultant = project.parentId !== null;
+    const permission = store.projectPermissionMode(live.sessionId);
+    const mount = consultant ? null : (deps.consult?.mount(live.sessionId, live.runId) ?? null);
+    /** The `consult` tool's stdio server for a session of yours (ACP's form); a consultant gets none. */
+    const isConsultCall = (action: AppAction) => mount !== null && action.appName === "other" && action.vendorTool === `mcp__${CONSULT_SERVER}__${CONSULT_TOOL}`;
+    const mcpServers = (() => {
+      if (!mount) return [];
+      const { command, args, env } = mount.stdio();
+      return [{ name: CONSULT_SERVER, command, args, env: Object.entries(env).map(([name, value]) => ({ name, value })) }];
+    })();
     const configDirs = store.allAgentConfigDirs();
     const home = homedir();
     const signIn = live.configDir ? `GROK_HOME=${shellQuote(live.configDir)} grok login` : "grok login";
@@ -394,6 +407,13 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       }
       if (isOwnTool(name)) return { decision: "continue" };
       const action = grokActionOf(name, input, typeof p.cwd === "string" && p.cwd ? p.cwd : project.dir);
+      // Asking another agent is always allowed for a session of yours, in every mode, with no card
+      // (ADR 0116); only Grok itself asks, not a subagent of its own.
+      if (isConsultCall(action)) {
+        if (live.acpSession && p.sessionId !== live.acpSession) return { decision: "deny", reason: en ? "only the agent itself may ask a consultant, not a subagent" : "只有它自己能请参谋，子代理不行" };
+        if (callId) live.passed.add(callId);
+        return { decision: "continue" };
+      }
       // Plan mode holds every session of the run: a subagent starts outside Grok's own plan gate.
       const decision = decide(action, p.permissionMode === "plan" || live.mode === "plan", sessionDir);
       if (decision.kind === "allow") {
@@ -677,6 +697,8 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       }
       // Its plan for you to approve (`exit_plan_mode`): the card Claude Code's plans make.
       if (method === "_x.ai/exit_plan_mode" || method === "x.ai/exit_plan_mode") {
+        // A consultant never plans: it looks and answers.
+        if (consultant) return { outcome: "cancelled", feedback: en ? "You are consulted, not asked to plan: look and answer." : "你是被请教的，不用做计划：看一看，答就是了。" };
         const content = typeof p.planContent === "string" ? p.planContent : "";
         const dir = mainDir();
         const answer = await new Promise<{ answer: Answer; words?: string }>((settle) => {
@@ -723,7 +745,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         if (!allow) {
           const raw = (tool.rawInput && typeof tool.rawInput === "object" ? tool.rawInput : {}) as Record<string, unknown>;
           const action = grokActionOf(grokToolName(tool), raw, project.dir);
-          const decision = decide(action, live.mode === "plan", null);
+          const decision = isConsultCall(action) ? { kind: "allow" as const } : decide(action, live.mode === "plan", null);
           allow = decision.kind === "allow";
           if (decision.kind === "ask") {
             const answer = await new Promise<Answer>((settle) => waitOn(live, { approval: decision.approval, resolve: (answer) => settle(answer) }));
@@ -787,7 +809,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         model = project.model ?? answer?.models?.currentModelId ?? model;
       };
       const open = async (): Promise<void> => {
-        const answer = await rpc.request<Opened>("session/new", { cwd: project.dir, mcpServers: [], ...meta }, REQUEST_TIMEOUT_MS * 2);
+        const answer = await rpc.request<Opened>("session/new", { cwd: project.dir, mcpServers, ...meta }, REQUEST_TIMEOUT_MS * 2);
         if (!answer?.sessionId) throw new Error(en ? "grok opened no session" : "grok 没有开出会话");
         store.recordProjectAgentSession(live.sessionId, answer.sessionId);
         await opened(answer.sessionId, answer);
@@ -803,7 +825,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         }
         const id = answer?.newSessionId ?? answer?.result?.newSessionId;
         if (!id) throw new Error(en ? "grok could not branch the terminal session" : "grok 没能从终端里的会话分出来");
-        const resumed = await rpc.request<Opened>("session/resume", { sessionId: id, cwd: project.dir, mcpServers: [], ...meta }, REQUEST_TIMEOUT_MS * 2);
+        const resumed = await rpc.request<Opened>("session/resume", { sessionId: id, cwd: project.dir, mcpServers, ...meta }, REQUEST_TIMEOUT_MS * 2);
         store.recordProjectAgentSession(live.sessionId, id);
         await opened(id, resumed);
       };
@@ -831,7 +853,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       };
       if (project.agentSession) {
         try {
-          const answer = await rpc.request<Opened>("session/resume", { sessionId: project.agentSession, cwd: project.dir, mcpServers: [], ...meta }, REQUEST_TIMEOUT_MS * 2);
+          const answer = await rpc.request<Opened>("session/resume", { sessionId: project.agentSession, cwd: project.dir, mcpServers, ...meta }, REQUEST_TIMEOUT_MS * 2);
           await opened(project.agentSession, answer);
         } catch (error) {
           // Grok has no such session under this account: "Path not found." / FS_NOT_FOUND (measured 1.0.89).
@@ -931,6 +953,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       }
     } finally {
       tuning.delete(live.runId);
+      mount?.close();
       for (const id of [...frames.keys()]) endFrame(id, false);
       live.closing = true;
     }
@@ -955,6 +978,8 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
     const usedUp = /free-usage-exhausted/i.test(error) || (billing.percent !== null && billing.percent >= 100);
     const known = usedUp && billing.end !== null && billing.end > Date.now();
     store.markAccountOut({ runner: "grok", dir: grokHome(live.configDir), email: null, until: known ? billing.end! : Date.now() + LIMIT_GUESS_MS, known });
+    // A consultant's run only fails: its asker is told, and it is not moved to another account or picked up later.
+    if (store.projectOf(live.sessionId)?.parentId) return fail(live, detail);
     const unanswered = [...live.inTurn, ...live.queue.flatMap((line) => (line.messageId ? [line.messageId] : []))];
     const outs = new Set(store.accountsOut().filter((row) => row.runner === "grok").map((row) => row.dir));
     const next = [null, ...store.agentConfigDirs("grok")].find((dir) => dir !== live.configDir && !outs.has(grokHome(dir)));

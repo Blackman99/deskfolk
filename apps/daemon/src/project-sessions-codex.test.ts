@@ -11,6 +11,7 @@ import type { AgentReplay, AgentRun, AgentSessionList, ClaudeCodeCommandList, Cl
 import { CODEX_BUILTIN_COMMANDS, type CodexCommandList } from "./agents/codex-commands";
 import type { ClaudeCommandList } from "./claude-code/commands";
 import { ulid } from "./ids";
+import { CONSULT_CODEX_TIMEOUT_S } from "./project-consult";
 import { createLocalApi } from "./local-api";
 import { validateBusiness } from "./remote/routes";
 import { sha256 } from "./request-digest";
@@ -24,7 +25,7 @@ afterEach(async () => { while (closes.length) await closes.pop()!(); });
 
 type Step = Record<string, unknown>;
 /** One app-server's script: each run of a session starts an app-server of its own. */
-type Script = { signedOut?: boolean; model?: string; resumable?: string; resumedUsage?: { input: number; output: number; cached: number; turnId: string }; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; stored?: unknown[]; turns: Step[][] };
+type Script = { signedOut?: boolean; model?: string; resumable?: string; resumedUsage?: { input: number; output: number; cached: number; turnId: string }; skills?: Array<{ name: string; description: string; path: string }>; compactMs?: number; stored?: unknown[]; mcpServers?: Array<{ name: string; pluginId?: string | null }>; turns: Step[][] };
 type Entry = Record<string, unknown> & { method?: string; params?: Record<string, unknown>; asked?: string; answer?: { decision?: string } };
 
 function start(scripts: Script[], opts: { claudeCommands?: ClaudeCommandList; codexCommands?: CodexCommandList } = {}) {
@@ -108,7 +109,11 @@ test("a Codex session: your own Codex in its directory, asking before it acts; l
   expect(opened).toMatchObject({ cwd: h.dir, approvalPolicy: "untrusted", sandbox: "read-only", ephemeral: false, serviceName: "deskfolk" });
   expect(opened.developerInstructions).toBeUndefined();
   expect(opened.dynamicTools).toBeUndefined();
-  expect(opened.config).toBeUndefined();
+  // The app's `consult` tool rides in the thread's config override, not as a dynamic tool (ADR 0116).
+  const consult = (opened.config as { mcp_servers?: Record<string, { env?: Record<string, string>; tool_timeout_sec?: number }> }).mcp_servers!.deskfolk!;
+  expect(Object.keys((opened.config as { mcp_servers: object }).mcp_servers)).toEqual(["deskfolk"]);
+  expect(consult.env).toMatchObject({ DESKFOLK_AGENT_MCP_URL: expect.any(String), DESKFOLK_AGENT_MCP_TOKEN: expect.any(String) });
+  expect(consult.tool_timeout_sec).toBe(CONSULT_CODEX_TIMEOUT_S);
   expect(opened.model).toBeUndefined();
   expect(h.sent(0, "turn/start")[0]).toMatchObject({ threadId: "thread-1", input: [{ type: "text", text: "你好" }] });
   expect(h.store.projectOf(id)?.agentSession).toBe("thread-1");
@@ -125,6 +130,11 @@ test("a Codex session: your own Codex in its directory, asking before it acts; l
   await h.settled(id);
   expect(h.sent(1, "thread/start")).toEqual([]);
   expect(h.sent(1, "thread/resume")[0]).toMatchObject({ threadId: "thread-1", cwd: h.dir, approvalPolicy: "untrusted", sandbox: "read-only" });
+  // A resume carries the tool too: the config is not saved into the thread.
+  const resumed = h.sent(1, "thread/resume")[0]!.config as { mcp_servers: Record<string, { env: Record<string, string>; tool_timeout_sec: number }> };
+  expect(resumed.mcp_servers.deskfolk!.env.DESKFOLK_AGENT_MCP_URL).toBeTruthy();
+  expect(resumed.mcp_servers.deskfolk!.env.DESKFOLK_AGENT_MCP_TOKEN).toBeTruthy();
+  expect(resumed.mcp_servers.deskfolk!.tool_timeout_sec).toBe(CONSULT_CODEX_TIMEOUT_S);
   expect(h.lines(id).at(-1)).toEqual({ kind: "bot", author: "agent", body: "答二" });
 });
 
@@ -226,6 +236,34 @@ test("a turn Codex's plan limit stopped, with its reset said, picks up by itself
   const asked = h.sent(1, "turn/start").map((params) => JSON.stringify(params.input));
   expect(asked.some((input) => input.includes("现在额度恢复了") && input.includes("跑一遍测试"))).toBe(true);
   expect(h.store.projectResumes()).toEqual([]);
+});
+
+test("a consultant's Codex thread never asks and only looks, has no consult tool, and a usage limit just fails it (ADR 0116)", async () => {
+  const resetsAt = Math.floor(Date.now() / 1000) + 7200;
+  const h = start([
+    { turns: [[{ limits: { resetsAt } }, { fail: { message: "You've hit your usage limit", codexErrorInfo: "usageLimitExceeded", errorNotice: true } }]] },
+  ]);
+  const parent = await h.open();
+  const consultant = h.store.createConsultantSession({ parentId: parent, agent: "codex", model: null, effort: null, name: "参谋 · Codex" }).id;
+  await h.say(consultant, "看一眼这个目录");
+  await h.settled(consultant);
+  const opened = h.sent(0, "thread/start")[0]!;
+  expect(opened).toMatchObject({ cwd: h.dir, approvalPolicy: "never", sandbox: "read-only" });
+  expect(JSON.stringify(opened.config ?? {})).not.toContain("deskfolk");
+  expect((await h.run(consultant))?.status).toBe("failed");
+  expect(h.store.accountsOut().map((row) => row.runner)).toEqual(["codex"]);
+  expect(h.store.projectResumes()).toEqual([]);
+});
+
+test("a consultant's Codex thread has your MCP servers, the ones plugins bring and your apps all switched off (ADR 0116)", async () => {
+  const h = start([{ mcpServers: [{ name: "notes" }, { name: "linear", pluginId: "linear@market" }], turns: [[{ say: "看过了" }]] }]);
+  const parent = await h.open();
+  const consultant = h.store.createConsultantSession({ parentId: parent, agent: "codex", model: null, effort: null, name: "参谋 · Codex" }).id;
+  await h.say(consultant, "看一眼这个目录");
+  await h.settled(consultant);
+  const opened = h.sent(0, "thread/start")[0]!;
+  // Your own server by name; a plugin's goes off with the plugins, as on a Bot's thread.
+  expect(opened.config).toEqual({ features: { plugins: false, apps: false }, mcp_servers: { notes: { enabled: false } } });
 });
 
 test("moved to another Codex account, the next run carries the thread over from the one that has it", async () => {

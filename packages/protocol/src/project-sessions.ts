@@ -137,7 +137,31 @@ export type AgentTask = {
   ended_at: string | null;
   /** Where Claude Code keeps what it prints, once it has said; the daemon reads it, a window never does. */
   output_file: string | null;
+  /**
+   * A consultant's (ADR 0116): the other agent asked in, and the model it was asked to run on (null:
+   * that agent's default). Absent from every other task and from a daemon older than that ADR.
+   */
+  agent?: ProjectAgent;
+  model?: string | null;
 };
+
+/**
+ * The id of a consultant's task starts so (ADR 0116): `consult_<consultant session>_<the line it was
+ * asked>`, both ULIDs — within the 64 letters, digits, `_` and `-` a task id may be on the phone's relay.
+ */
+export const CONSULT_TASK_PREFIX = "consult_";
+
+/** Whether a task is one asking a consultant (ADR 0116), not something the agent itself started. */
+export function isConsultTask(task: Pick<AgentTask, "id">): boolean {
+  return task.id.startsWith(CONSULT_TASK_PREFIX);
+}
+
+/** The consultant session and the line a consultant's task asked, from its id; null for any other task. */
+export function consultTaskParts(id: string): { consultant: string; message: string } | null {
+  if (!id.startsWith(CONSULT_TASK_PREFIX)) return null;
+  const [consultant, message] = id.slice(CONSULT_TASK_PREFIX.length).split("_");
+  return consultant && message ? { consultant, message } : null;
+}
 
 /**
  * A task and the run it belongs to (`GET /v1/project-sessions/:id/tasks`, the session's whole list,

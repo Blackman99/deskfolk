@@ -81,6 +81,12 @@ export type Session = {
   project_effort?: string | null;
   /** `plan` while plan mode is on (ADR 0098); null: as usual. Absent from a daemon older than that ADR. */
   project_mode?: ProjectAgentMode | null;
+  /**
+   * A consultant's (ADR 0116): the project session whose agent asked it in. It is no conversation
+   * of its own — not listed, opened only from that session's line. Null on every other session;
+   * absent from a daemon older than that ADR.
+   */
+  project_parent_id?: string | null;
   created_at: string;
   updated_at: string;
 };

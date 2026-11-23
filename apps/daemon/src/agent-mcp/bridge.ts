@@ -69,7 +69,7 @@ export async function handleAgentMcp(request: Request, keepOpen?: (request: Requ
   const entry = /^[A-Za-z0-9_-]{43}$/.test(token) ? entries.get(token) : undefined;
   if (!entry) return Response.json({ error: { code: "not_found", message: "this segment has ended" } }, { status: 404 });
   keepOpen?.(request);
-  const server = new Server({ name: "deskfolk", version: "1" }, { capabilities: { tools: {} } });
+  const server = new Server({ name: "deskfolk", version: "1" }, { capabilities: { tools: {} }, ...(entry.bridge.instructions ? { instructions: entry.bridge.instructions } : {}) });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: entry.bridge.tools.map((tool) => ({
       name: tool.name,

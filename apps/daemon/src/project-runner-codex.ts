@@ -41,10 +41,13 @@ import { pictureMime } from "./loop-pictures";
 import { changeVerdict } from "./permission-gate";
 import { questionDesk, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
+import { CONSULT_CODEX_TIMEOUT_S, CONSULT_SERVER, type ConsultDesk } from "./project-consult";
 import type { Store } from "./store";
 
 export type CodexProjectDeps = {
   store: Store;
+  /** The consult tool each run of a session of yours gets (ADR 0116). */
+  consult?: ConsultDesk;
   /** The Codex a run starts, found as a Bot's is; a test brings its stand-in. */
   resolve?: (configDir: string | null) => Promise<ResolvedAgent>;
   /** Each call starting and ending, with where it works, for the task map (ADR 0095): never stored. */
@@ -408,7 +411,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     void exited.then(() => rpc.close(new Error("Codex exited")));
     live.rpc = rpc;
 
-    const permission = store.appPermissionMode();
+    const permission = store.projectPermissionMode(live.sessionId);
     const configDirs = store.allAgentConfigDirs();
     /**
      * Codex's own folders it works with (ADR 0099 addendum 2026-11-17): the memories it writes itself,
@@ -747,6 +750,12 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       }
     });
 
+    // A session of yours gets the `consult` tool (ADR 0116); a consultant's own run gets none.
+    const consultant = project.parentId !== null;
+    const mount = consultant ? null : (deps.consult?.mount(live.sessionId, live.runId) ?? null);
+    /** A consultant's thread switches your own MCP servers off by name; filled in once Codex is signed in. */
+    const mcpOff: Record<string, { enabled: false }> = {};
+
     try {
       await rpc.request("initialize", {
         clientInfo: { name: "deskfolk", title: "Deskfolk", version: typeof daemonPackage.version === "string" ? daemonPackage.version : "dev" },
@@ -760,14 +769,48 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       if (live.stopped) return;
       // Asks before every command and file change, whatever your config says: the app answers them.
       // The session's model as it is now: `/new` opens its thread with the one picked by then.
+      // A consultant only looks (ADR 0116): never asks, and the OS sandbox keeps it read-only.
+      // The `consult` server rides in the thread's config override, which start, resume and fork all take
+      // (dynamic tools exist on `thread/start` only) and which Codex does not save into the thread.
+      if (consultant) {
+        // Your own MCP servers, as a Bot's thread switches them off (`engine/agent/drivers/codex.ts`).
+        const servers = await rpc.request<{ data?: Array<{ name?: string; pluginId?: string | null }> }>("mcpServerStatus/list", {}, INIT_TIMEOUT_MS).catch(() => ({ data: [] }));
+        for (const server of servers.data ?? []) if (typeof server.name === "string" && !server.pluginId) mcpOff[server.name] = { enabled: false };
+      }
       const asks = () => {
         const now = store.projectOf(live.sessionId) ?? project;
-        return { cwd: project.dir, approvalPolicy: "untrusted", sandbox: "read-only", ...(now.model ? { model: now.model } : {}) };
+        const shim = mount?.stdio();
+        const servers = shim
+          ? { [CONSULT_SERVER]: { command: shim.command, args: shim.args, env: shim.env, tool_timeout_sec: CONSULT_CODEX_TIMEOUT_S, startup_timeout_sec: 60 } }
+          : Object.keys(mcpOff).length > 0 ? mcpOff : null;
+        // Under `never` nothing else holds an MCP call, and those run outside the sandbox: a consultant's
+        // thread also has the servers plugins bring and your apps switched off, as a Bot's has.
+        const isolation = consultant ? { features: { plugins: false, apps: false } } : {};
+        const config = { ...isolation, ...(servers ? { mcp_servers: servers } : {}) };
+        return {
+          cwd: project.dir,
+          approvalPolicy: consultant ? "never" : "untrusted",
+          sandbox: "read-only",
+          ...(now.model ? { model: now.model } : {}),
+          ...(Object.keys(config).length > 0 ? { config } : {}),
+        };
+      };
+      /** A request that carries `asks()`; a server name Codex cannot take an override for is dropped from the consultant's list and asked again. */
+      const open = async <T>(method: string, params: () => Record<string, unknown>): Promise<T> => {
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            return await rpc.request<T>(method, params(), INIT_TIMEOUT_MS);
+          } catch (error) {
+            const named = /in `mcp_servers\.([^`]+)`/.exec(error instanceof Error ? error.message : "")?.[1];
+            if (!named || !(named in mcpOff) || attempt >= 8) throw error;
+            delete mcpOff[named];
+          }
+        }
       };
       /** The thread a turn goes on: the one open, or else a new one Codex keeps, recorded so every later run resumes it. */
       const thread = async (): Promise<string> => {
         if (live.threadId) return live.threadId;
-        const opened = await rpc.request<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/start", { ...asks(), ephemeral: false, serviceName: "deskfolk" }, INIT_TIMEOUT_MS);
+        const opened = await open<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/start", () => ({ ...asks(), ephemeral: false, serviceName: "deskfolk" }));
         threadEffort = opened?.reasoningEffort ?? threadEffort;
         const id = opened?.thread?.id;
         if (!id) throw new Error(en ? "Codex opened no thread" : "Codex 没有开出会话");
@@ -781,7 +824,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
        * Claude Code's first run branches its session: yours stays as it was, this one goes on.
        */
       const fork = async (source: string): Promise<void> => {
-        const opened = await rpc.request<{ thread?: { id?: string }; model?: string }>("thread/fork", { threadId: source, ...asks() }, INIT_TIMEOUT_MS);
+        const opened = await open<{ thread?: { id?: string }; model?: string }>("thread/fork", () => ({ threadId: source, ...asks() }));
         const id = opened?.thread?.id;
         if (!id) throw new Error(en ? "Codex could not branch the thread" : "Codex 没能从那个会话分出来");
         live.threadId = id;
@@ -815,7 +858,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       // The first run starts a thread Codex keeps, or branches the one carried on; every later one resumes its own.
       if (project.agentSession) {
         try {
-          const opened = await rpc.request<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/resume", { threadId: project.agentSession, ...asks(), excludeTurns: true }, INIT_TIMEOUT_MS);
+          const opened = await open<{ thread?: { id?: string }; model?: string; reasoningEffort?: string | null }>("thread/resume", () => ({ threadId: project.agentSession, ...asks(), excludeTurns: true }));
           threadEffort = opened?.reasoningEffort ?? threadEffort;
           live.threadId = opened?.thread?.id ?? project.agentSession;
           model = opened?.model ?? model;
@@ -1003,6 +1046,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     } catch (error) {
       if (!live.stopped) failure ??= firstLine(error instanceof Error ? error.message : String(error)) ?? firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? "error";
     } finally {
+      mount?.close();
       // A call cut by Stop or a crash never reports its end: it ends with the run.
       for (const id of [...started.keys()]) ended(id, false);
       live.closing = true;
@@ -1030,6 +1074,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     const en = locale() === "en";
     const known = resetsAt !== null && resetsAt > Date.now();
     store.markAccountOut({ runner: "codex", dir: codexHome(from), email: null, until: known ? resetsAt! : Date.now() + LIMIT_GUESS_MS, known });
+    // A consultant's run only fails: the session that asked decides what to do (ADR 0116).
+    if (store.projectOf(live.sessionId)?.parentId) return fail(live, detail);
     const unanswered = [...live.inTurn, ...live.queue.flatMap((line) => line.messageIds)];
     const outs = new Set(store.accountsOut().filter((row) => row.runner === "codex").map((row) => row.dir));
     const next = [null, ...store.agentConfigDirs("codex")].find((dir) => dir !== from && !outs.has(codexHome(dir)));

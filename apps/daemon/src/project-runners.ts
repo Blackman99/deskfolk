@@ -12,6 +12,7 @@ import { createAgyProjectRunner } from "./project-runner-agy";
 import { createGrokProjectRunner } from "./project-runner-grok";
 import type { RpcPeer } from "./engine/agent/jsonrpc";
 import { createCodexProjectRunner } from "./project-runner-codex";
+import { createConsultDesk } from "./project-consult";
 import { createProjectRunner, type ProjectRunner, type ProjectRunnerDeps } from "./project-runner";
 
 export type ProjectRunnersDeps = ProjectRunnerDeps & {
@@ -27,19 +28,27 @@ export type ProjectRunnersDeps = ProjectRunnerDeps & {
   grokHoldMs?: number;
   grokBilling?: (rpc: RpcPeer) => Promise<{ percent: number | null; end: number | null }>;
   grokCommands?: CommandMemory;
+  /** How often a consultant's call looks at it (ADR 0116); a test's is short. */
+  consultPollMs?: number;
+  /** How long a consultant's call waits before saying it is still at it, whatever the asking agent; a test's is short. */
+  consultWaitMs?: number;
 };
 
 export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
   const { store } = deps;
+  // Consultants (ADR 0116) run on these same runners: the desk reaches them through the whole.
+  let whole: ProjectRunner | null = null;
+  const consult = createConsultDesk({ store, runner: () => whole!, ...(deps.consultPollMs !== undefined ? { pollMs: deps.consultPollMs } : {}),
+    ...(deps.consultWaitMs !== undefined ? { waitMs: deps.consultWaitMs } : {}) });
   const runners: Record<ProjectAgent, ProjectRunner> = {
-    claude_code: createProjectRunner(deps),
-    codex: createCodexProjectRunner({ store, onTool: deps.onTool, ...(deps.resolveCodex ? { resolve: deps.resolveCodex } : {}) }),
+    claude_code: createProjectRunner({ ...deps, consult }),
+    codex: createCodexProjectRunner({ store, consult, onTool: deps.onTool, ...(deps.resolveCodex ? { resolve: deps.resolveCodex } : {}) }),
     antigravity: createAgyProjectRunner({
-      store, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveAgy ? { resolve: deps.resolveAgy } : {}),
+      store, consult, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveAgy ? { resolve: deps.resolveAgy } : {}),
       ...(deps.agyVersion ? { version: deps.agyVersion } : {}), ...(deps.agyCommands ? { commands: deps.agyCommands } : {}),
     }),
     grok: createGrokProjectRunner({
-      store, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveGrok ? { resolve: deps.resolveGrok } : {}),
+      store, consult, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveGrok ? { resolve: deps.resolveGrok } : {}),
       ...(deps.grokHoldMs !== undefined ? { holdMs: deps.grokHoldMs } : {}), ...(deps.grokBilling ? { billing: deps.grokBilling } : {}),
       ...(deps.grokCommands ? { commands: deps.grokCommands } : {}),
     }),
@@ -48,13 +57,22 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
   // A row older than the agent column is Claude Code's (`projectOf` reads it so).
   const of = (sessionId: string): ProjectRunner => runners[store.projectOf(sessionId)?.agent ?? "claude_code"];
   const ofRun = (runId: string): ProjectRunner => of(store.getAgentRun(runId).session_id);
-  return {
+  whole = {
     heard: (message) => of(message.session_id).heard(message),
     answer: (runId, allow) => ofRun(runId).answer(runId, allow),
     answerAsk: (sessionId, askId, input) => of(sessionId).answerAsk(sessionId, askId, input),
-    stop: (runId) => ofRun(runId).stop(runId),
-    stopSession: (sessionId) => of(sessionId).stopSession(sessionId),
-    stopTask: (runId, taskId) => ofRun(runId).stopTask(runId, taskId),
+    // A session's consultants stop with it (ADR 0116): its Stop, its history cleared, it deleted.
+    stop: (runId) => {
+      const run = ofRun(runId).stop(runId);
+      consult.stopConsultants(run.session_id);
+      return run;
+    },
+    stopSession: (sessionId) => {
+      consult.stopConsultants(sessionId);
+      of(sessionId).stopSession(sessionId);
+    },
+    // A consultant's task stops that consultant; any other is the agent's own.
+    stopTask: (runId, taskId) => (consult.stopTask(runId, taskId) ? store.getAgentRun(runId) : ofRun(runId).stopTask(runId, taskId)),
     taskOutput: (runId, taskId) => ofRun(runId).taskOutput(runId, taskId),
     tune: (sessionId, change) => of(sessionId).tune(sessionId, change),
     resumeAfterLimits: (now) => {
@@ -64,7 +82,9 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
       await Promise.all(all.map((runner) => runner.idle()));
     },
     close() {
+      consult.close();
       for (const runner of all) runner.close();
     },
   };
+  return whole;
 }

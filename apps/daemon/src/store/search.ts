@@ -51,8 +51,10 @@ export function search(ctx: StoreContext, q: string): SearchHit[] {
         avatar: b.avatar ?? null,
       };
     });
+  // A consultant (ADR 0116) is no conversation of its own: neither it nor its lines are found.
+  const consultants = new Set(ctx.db.query<{ id: string }, []>(`SELECT id FROM sessions WHERE project_parent_id IS NOT NULL`).all().map((row) => row.id));
   const sessionHits = sessions
-    .filter((s) => (s.name ?? "").toLowerCase().includes(needle))
+    .filter((s) => !consultants.has(s.id) && (s.name ?? "").toLowerCase().includes(needle))
     .map((s) => ({
       kind: "session" as const,
       id: s.id,
@@ -67,6 +69,7 @@ export function search(ctx: StoreContext, q: string): SearchHit[] {
        FROM messages WHERE kind != 'profile_change' AND ${notBotOnlyLine()}`,
     )
     .all()
+    .filter((m) => !consultants.has(m.session_id))
     .filter((m) => m.body.toLowerCase().includes(needle) || Boolean(m.answer?.toLowerCase().includes(needle)))
     .map((m) => ({
       kind: "message" as const,

@@ -29,7 +29,8 @@ import { defaultConfigDir, tildeDir } from "./claude-code/account";
 import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
 import { findClaudeSessionFile } from "./claude-code/sessions";
-import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage } from "./engine/agent-runner";
+import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage, zodShape, type AgentToolBridge } from "./engine/agent-runner";
+import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from "./project-consult";
 import { outNote, pickClaudeAccount, seatOf, soonestBack } from "./claude-code/account-pick";
 import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
@@ -40,8 +41,12 @@ import { pictureMime } from "./loop-pictures";
 import type { Store } from "./store";
 import { visionImage } from "./vision-image";
 
-/** The SDK's `query` as the runner uses it, or a test's stand-in. */
-export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => AsyncIterable<SDKMessage> & {
+/**
+ * The SDK's `query` as the runner uses it, or a test's stand-in. `deskfolk` is the app's own tool
+ * for the run (ADR 0116, `consult`), mounted as the in-process `deskfolk` MCP server; a stand-in
+ * gets the bridge itself.
+ */
+export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; options: Options; deskfolk?: AgentToolBridge }) => AsyncIterable<SDKMessage> & {
   close(): void;
   /** The SDK's own: the model for the steps still to come in this run. */
   setModel?(model?: string): Promise<void>;
@@ -74,6 +79,8 @@ export type ProjectRunnerDeps = {
   onTool?: (frame: ToolFrame) => void;
   /** How long a run whose tasks have all ended waits for Claude Code to take that up by itself; a test's is short. */
   settleMs?: number;
+  /** The consult tool each run of a session of yours gets (ADR 0116). */
+  consult?: ConsultDesk;
 };
 
 export type ProjectRunner = {
@@ -152,6 +159,10 @@ type Live = {
 
 const STDERR_KEEP = 8 * 1024;
 const ACTIVITY_MAX = 160;
+/** The consult tool's call as Claude Code names it (ADR 0116). */
+const CONSULT_CALL = `mcp__${CONSULT_SERVER}__${CONSULT_TOOL}`;
+/** How long Claude Code lets the consult tool hold a call: past the longest wait it makes. */
+const CONSULT_TOOL_TIMEOUT_MS = CONSULT_WAIT_MS.claude_code + 5 * 60_000;
 const PARTIAL_MAX = 4000;
 /** The tools a task can come from: a long run need not hold on to what every other call wrote. */
 const TASK_TOOLS = new Set(["Bash", "Monitor", "Agent", "Task"]);
@@ -161,7 +172,23 @@ const SETTLE_MS = 2000;
 let sdkQuery: Promise<ProjectQuery> | null = null;
 
 function loadQuery(): Promise<ProjectQuery> {
-  sdkQuery ??= import("@anthropic-ai/claude-agent-sdk").then((sdk) => ({ prompt, options }) => sdk.query({ prompt, options }));
+  sdkQuery ??= (async (): Promise<ProjectQuery> => {
+    const sdk = await import("@anthropic-ai/claude-agent-sdk");
+    const { z } = await import("zod");
+    return ({ prompt, options, deskfolk }) => {
+      if (!deskfolk) return sdk.query({ prompt, options });
+      // The app's own tool, as a Bot's are mounted (`engine/agent-runner.ts`): loaded up front, not behind tool search.
+      const server = sdk.createSdkMcpServer({
+        name: CONSULT_SERVER,
+        version: "1",
+        tools: deskfolk.tools.map((entry) => sdk.tool(entry.name, entry.description, zodShape(z, entry.inputSchema), async (args) => {
+          const out = await deskfolk.call(entry.name, args as Record<string, unknown>);
+          return { content: [{ type: "text" as const, text: out.text }], isError: out.isError };
+        }, { alwaysLoad: true, ...(entry.readOnly ? { annotations: { readOnlyHint: true } } : {}) })),
+      });
+      return sdk.query({ prompt, options: { ...options, mcpServers: { [CONSULT_SERVER]: { ...server, timeout: CONSULT_TOOL_TIMEOUT_MS } } } });
+    };
+  })();
   return sdkQuery;
 }
 
@@ -435,7 +462,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     if (!existsSync(project.dir)) return fail(live, en ? `${project.dir} is no longer there` : `${project.dir} 已经不在了`);
     if (live.stopped) return;
 
-    const permission = store.appPermissionMode();
+    // A consultant only looks (ADR 0116); every other session goes by the app's mode.
+    const permission = store.projectPermissionMode(live.sessionId);
+    const consultant = project.parentId !== null;
+    // The consult tool (ADR 0116) for this run of a session of yours: gone with the run.
+    const mount = consultant ? null : (deps.consult?.mount(live.sessionId, live.runId) ?? null);
     const configDirs = store.claudeCodeConfigDirs();
     const accountDir = project.configDir ?? (process.env.CLAUDE_CONFIG_DIR?.trim() || defaultConfigDir());
     // Its memory of this project and its saved plans, under the account it runs on: the things in there it may open.
@@ -462,10 +493,15 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       const toolInput = (raw.tool_input ?? {}) as Record<string, unknown>;
       // The call's own mode, as Claude Code says it; the run's as last known otherwise.
       const planning = (raw.permission_mode ?? live.mode) === "plan";
-      const decision = decideAgentCall({
-        tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-        mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: true, questions: true, permission,
-      });
+      // The app's own tool (ADR 0116) is the app's to run: it only asks another agent, so it goes in
+      // plan mode and read-only too. A subagent of Claude Code's asks no one.
+      if (raw.tool_name === CONSULT_CALL && raw.agent_id) return deny(en ? "only the agent itself may ask a consultant, not a subagent" : "只有它自己能请参谋，子代理不行");
+      const decision = raw.tool_name === CONSULT_CALL && mount
+        ? { kind: "allow" as const, effect: false, appName: raw.tool_name }
+        : decideAgentCall({
+          tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
+          mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: !consultant, questions: true, permission,
+        });
       if (decision.kind === "deny") return deny(decision.reason);
       if (TASK_TOOLS.has(raw.tool_name)) taskCalls.set(id, { tool: raw.tool_name, input: toolInput });
       if (!raw.agent_id) update(live.runId, { activity: activityOf(raw.tool_name, toolInput) });
@@ -523,6 +559,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       return { behavior: "allow", updatedInput: { ...toolInput, answers: answered } };
     };
     const canUseTool: CanUseTool = async (toolName, toolInput, options): Promise<PermissionResult> => {
+      if (toolName === CONSULT_CALL && mount) return { behavior: "allow", updatedInput: toolInput };
       if (toolName === "AskUserQuestion") {
         live.asked.delete(options.toolUseID);
         return answerQuestions(toolInput);
@@ -595,8 +632,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       // The session's own: plan mode carries from run to run until a plan is approved or you turn it off.
       permissionMode: live.mode,
       // Always offered, so plan mode turned on mid-run has a way out.
-      // Its own questions too, on cards of yours (ADR 0095 addendum 2026-11-17).
-      tools: [...AGENT_WORK_TOOLS, "ExitPlanMode", "AskUserQuestion", ...AGENT_BACKGROUND_TOOLS],
+      // Its own questions too, on cards of yours (ADR 0095 addendum 2026-11-17). A consultant
+      // (ADR 0116) never plans and sends nothing to the background; its questions go to the agent that asked it.
+      tools: consultant ? [...AGENT_WORK_TOOLS, "AskUserQuestion"] : [...AGENT_WORK_TOOLS, "ExitPlanMode", "AskUserQuestion", ...AGENT_BACKGROUND_TOOLS],
       systemPrompt: { type: "preset", preset: "claude_code" },
       hooks,
       canUseTool,
@@ -617,7 +655,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     let limitHit = false;
     /** Your lines the failed result had taken: one the limit turned away is still unanswered. */
     let turnedAway: Live["sent"] = [];
-    const session = query({ prompt: live.input.iterable, options });
+    const session = query({ prompt: live.input.iterable, options, ...(mount ? { deskfolk: mount.bridge } : {}) });
     live.query = session;
     /** Nothing of yours left to answer and nothing going in the background: the run is over. Its input closed, Claude Code winds down by itself. */
     const settle = () => {
@@ -731,6 +769,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     } catch (error) {
       if (!live.stopped) failure ??= firstLine(stderr.split("\n").filter(Boolean).at(-1) ?? "") ?? firstLine(String(error)) ?? "error";
     } finally {
+      mount?.close();
       if (settling) clearTimeout(settling);
       // A call cut by Stop or a crash never reports its end: it ends with the run.
       for (const id of [...started.keys()]) ended(id, false);
@@ -782,6 +821,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const seat = seatOf(status, project.configDir);
     const known = resetsAt !== null && resetsAt > Date.now();
     store.markAccountOut({ runner: "claude_code", dir: seat.dir, email: seat.email, until: known ? resetsAt! : Date.now() + LIMIT_GUESS_MS, known });
+    // A consultant (ADR 0116) neither moves nor waits for the reset: the agent that asked it is told now.
+    if (project.parentId) return fail(live, detail);
     const lines = unanswered.flatMap((line) => (line.messageId ? [line.messageId] : []));
     const listed = store.claudeCodeConfigDirs();
     const next = pickClaudeAccount({ status, listed, preferred: project.configDir, outs: store.accountsOut() });

@@ -1,11 +1,12 @@
 import type { Database } from "bun:sqlite";
-import { isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isConsultTask, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type PermissionMode, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
 import { getMessage } from "./messages";
+import { appPermissionMode } from "./permissions";
 import { getSession } from "./sessions";
-import { jsonColumnOr, sessionRow, type StoreContext } from "./shared";
+import { jsonColumnOr, sessionRow, setSetting, type StoreContext } from "./shared";
 
 /** Who a project session's agent lines are by: no Bot, so no Bot id (ADR 0095). */
 export const AGENT_AUTHOR = PROJECT_AGENT_AUTHOR;
@@ -52,7 +53,7 @@ export function migrateProjectSessions(db: Database): void {
     }
   }
   const names = db.query<{ name: string }, []>(`PRAGMA table_info(sessions)`).all().map((row) => row.name);
-  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode"]) {
+  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
   // What a run has going beside its reply (ADR 0095, 25). A table made before them has neither.
@@ -75,6 +76,8 @@ export type ProjectOf = {
   effort: string | null;
   /** `plan` while plan mode is on (ADR 0098): its runs start in it. */
   mode: ProjectAgentMode | null;
+  /** A consultant's (ADR 0116): the session whose agent asked it in; null for every session of yours. */
+  parentId: string | null;
 };
 
 /** Every project session's directory: where, besides the workspace, the app may save a file. */
@@ -88,14 +91,68 @@ export function projectDirs(ctx: StoreContext): string[] {
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
-    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null }, [string]>(
-      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode FROM sessions WHERE id = ?`,
+    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null; project_parent_id: string | null }, [string]>(
+      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode, project_parent_id FROM sessions WHERE id = ?`,
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
   return { dir: row.project_dir, agent: isProjectAgent(row.project_agent) ? row.project_agent : "claude_code", configDir: row.project_config_dir,
     agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
-    effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null };
+    effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null, parentId: row.project_parent_id };
+}
+
+/**
+ * What a project session's agent may do without asking (ADR 0092): the app's mode, but a
+ * consultant (ADR 0116) only looks — it was asked in to talk a plan over, not to change anything.
+ */
+export function projectPermissionMode(ctx: StoreContext, sessionId: string): PermissionMode {
+  return projectOf(ctx, sessionId)?.parentId ? "read_only" : appPermissionMode(ctx);
+}
+
+/** A session's consultants (ADR 0116), oldest first. */
+export function consultantsOf(ctx: StoreContext, parentId: string): string[] {
+  return ctx.db
+    .query<{ id: string }, [string]>(`SELECT id FROM sessions WHERE kind = 'project' AND project_parent_id = ? ORDER BY created_at, id`)
+    .all(parentId)
+    .map((row) => row.id);
+}
+
+/**
+ * A consultant (ADR 0116): a project session in the asking session's directory, on another agent
+ * (or the same one on another model), the account that agent's sessions start on by default. It
+ * is named for whom it advises, as the spend view lists it; it is never named by its first line.
+ */
+export function createConsultantSession(
+  ctx: StoreContext,
+  input: { parentId: string; agent: ProjectAgent; model: string | null; effort: string | null; name: string },
+): SessionDetail {
+  const parent = projectOf(ctx, input.parentId);
+  if (!parent) throw new HttpError(404, "not_found", "not a project session");
+  if (parent.parentId) throw new HttpError(422, "invalid_args", "a consultant asks no consultant of its own");
+  const now = isoNow();
+  const id = ulid();
+  ctx.db.transaction(() => {
+    ctx.db.run(
+      `INSERT INTO sessions (id, kind, name, last_read_at, project_dir, project_agent, project_config_dir, project_model, project_effort, project_parent_id, created_at, updated_at)
+       VALUES (?, 'project', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+      [id, input.name, now, parent.dir, input.agent, input.model, input.effort, input.parentId, now, now],
+    );
+    ctx.db.run(`INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`, [id, USER_MEMBER, now]);
+  })();
+  return getSession(ctx, id);
+}
+
+/**
+ * The agents' own sessions consultants ran in (ADR 0116), kept past the consultant's row: Antigravity
+ * and Grok list every session they have and title each themselves, so nothing else tells one of
+ * them from yours once the row is gone. Kept as `agent:id` lines in a setting no window reads.
+ */
+const CONSULTED_KEY = "consultant_agent_sessions";
+const CONSULTED_KEEP = 2000;
+
+function consultedSessions(ctx: StoreContext): string[] {
+  const raw = ctx.db.query<{ value: string }, [string]>(`SELECT value FROM settings WHERE key = ?`).get(CONSULTED_KEY)?.value ?? "";
+  return raw.split("\n").filter(Boolean);
 }
 
 /**
@@ -119,6 +176,12 @@ export function tuneProjectSession(ctx: StoreContext, sessionId: string, change:
  */
 export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string | null, startOver = false): void {
   ctx.db.run(`UPDATE sessions SET project_agent_session = ?${startOver ? ", project_source = NULL" : ""} WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
+  const project = agentSession ? projectOf(ctx, sessionId) : null;
+  if (!project?.parentId) return;
+  const line = `${project.agent}:${agentSession}`;
+  const kept = consultedSessions(ctx);
+  if (kept.includes(line)) return;
+  setSetting(ctx, CONSULTED_KEY, [...kept, line].slice(-CONSULTED_KEEP).join("\n"));
 }
 
 /**
@@ -131,7 +194,8 @@ export function knownAgentSessions(ctx: StoreContext, agent: ProjectAgent): Set<
       `SELECT project_agent_session, project_source FROM sessions WHERE kind = 'project' AND project_agent = ?`,
     )
     .all(agent);
-  return new Set(rows.flatMap((row) => [row.project_agent_session, row.project_source].filter((id): id is string => typeof id === "string" && id.length > 0)));
+  const consulted = consultedSessions(ctx).flatMap((line) => (line.startsWith(`${agent}:`) ? [line.slice(agent.length + 1)] : []));
+  return new Set([...rows.flatMap((row) => [row.project_agent_session, row.project_source].filter((id): id is string => typeof id === "string" && id.length > 0)), ...consulted]);
 }
 
 /** Each agent's name in the app's own lines about it. */
@@ -326,8 +390,11 @@ export function updateAgentRun(
     values.push(patch.approval ? JSON.stringify(patch.approval) : null);
   }
   if (patch.tasks !== undefined) {
+    // A runner says its own list whole; the consultants asked on this run (ADR 0116) are not on
+    // it, and stay as the app last wrote them.
+    const consulting = patch.tasks.some(isConsultTask) ? [] : jsonColumnOr<AgentTask[]>(ctx.db.query<{ tasks: string | null }, [string]>(`SELECT tasks FROM agent_runs WHERE id = ?`).get(id)?.tasks ?? null, []).filter(isConsultTask);
     sets.push(`tasks = ?`);
-    values.push(JSON.stringify(patch.tasks));
+    values.push(JSON.stringify([...patch.tasks, ...consulting]));
   }
   if (patch.idle !== undefined) {
     sets.push(`idle = ?`);

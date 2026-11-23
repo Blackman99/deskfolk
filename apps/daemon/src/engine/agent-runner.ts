@@ -71,6 +71,8 @@ export type AgentTool = { name: string; description: string; inputSchema: Record
 /** What the app's tools look like from inside a Claude Agent session. */
 export type AgentToolBridge = {
   tools: AgentTool[];
+  /** What the server says of itself on `initialize` (MCP `instructions`): an agent that keeps tools behind a search reads it. */
+  instructions?: string;
   call(name: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }>;
 };
 

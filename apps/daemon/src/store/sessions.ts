@@ -96,8 +96,9 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
       .all()
       .map((r) => r.id),
   );
+  // A consultant (ADR 0116) is no conversation of its own: no window, phone or Bot lists it.
   const sessions = ctx.db
-    .query<SessionRow, []>(`SELECT * FROM sessions ORDER BY updated_at DESC, id DESC`)
+    .query<SessionRow, []>(`SELECT * FROM sessions WHERE project_parent_id IS NULL ORDER BY updated_at DESC, id DESC`)
     .all();
   const participants = ctx.db
     .query<ParticipantRow, []>(`SELECT * FROM session_participants`)

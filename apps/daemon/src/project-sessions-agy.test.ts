@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRun, type AgentSessionList, type ClaudeCodeCommandList, type SessionDetail, type ToolFrame } from "@real-bot/protocol";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
+import { mountedAgentMcp } from "./agent-mcp/bridge";
 import { agyBrainDir } from "./project-runner-agy";
 import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
@@ -85,7 +86,7 @@ function start(scripts: Script[], opts: { version?: string } = {}) {
   return { store, api, dir, frames, call, open, say, run, until, settled, log, sent, lines };
 }
 
-test("an Antigravity session: your own agy in its directory with no tools of the app's; later lines resume its session", async () => {
+test("an Antigravity session: your own agy in its directory with the app's consult tool only; later lines resume its session", async () => {
   const h = start([{ prompts: [[{ say: "Hello " }, { say: "there." }]], commands: [{ name: "compact", description: "Compact" }] }, { prompts: [[{ say: "Again." }]] }]);
   const id = await h.open();
   await h.say(id, "hi");
@@ -95,7 +96,7 @@ test("an Antigravity session: your own agy in its directory with no tools of the
   // `agy acp` with its terminal sandbox on, offered no file system and no terminal, in the session's directory.
   expect(h.log(0)[0]?.argv).toEqual(["acp", "--sandbox"]);
   expect(h.sent(0, "initialize")[0]).toMatchObject({ clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } });
-  expect(h.sent(0, "session/new")).toEqual([{ cwd: h.dir, mcpServers: [] }]);
+  expect(h.sent(0, "session/new")).toEqual([{ cwd: h.dir, mcpServers: [expect.objectContaining({ name: "deskfolk" })] }]);
   expect(h.store.projectOf(id)?.agentSession).toBe("agy-session-1");
   // Only your line goes: no instructions of the app's.
   expect(h.sent(0, "session/prompt")[0]).toEqual({ sessionId: "agy-session-1", prompt: [{ type: "text", text: "hi" }] });
@@ -108,7 +109,7 @@ test("an Antigravity session: your own agy in its directory with no tools of the
 
   await h.say(id, "more");
   await h.until(async () => (await h.run(id))?.status === "completed" && h.lines(id).at(-1)?.body === "Again.");
-  expect(h.sent(1, "session/resume")).toEqual([{ sessionId: "agy-session-1", cwd: h.dir, mcpServers: [] }]);
+  expect(h.sent(1, "session/resume")).toEqual([{ sessionId: "agy-session-1", cwd: h.dir, mcpServers: [expect.objectContaining({ name: "deskfolk" })] }]);
   expect(h.sent(1, "session/new")).toEqual([]);
 });
 
@@ -243,7 +244,7 @@ test("a terminal agy session is listed without the app's own, carried on in that
 
   await h.say(id, "still?");
   await h.settled(id);
-  expect(h.sent(2, "session/resume")).toEqual([{ sessionId: "term-1", cwd: elsewhere, mcpServers: [] }]);
+  expect(h.sent(2, "session/resume")).toEqual([{ sessionId: "term-1", cwd: elsewhere, mcpServers: [expect.objectContaining({ name: "deskfolk" })] }]);
   expect(h.lines(id).at(-1)?.body).toBe("Still fixed.");
   expect(() => validateBusiness({ v: 1, id: ulid(), method: "GET", path: "/v1/runtime/agents/antigravity/sessions" })).not.toThrow();
 });
@@ -328,4 +329,67 @@ test("a line typed while agy's question waits answers it in your words; Stop ins
   expect(stopped.body).toMatchObject({ status: "stopped", asks: [] });
   await h.api.projects.idle();
   expect(h.log(1).find((entry) => "question" in entry)?.answer as unknown).toEqual({ action: "cancel" });
+});
+
+const CONSULT_CALL = { kind: "other", title: "Run mcp_deskfolk_consult", rawInput: { agent: "codex", message: "看看", toolSummary: "Ask Codex" } };
+
+test("a session of yours gets the consult tool as a stdio server at session/new and again at session/resume (ADR 0116)", async () => {
+  const h = start([{ prompts: [[{ say: "one" }]] }, { prompts: [[{ say: "two" }]] }]);
+  const id = await h.open();
+  await h.say(id, "hi");
+  await h.settled(id);
+  const mounted = (params: Record<string, unknown> | undefined) => {
+    const servers = params?.mcpServers as Array<{ name: string; command: string; args: string[]; env: Array<{ name: string; value: string }> }>;
+    expect(servers).toHaveLength(1);
+    expect(servers[0]!.name).toBe("deskfolk");
+    expect(typeof servers[0]!.command).toBe("string");
+    expect(Array.isArray(servers[0]!.args)).toBe(true);
+    const names = servers[0]!.env.map((entry) => entry.name);
+    expect(names).toContain("DESKFOLK_AGENT_MCP_URL");
+    expect(names).toContain("DESKFOLK_AGENT_MCP_TOKEN");
+  };
+  mounted(h.sent(0, "session/new")[0]);
+  await h.say(id, "more");
+  await h.until(async () => h.lines(id).at(-1)?.body === "two");
+  mounted(h.sent(1, "session/resume")[0]);
+  // Each run's token goes with the run.
+  await h.until(() => mountedAgentMcp() === 0);
+});
+
+test("the consult call passes under read-only, ask-first and plan mode, and is never taken for a shell command or a read", async () => {
+  const step = [{ tool: { ...CONSULT_CALL, rawInput: { ...CONSULT_CALL.rawInput, command: "rm -rf /", path: "/etc/passwd" } } }, { say: "Done." }];
+  const h = start([{ prompts: [step] }, { prompts: [step] }, { prompts: [step] }]);
+  const id = await h.open();
+  const asked = async (line: string, count: number) => {
+    await h.say(id, line);
+    await h.until(async () => h.lines(id).at(-1)?.body === "Done." && (await h.run(id))?.status === "completed" && h.log(count).length > 0);
+  };
+  h.store.patchSettings({ permission_mode: "read_only" });
+  await asked("one", 0);
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  await asked("two", 1);
+  expect((await h.call("PATCH", `/v1/project-sessions/${id}`, { mode: "plan" })).status).toBe(200);
+  await asked("three", 2);
+  for (const index of [0, 1, 2]) expect(h.log(index).some((entry) => entry.notification === "session/cancel")).toBe(false);
+});
+
+test("another MCP tool of yours is still read by what it names: under ask first, one that runs a command stops the turn", async () => {
+  const h = start([{ prompts: [[{ tool: { kind: "other", title: "Run mcp_other_x", rawInput: { command: "rm -rf build" }, holdMs: 30 } }, { say: "Done." }]] }]);
+  const id = await h.open();
+  h.store.patchSettings({ permission_mode: "ask_first" });
+  await h.say(id, "clean up");
+  await h.settled(id);
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(true);
+});
+
+test("a consultant's agy opens with no tools, and a call of any MCP tool stops its turn", async () => {
+  const h = start([{ prompts: [[{ tool: { kind: "other", title: "Run mcp_other_tool", rawInput: { a: 1 }, holdMs: 30 } }, { say: "Done." }]] }]);
+  const parent = await h.open();
+  const child = h.store.createConsultantSession({ parentId: parent, agent: "antigravity", model: null, effort: null, name: "参谋 · Antigravity" });
+  const childId = child.id;
+  await h.say(childId, "look at this");
+  await h.settled(childId);
+  expect(h.sent(0, "session/new")).toEqual([{ cwd: h.dir, mcpServers: [] }]);
+  expect((await h.run(childId))?.status).toBe("failed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(true);
 });
