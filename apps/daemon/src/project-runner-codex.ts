@@ -20,7 +20,7 @@ import { isAgentEffort, PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRun
 import daemonPackage from "../package.json";
 import { askSkills, codexBuiltinOf, type CodexBuiltin, type CodexSkill } from "./agents/codex-commands";
 import { estimateAgentCost } from "./agents/agent-prices";
-import { agentContextWindow } from "./agents/agent-context";
+import { codexContextUsage } from "./agents/agent-context";
 import { agentAnnotations, type AnnotationCropBytes } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
@@ -605,12 +605,9 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
      */
     const bill = (p: Record<string, unknown>) => {
       const usage = (p.tokenUsage ?? {}) as { total?: Record<string, number>; last?: Record<string, number>; modelContextWindow?: number | null };
-      if (!agentOf(p) && usage.last) {
-        const used = typeof usage.last.inputTokens === "number" && Number.isFinite(usage.last.inputTokens) ? Math.round(usage.last.inputTokens) : 0;
-        const limit = typeof usage.modelContextWindow === "number" && Number.isFinite(usage.modelContextWindow) && usage.modelContextWindow > 0
-          ? Math.round(usage.modelContextWindow)
-          : agentContextWindow(model);
-        if (used > 0) store.recordProjectContext(live.sessionId, { used, limit, model });
+      if (!agentOf(p)) {
+        const ctx = codexContextUsage(p.tokenUsage, model);
+        if (ctx) store.recordProjectContext(live.sessionId, ctx);
       }
       if (!usage.last || typeof p.turnId !== "string" || !ours.has(p.turnId)) return;
       const thread = typeof p.threadId === "string" ? p.threadId : "";

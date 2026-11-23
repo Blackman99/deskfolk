@@ -2,7 +2,7 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ProjectContextUsage } from "@real-bot/protocol";
-import { agentContextWindow, claudeAssistantPromptTokens } from "../agents/agent-context";
+import { claudeAssistantPromptTokens, claudeContextUsageField, claudeModelContextWindow } from "../agents/agent-context";
 
 export type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
@@ -77,23 +77,52 @@ export function carriedTotals(file: string): Map<string, ModelTotals> | null {
 }
 
 /**
- * The latest main-thread assistant message's prompt occupancy from a Claude Code session JSONL file,
- * so existing or imported sessions show context usage immediately before their next run.
+ * The latest main-thread context occupancy from a Claude Code session JSONL file, so existing or
+ * imported sessions show accurate context usage before their next run. Reads both the latest
+ * non-sidechain `assistant` message's prompt tokens and the latest `cost-state` entry's reported
+ * `contextWindow` for that model; never guesses a window size when `cost-state` has none.
  */
 export function lastContextUsage(file: string): ProjectContextUsage | null {
-  return scanJsonlBack(file, (line) => {
-    if (!line.includes('"assistant"') || !line.includes('"usage"')) return null;
-    try {
-      const entry = JSON.parse(line) as { type?: unknown; isSidechain?: unknown; message?: { model?: unknown; usage?: unknown } };
-      if (entry.type !== "assistant" || entry.isSidechain === true || !entry.message) return null;
-      const used = claudeAssistantPromptTokens(entry.message);
-      if (used === null) return null;
-      const model = typeof entry.message.model === "string" && entry.message.model.trim() ? entry.message.model.trim() : null;
-      return { used, limit: agentContextWindow(model), ...(model ? { model } : {}) };
-    } catch {
-      return null;
+  let assistant: { used: number; model: string | null } | null = null;
+  let costModelUsage: unknown = null;
+  const direct = scanJsonlBack<ProjectContextUsage>(file, (line) => {
+    if (!assistant && line.includes('"assistant"')) {
+      try {
+        const entry = JSON.parse(line) as { type?: unknown; isSidechain?: unknown; context_usage?: unknown; message?: { model?: unknown; usage?: unknown } };
+        if (entry.type === "assistant" && entry.isSidechain !== true) {
+          const explicit = claudeContextUsageField(entry);
+          if (explicit) return explicit;
+          const used = entry.message ? claudeAssistantPromptTokens(entry.message) : null;
+          if (used !== null) {
+            const model = typeof entry.message?.model === "string" && entry.message.model.trim() ? entry.message.model.trim() : null;
+            assistant = { used, model };
+          }
+        }
+      } catch {
+        // ignore malformed line
+      }
     }
+    if (!costModelUsage && line.includes('"cost-state"')) {
+      try {
+        const entry = JSON.parse(line) as { type?: unknown; modelUsage?: unknown };
+        if (entry.type === "cost-state" && entry.modelUsage && typeof entry.modelUsage === "object") {
+          costModelUsage = entry.modelUsage;
+        }
+      } catch {
+        // ignore malformed line
+      }
+    }
+    if (assistant && costModelUsage) {
+      const limit = claudeModelContextWindow(costModelUsage, assistant.model);
+      return { used: assistant.used, limit, ...(assistant.model ? { model: assistant.model } : {}) };
+    }
+    return null;
   });
+  if (direct) return direct;
+  if (!assistant) return null;
+  const { used, model } = assistant as { used: number; model: string | null };
+  const limit = costModelUsage ? claudeModelContextWindow(costModelUsage, model) : null;
+  return { used, limit, ...(model ? { model } : {}) };
 }
 
 function costStateTotals(line: string): Map<string, ModelTotals> | null {

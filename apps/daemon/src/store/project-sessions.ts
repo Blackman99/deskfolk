@@ -56,6 +56,14 @@ export function migrateProjectSessions(db: Database): void {
   for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id", "project_consult", "project_context"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
+  // One-time reset of any context usage saved before hardcoded model window guesses were removed.
+  if (db.query<{ name: string }, []>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'`).get()) {
+    const done = db.query<{ value: string }, []>(`SELECT value FROM settings WHERE key = 'project_context_no_guess_v1'`).get();
+    if (!done) {
+      db.run(`UPDATE sessions SET project_context = NULL WHERE kind = 'project'`);
+      db.run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('project_context_no_guess_v1', '1')`);
+    }
+  }
   // What a run has going beside its reply (ADR 0095, 25). A table made before them has neither.
   const runs = db.query<{ name: string }, []>(`PRAGMA table_info(agent_runs)`).all().map((row) => row.name);
   if (runs.length > 0 && !runs.includes("tasks")) db.run(`ALTER TABLE agent_runs ADD COLUMN tasks TEXT`);

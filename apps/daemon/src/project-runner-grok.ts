@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { estimateAgentCost } from "./agents/agent-prices";
-import { acpContextUsage, agentContextWindow } from "./agents/agent-context";
+import { acpContextUsage } from "./agents/agent-context";
 import { tildeDir } from "./claude-code/account";
 import { shellQuote } from "./agents/status";
 import { gateChange, inMemoryDir } from "./claude-code/policy";
@@ -524,11 +524,12 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       const cached = num("cachedReadTokens");
       if (input + output === 0) return;
       const used = usage.modelUsage && typeof usage.modelUsage === "object" ? Object.keys(usage.modelUsage as object)[0] ?? null : null;
+      // Only record context occupancy if Grok explicitly reports single-request contextTokens (never cumulative billing inputTokens).
       if (sessionId === live.acpSession && !sawUsageUpdate) {
-        const ctxTokens = num("contextTokens") || input;
+        const ctxTokens = num("contextTokens");
         const reportedWindow = num("contextWindow") || num("modelContextWindow") || null;
         if (ctxTokens > 0) {
-          store.recordProjectContext(live.sessionId, { used: ctxTokens, limit: reportedWindow ?? agentContextWindow(used ?? model), model: used ?? model });
+          store.recordProjectContext(live.sessionId, { used: ctxTokens, limit: reportedWindow, model: used ?? model });
         }
       }
       const reported = typeof usage.costUsdTicks === "number" && usage.costIsPartial !== true ? usage.costUsdTicks : null;

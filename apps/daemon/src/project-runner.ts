@@ -28,7 +28,7 @@ import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "./claude-code/account";
 import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
-import { agentContextWindow, claudeAssistantPromptTokens, claudeResultContextWindow } from "./agents/agent-context";
+import { claudeAssistantPromptTokens, claudeContextUsageField, claudeControlContextUsage, claudeResultContextWindow } from "./agents/agent-context";
 import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage, zodShape, type AgentToolBridge } from "./engine/agent-runner";
 import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from "./project-consult";
@@ -61,6 +61,8 @@ export type ProjectQuery = (params: { prompt: AsyncIterable<SDKUserMessage>; opt
   stopTask?(taskId: string): Promise<void>;
   /** The SDK's own, though not in its types: the last 8 KiB a shell or Monitor task wrote. */
   getTaskOutput?(taskId: string): Promise<{ output: string; total_bytes: number; truncated: boolean }>;
+  /** The SDK's own: current context window occupancy and exact window limit without API calls (`detail: "summary"`). */
+  getContextUsage?(opts?: { detail?: "summary" | "full" }): Promise<{ totalTokens?: number; maxTokens?: number; rawMaxTokens?: number; model?: string }>;
 };
 
 /** The two of Claude Code's own modes a project session runs in: as usual, or planning (ADR 0098). */
@@ -672,9 +674,29 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     };
     let settling: ReturnType<typeof setTimeout> | null = null;
     let recordedSession: string | null = null;
-    // Current context window size and latest main-agent prompt occupancy for this run.
+    // Current authoritative context window size (and which model it belongs to) + latest main prompt tokens.
     let contextWindow: number | null = project.context?.limit ?? null;
+    let contextWindowModel: string | null = project.context?.model ?? null;
     let lastPromptTokens: number | null = null;
+    /** Queries Claude Code's local context summary (no API calls) for exact window & occupancy. */
+    const refreshContextSummary = async (): Promise<void> => {
+      if (live.stopped || typeof session.getContextUsage !== "function") return;
+      try {
+        const res = await Promise.race([
+          session.getContextUsage({ detail: "summary" }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000).unref?.()),
+        ]);
+        const summary = claudeControlContextUsage(res);
+        if (!summary || live.stopped) return;
+        if (summary.limit !== null) {
+          contextWindow = summary.limit;
+          contextWindowModel = summary.model ?? models.main;
+        }
+        store.recordProjectContext(live.sessionId, summary);
+      } catch {
+        // Older CLI or closing session: result/assistant usage remains recorded.
+      }
+    };
     try {
       for await (const message of session) {
         if (live.stopped) break;
@@ -684,8 +706,13 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           if (own && own !== recordedSession) store.recordProjectAgentSession(live.sessionId, own);
           recordedSession = own ?? recordedSession;
           models.main = modelOf({ model: (message as { model?: string }).model }) ?? models.main;
+          if (models.main && contextWindowModel && models.main !== contextWindowModel) {
+            contextWindow = null;
+            contextWindowModel = models.main;
+          }
           live.mode = modeOf(message) ?? live.mode;
           setIdle(live, false);
+          void refreshContextSummary();
           continue;
         }
         if (message.type === "system" && ["task_started", "task_progress", "task_updated", "task_notification", "background_tasks_changed"].includes(message.subtype)) {
@@ -731,10 +758,24 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
             }
           }
           if (message.parent_tool_use_id) continue;
-          const promptTokens = claudeAssistantPromptTokens(message.message);
-          if (promptTokens !== null) {
-            lastPromptTokens = promptTokens;
-            store.recordProjectContext(live.sessionId, { used: promptTokens, limit: contextWindow ?? agentContextWindow(models.main), model: models.main });
+          if (models.main && contextWindowModel && models.main !== contextWindowModel) {
+            contextWindow = null;
+            contextWindowModel = models.main;
+          }
+          const explicitContext = claudeContextUsageField(message);
+          if (explicitContext) {
+            lastPromptTokens = explicitContext.used;
+            if (explicitContext.limit !== null) {
+              contextWindow = explicitContext.limit;
+              contextWindowModel = explicitContext.model ?? models.main;
+            }
+            store.recordProjectContext(live.sessionId, explicitContext);
+          } else {
+            const promptTokens = claudeAssistantPromptTokens(message.message);
+            if (promptTokens !== null) {
+              lastPromptTokens = promptTokens;
+              store.recordProjectContext(live.sessionId, { used: promptTokens, limit: contextWindow, model: models.main });
+            }
           }
           const blocks = Array.isArray(message.message.content) ? message.message.content : [];
           const text = blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
@@ -764,15 +805,18 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           const command = answered.find((line) => line.command)?.command ?? null;
           bill(live, message, billed, models.main);
           const reportedWindow = claudeResultContextWindow(message, models.main);
-          if (reportedWindow !== null) contextWindow = reportedWindow;
+          if (reportedWindow !== null) {
+            contextWindow = reportedWindow;
+            contextWindowModel = models.main;
+          }
           if (command === "clear") {
             lastPromptTokens = null;
             store.recordProjectContext(live.sessionId, null);
           } else {
-            const used = lastPromptTokens ?? claudeAssistantPromptTokens(message);
-            if (used !== null) {
-              store.recordProjectContext(live.sessionId, { used, limit: contextWindow ?? agentContextWindow(models.main), model: models.main });
+            if (lastPromptTokens !== null) {
+              store.recordProjectContext(live.sessionId, { used: lastPromptTokens, limit: contextWindow, model: models.main });
             }
+            await refreshContextSummary();
           }
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;

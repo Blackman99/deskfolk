@@ -105,15 +105,23 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   if (params && method === "GET") {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
-    // Backfill context usage once from Claude Code's session file for existing/imported sessions.
-    if (project.agent === "claude_code" && !project.context && (project.agentSession || project.source)) {
+    // Backfill or refresh context usage from Claude Code's session file when no run is currently active.
+    const latest = store.latestAgentRun(params.id!);
+    const live = latest && (latest.status === "running" || latest.status === "waiting_approval");
+    if (!live && project.agent === "claude_code" && (project.agentSession || project.source)) {
       const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
       const root = roots.find((entry) => entry.configDir === project.configDir) ?? roots[0]!;
       const file = findClaudeSessionFile(root, (project.agentSession ?? project.source)!);
       const usage = file ? lastContextUsage(file) : null;
-      if (usage) store.recordProjectContext(params.id!, usage);
+      if (usage && (!project.context || usage.used !== project.context.used || (usage.limit !== null && usage.limit !== project.context.limit))) {
+        store.recordProjectContext(params.id!, {
+          used: usage.used,
+          limit: usage.limit ?? (project.context?.model === usage.model ? project.context?.limit ?? null : null),
+          ...(usage.model ? { model: usage.model } : {}),
+        });
+      }
     }
-    return jsonResponse({ run: store.latestAgentRun(params.id!) }, 200, null);
+    return jsonResponse({ run: latest }, 200, null);
   }
 
   // Its work read back from Claude Code's own session files, for the task map (ADR 0095). Nothing
