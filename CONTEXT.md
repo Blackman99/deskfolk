@@ -37,7 +37,7 @@ _Avoid_: 把几件不相干的事混成一条协作私聊, 用户是 Bot↔Bot �
 _Avoid_: 把项目会话叫成 Bot, 给项目会话开工作或流程图, 打「停下」当 Stop, 改写终端里的原会话
 
 **参谋（Consultant）**：
-项目会话的 Agent 在你开口要时请来一起讨论方案的另一个 Agent（Claude Code、Codex、Antigravity 或 Grok）或另一个模型。它在同一个目录里，只看不改（各家用各自的办法：Codex 在它自己的只读沙盒里跑命令，Antigravity 动了手就停下），只听得到请它的 Agent 交代的话；它的回答交回那个 Agent，它反问时也是问那个 Agent，答不了才问你。每次请教是那一轮回复下面的一行，带那家的 logo 和模型，点开看它答了什么；参谋不进侧栏、搜索和导入列表，请它的那一轮结束就一起停下。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)和 [ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)。
+项目会话的 Agent 在你开口要时请来一起讨论方案的另一个 Agent（Claude Code、Codex、Antigravity 或 Grok）或另一个模型。它在同一个目录里，只看不改（各家用各自的办法：Codex 在它自己的只读沙盒里跑命令，Antigravity 动了手就停下），只听得到请它的 Agent 交代的话；它的回答交回那个 Agent，它反问时也是问那个 Agent，答不了才问你。输入框里还有一个和计划模式一样的「参谋」开关，选好最多 3 位（Agent 和模型），开着时每句话都先请他们。每次请教是那一轮回复下面的一行，带那家的 logo 和模型，点开看它答了什么；参谋不进侧栏、搜索和导入列表，请它的那一轮结束就一起停下。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)和 [ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)。
 _Avoid_: 把参谋叫成子代理或 Bot, 让参谋改文件, 应用替 Agent 决定请谁, 参谋自己再请参谋
 
 **任务地图（Task map）**：

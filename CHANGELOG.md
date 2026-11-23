@@ -10,6 +10,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - Say "have Codex look at this plan too" or "ask Grok what it thinks" in a project session, and the agent brings in a consultant: another agent (Claude Code, Codex, Antigravity or Grok) or another model, talking the plan over in the same directory. A consultant only looks; its answers go back to the agent that asked it, and so do its questions; the agent can go several rounds with the same one.
 - Each consultation is a row under that run's reply, with the agent's logo and the model, opening onto what it was asked and what it answered. Consultants are not in the sidebar or search, and they stop when you press Stop.
+- A Consult switch sits beside plan mode in the composer: choose up to three consultants (which agent, which model, what thinking level), and while it is on, every line you send has the agent ask them first, each on its own, then tell you their views and its own conclusion.
 
 ## 0.6.0 — 2026-11-22
 
