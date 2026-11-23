@@ -1,6 +1,6 @@
 import type { Approval, PendingJudgement, SessionSummary, Turn } from "@real-bot/protocol";
 import { forgetStored, readStored, writeStored } from "../storage.ts";
-import { classifySession } from "./session-groups.ts";
+import { classifySession, isConsultantSession } from "./session-groups.ts";
 import { workingSessionIds } from "./session-status.ts";
 import { sessionUnreadCount } from "./unread.ts";
 
@@ -34,6 +34,8 @@ export function workingOrUnreadIds(
   for (const session of sessions) {
     if (classifySession(session) !== "bot-bot" && sessionUnreadCount(session) > 0) ids.add(session.id);
   }
+  // A consultant is never a row, working or not (ADR 0116).
+  for (const session of sessions) if (isConsultantSession(session)) ids.delete(session.id);
   return ids;
 }
 

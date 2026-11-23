@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { SessionSummary } from "@real-bot/protocol";
 import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
-import { classifySession, groupSessions, isFileDropSession, presentBotIds, youBotPeer, youBotSession } from "./session-groups.ts";
+import { classifySession, groupSessions, isFileDropSession, isSessionArchived, presentBotIds, youBotPeer, youBotSession } from "./session-groups.ts";
 
 function session(
   id: string,
@@ -151,4 +151,15 @@ test("youBotSession finds the you↔that Bot direct", () => {
   const other = session("d2", "direct", [{ member: "user" }, { member: "reviewer" }]);
   expect(youBotSession([writer, other], "writer")?.id).toBe("d");
   expect(youBotSession([writer], "reviewer")).toBeUndefined();
+});
+
+test("a consultant (a project session with a parent) is its own class and never a row, pinned or archived (ADR 0116)", () => {
+  const consultant = { ...session("c", "project", [{ member: "user" }]), project_parent_id: "p", archived_at: "later" } as SessionSummary;
+  const plain = { ...session("p", "project", [{ member: "user" }]), project_parent_id: null } as SessionSummary;
+  expect(classifySession(consultant)).toBe("consultant");
+  expect(classifySession(plain)).toBe("project");
+  const listed = groupSessions([plain, consultant], ["c"]);
+  expect(listed.pinned).toEqual([]);
+  expect(listed.project.map((s) => s.id)).toEqual(["p"]);
+  expect(isSessionArchived(consultant)).toBe(false);
 });

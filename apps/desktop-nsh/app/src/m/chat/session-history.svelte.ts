@@ -112,6 +112,8 @@ export class SessionHistory {
     // opens its popup instead; going anywhere else puts the popup away.
     const target = this.host.snapshot.sessions.find((session) => session.id === id);
     if (target && classifySession(target) === "bot-bot") return this.openBotDm(target, opts);
+    // A consultant has no page of its own: it opens from the row under the reply that asked it (ADR 0116).
+    if (target && classifySession(target) === "consultant") return;
     // The phone's page writes the conversation's history entry before it shows (`selection-gate.ts`).
     // Of selections made while one waits, the last goes on.
     const asked = ++this.selections;
@@ -461,6 +463,7 @@ export class SessionHistory {
               live_turns: s.live_turns,
               unread_count: detail.unread_count ?? s.unread_count ?? 0,
               waiting_on_you: s.waiting_on_you ?? null,
+              project_parent_id: detail.project_parent_id !== undefined ? detail.project_parent_id : (s.project_parent_id ?? null),
               notification_preference: detail.notification_preference ?? s.notification_preference,
               // The conversation's engine (ADR 0085): the job's inspector and the engine pickers read it
               // from here. Null is a choice (back to the default); a detail without it keeps the row's.

@@ -1,6 +1,6 @@
 import { FILE_DROP_SESSION_ID, USER_MEMBER, type Bot, type SessionParticipant, type SessionSummary } from "@real-bot/protocol";
 
-export type SessionGroup = "group" | "you-bot" | "bot-bot" | "file-drop" | "project";
+export type SessionGroup = "group" | "you-bot" | "bot-bot" | "file-drop" | "project" | "consultant";
 
 /** The remote file drop: you, no Bot, and nothing to wake. */
 export function isFileDropSession(session: Pick<SessionSummary, "id">): boolean {
@@ -16,9 +16,15 @@ export function presentBotIds(session: SessionSummary): string[] {
   return activeMembers(session.participants).filter((member) => member !== USER_MEMBER);
 }
 
+/** An agent's consultant (ADR 0116): a hidden project session the daemon runs for one `consult` call. Never a row or a count; it opens from the row under the asking reply. */
+export function isConsultantSession(session: Pick<SessionSummary, "kind" | "project_parent_id">): boolean {
+  return session.kind === "project" && Boolean(session.project_parent_id);
+}
+
 export function classifySession(session: SessionSummary): SessionGroup {
   if (isFileDropSession(session)) return "file-drop";
   if (session.kind === "group") return "group";
+  if (isConsultantSession(session)) return "consultant";
   // No Bot in it: you and a local agent in a directory (ADR 0095).
   if (session.kind === "project") return "project";
   return activeMembers(session.participants).includes(USER_MEMBER) ? "you-bot" : "bot-bot";
@@ -28,6 +34,8 @@ export function isSessionArchived(
   session: SessionSummary,
   botsById?: ReadonlyMap<string, Bot>,
 ): boolean {
+  // A consultant is never a row, so it is not on the archived page either (ADR 0116).
+  if (isConsultantSession(session)) return false;
   if (Boolean(session.archived_at)) return true;
   if (session.kind === "direct" && botsById) {
     const peer = youBotPeer(session);
@@ -80,6 +88,7 @@ export function groupSessions(
     }
 
     const kind = classifySession(session);
+    if (kind === "consultant") continue;
     // A Bot↔Bot direct is never a row of the list, pinned or not: it opens from its message (ADR 0091).
     if (pinSet.has(session.id) && kind !== "bot-bot") {
       pinned.push(session);

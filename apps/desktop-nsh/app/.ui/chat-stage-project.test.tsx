@@ -111,6 +111,24 @@ test("the working bubble's subagent card holds its subagents only, and a chip's 
   expect(app.shows("id:subagent-sub-b >> id:subagent-live")).toBe(true);
 });
 
+test("a consultant's task wears its agent's logo and model, the card says it consulted, and it opens in the subagent popup (ADR 0116)", async () => {
+  const app = await project();
+  await app.press("id:story-run");
+  await app.waitFor("id:project-working >> id:subagent-entry", { timeout: 10_000 });
+  await app.press("id:story-consult");
+  await app.waitFor("id:subagent-consult_c-1", { timeout: 10_000 });
+  expect(app.shows("id:subagent-consult_c-1 >> id:agent-logo-codex")).toBe(true);
+  expect(app.shows("id:subagent-sub-a >> id:agent-logo-codex")).toBe(false);
+  expect(app.shows("id:subagent-model-consult_c-1")).toBe(true);
+  expect(app.texts()).toContain("gpt-5.6-terra");
+  // A card of a consultant among ordinary subagents keeps the subagent heading.
+  expect(app.texts()).toContain(t.project.subagentsOpened);
+  expect(app.texts()).not.toContain(t.project.consultedOpened);
+  await app.press("id:subagent-consult_c-1");
+  await app.waitFor("id:subagent-facts", { timeout: 10_000 });
+  await app.waitUntil(() => app.texts().includes("Codex · gpt-5.6-terra"), { timeout: 10_000 });
+});
+
 test("the plan switch in the box tunes the session's mode", async () => {
   const app = await project();
   expect(app.texts()).toContain("plan-mode:off");

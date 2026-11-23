@@ -26,6 +26,7 @@ import {
   type Turn,
 } from "@real-bot/protocol";
 import { noBuiltinModels } from "./settings/builtin-models.ts";
+import { isConsultantSession } from "./sidebar/session-groups.ts";
 
 export type Snapshot = {
   credentialOperations: CredentialOperation[];
@@ -191,6 +192,8 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
             : (existing?.entry_message_id ?? null),
         unread_count:
           session.unread_count !== undefined ? session.unread_count : (existing?.unread_count ?? 0),
+        project_parent_id:
+          session.project_parent_id !== undefined ? session.project_parent_id : (existing?.project_parent_id ?? null),
         waiting_on_you:
           session.waiting_on_you !== undefined ? session.waiting_on_you : (existing?.waiting_on_you ?? null),
         last_message: (() => {
@@ -271,13 +274,14 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
       const { event: _e, occurred_at: _at, ...message } = event;
       if (isHiddenTranscriptKind(message.kind)) return snapshot;
       if (snapshot.messages.some((m) => m.id === message.id)) return snapshot;
+      // A consultant's lines are read in its task's popup, never counted as unread (ADR 0116).
       const sessions = snapshot.sessions.map((s) =>
         s.id === message.session_id
           ? {
               ...s,
               last_message: message,
               unread_count:
-                message.author === USER_MEMBER
+                message.author === USER_MEMBER || isConsultantSession(s)
                   ? (s.unread_count ?? 0)
                   : (s.unread_count ?? 0) + 1,
             }

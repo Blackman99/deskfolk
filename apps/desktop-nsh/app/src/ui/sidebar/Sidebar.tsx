@@ -145,11 +145,11 @@ export function Sidebar(props: {
   /** A phone lists the Bots and the projects on two pages of its bottom bar; a wider window, together. */
   const showBots = () => !phone() || (props.phoneList ?? "bots") === "bots";
   const showProjects = () => !phone() || props.phoneList === "projects";
-  // A Bot↔Bot direct pinned before ADR 0091 stays out too: it opens only from its message.
+  // A Bot↔Bot direct pinned before ADR 0091 stays out too: it opens only from its message. So does a consultant (ADR 0116).
   const pinnedSessions = () =>
     props.pinnedSessionIds
       .map((id) => sessionsById().get(id))
-      .filter((session): session is SessionSummary => Boolean(session) && classifySession(session!) !== "bot-bot");
+      .filter((session): session is SessionSummary => Boolean(session) && !["bot-bot", "consultant"].includes(classifySession(session!)));
   /** The band above the list. A phone's two pages each show their own. */
   const shownPins = () => (phone() ? pinnedSessions().filter((session) => (session.kind === "project") === showProjects()) : pinnedSessions());
   const pinnedWorking = () => {

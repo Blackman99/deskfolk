@@ -82,7 +82,7 @@ export function ProjectSubagentDialog(props: {
   const onCall = () => (detail() ? runningCall(detail()!.steps) : null);
   const facts = () =>
     [
-      props.task.agent_type,
+      props.task.agent_type || (props.task.agent ? t().project.agentNames[props.task.agent] : null),
       detail()?.model,
       props.task.tool_uses ? t().project.taskCalls(props.task.tool_uses) : null,
       props.task.tokens ? t().project.taskTokens(props.task.tokens) : null,

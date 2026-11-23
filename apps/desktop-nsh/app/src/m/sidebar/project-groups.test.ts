@@ -112,3 +112,11 @@ test("a typed directory must be absolute; home reads as a tilde", () => {
   expect(dirDisplay(null)).toBe("");
   expect(dirDisplay("/private/tmp/claude-501/scratchpad/e2e/some/deep/proj")).toBe("…/deep/proj");
 });
+
+test("a consultant session is left out of the directory groups and the picker's directories (ADR 0116)", () => {
+  const own = aProjectSession({ id: "a1", project_dir: "/w/a" });
+  const consultant = aProjectSession({ id: "c1", project_dir: "/w/consult", project_parent_id: "a1" });
+  expect(groupProjectSessions([own, consultant]).map((g) => g.dir)).toEqual(["/w/a"]);
+  expect(groupProjectSessions([own], [own, consultant]).map((g) => g.dir)).toEqual(["/w/a"]);
+  expect(pickerDirs([], [own, consultant], "claude_code").map((d) => d.dir)).toEqual(["/w/a"]);
+});

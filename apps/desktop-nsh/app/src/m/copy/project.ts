@@ -92,6 +92,8 @@ export const zh = {
   stopAll: "全部停下",
   stopTask: (name: string) => `停下「${name}」`,
   subagentsOpened: "派了子代理",
+  // 参谋 (ADR 0116): the other agents or models the agent asked for a view.
+  consultedOpened: "请教了",
   subagentBack: "回到会话",
   taskLoading: "正在读取…",
   taskReadFailed: "读取失败，稍后再打开试试。",
@@ -205,6 +207,7 @@ export const en: CopyShape<typeof zh> = {
   stopAll: "Stop everything",
   stopTask: (name: string) => `Stop "${name}"`,
   subagentsOpened: "Sent subagents",
+  consultedOpened: "Consulted",
   subagentBack: "Back to the conversation",
   taskLoading: "Reading…",
   taskReadFailed: "Could not read it. Try opening it again in a moment.",

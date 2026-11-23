@@ -950,3 +950,37 @@ test("an event that changes no item of an array hands back the same array, so vi
   expect(last.sessions).not.toBe(base.sessions);
   expect(last.sessions[0]?.last_message?.body).toBe("edited");
 });
+
+test("a consultant's lines raise no unread, and its parent id survives an update that lacks it (ADR 0116)", () => {
+  const upsert = (extra: Record<string, unknown>) => ({
+    event: "session.upsert" as const,
+    occurred_at: "t",
+    id: "c1",
+    kind: "project" as const,
+    name: null,
+    created_at: "t",
+    updated_at: "t",
+    participants: [{ member: "user", joined_at: "t", left_at: null }],
+    unread_count: 0,
+    ...extra,
+  });
+  let s = applyEvent(emptySnapshot(), upsert({ project_parent_id: "p1" }));
+  s = applyEvent(s, upsert({}));
+  expect(s.sessions[0]?.project_parent_id).toBe("p1");
+  s = applyEvent(s, {
+    event: "message.created",
+    occurred_at: "t1",
+    id: "m1",
+    session_id: "c1",
+    turn_id: null,
+    parent_id: null,
+    kind: "bot",
+    author: "agent",
+    body: "my view",
+    source_turn_id: null,
+    created_at: "t1",
+    attachments: [],
+    reactions: [],
+  });
+  expect(s.sessions[0]?.unread_count).toBe(0);
+});

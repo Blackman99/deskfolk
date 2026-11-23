@@ -6,7 +6,9 @@
  */
 import { Text, View } from "nsh";
 import type { AgentRunTask } from "@real-bot/protocol";
+import { modelLabel } from "../../m/taskmap/model-label.ts";
 import { copy } from "../../runtime";
+import { AgentLogo } from "../settings/AgentLogo";
 import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
@@ -15,6 +17,9 @@ import { enterMotion, pulseMotion } from "./labels";
 export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; onOpen: (task: AgentRunTask) => void }) {
   const t = () => copy();
   const nameOf = (task: AgentRunTask) => task.description || task.agent_type || t().project.taskDoing.subagent;
+  /** A consultant's task (ADR 0116) wears its agent's logo and says which model answered; the agent's name when none was named. */
+  const modelOf = (task: AgentRunTask) => (task.agent ? modelLabel(task.model) || t().project.agentNames[task.agent] : null);
+  const allConsulted = () => props.tasks.length > 0 && props.tasks.every((task) => Boolean(task.agent));
   /** How it went, when that is worth a word: a chip that says nothing finished as it should. */
   const noteOf = (task: AgentRunTask) => (task.status === "running" || task.status === "completed" ? null : t().project.taskStatus[task.status]);
   const enter = enterMotion();
@@ -38,7 +43,16 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
         single ? "" : "pl-[5px] pr-[8px] py-[2.5px] border border-line rounded-full bg-bg hover:bg-line-hover hover:border-muted-light"
       }`}
     >
-      <Icon name="bot" size={16} class="shrink-0 tint-ink-muted" />
+      <If when={task().agent} else={<Icon name="bot" size={16} class="shrink-0 tint-ink-muted" />}>
+        {(agent) => <AgentLogo runner={agent()} size={16} />}
+      </If>
+      <If when={modelOf(task())}>
+        {(model) => (
+          <Text testID={`subagent-model-${task().id}`} class="shrink-0 max-w-[120px] text-[12px] font-semibold text-ink-secondary line-clamp-1">
+            {model()}
+          </Text>
+        )}
+      </If>
       <Text class={`shrink min-w-0 max-w-[240px] text-[12px] font-medium line-clamp-1 ${single ? "text-ink group-hover:text-brand" : "text-ink"}`}>{nameOf(task())}</Text>
       <If when={!single && task().status === "running"}>
         <Live />
@@ -59,7 +73,7 @@ export function ProjectSubagentEntry(props: { tasks: readonly AgentRunTask[]; on
             >
               <View class="flex-row items-center gap-[5px]">
                 <Icon name="bot" size={12} class="tint-ink-muted" />
-                <Text class="text-[12px] font-medium text-ink-muted">{t().project.subagentsOpened}</Text>
+                <Text class="text-[12px] font-medium text-ink-muted">{allConsulted() ? t().project.consultedOpened : t().project.subagentsOpened}</Text>
                 <View class="px-[6px] py-[1px] border border-line rounded-full bg-chip">
                   <Text class="font-mono text-[10px] font-semibold text-ink-muted">{props.tasks.length}</Text>
                 </View>

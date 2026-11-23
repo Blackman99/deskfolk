@@ -1,4 +1,5 @@
 import { PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentRun, type ProjectAgent, type SessionSummary } from "@real-bot/protocol";
+import { isConsultantSession } from "./session-groups.ts";
 import { listingAgent, tildePath, type ImportListing } from "./import-claude-session.ts";
 
 /** The agents a project session can run, in the order the sheet offers them (ADR 0095: Claude Code first, ADR 0099: then Codex). */
@@ -36,7 +37,7 @@ function dirFirstSeen(all: readonly SessionSummary[]): Map<string, string> {
   const first = new Map<string, string>();
   for (const session of all) {
     const dir = session.project_dir;
-    if (session.kind !== "project" || !dir) continue;
+    if (session.kind !== "project" || !dir || isConsultantSession(session)) continue;
     const seen = first.get(dir);
     if (seen === undefined || session.created_at < seen) first.set(dir, session.created_at);
   }
@@ -58,7 +59,7 @@ export function groupProjectSessions(
   const byDir = new Map<string, ProjectDirGroup>();
   for (const session of sessions) {
     const dir = session.project_dir;
-    if (!dir) continue;
+    if (!dir || isConsultantSession(session)) continue;
     const group = byDir.get(dir);
     if (group) group.sessions.push(session);
     else byDir.set(dir, { dir, label: projectDirLabel(dir), sessions: [session] });
@@ -129,7 +130,7 @@ export function pickerDirs(
     if (carries && listingAgent(listing) === agent) entry.listings.push(listing);
   }
   for (const session of sessions) {
-    if (session.kind === "project" && session.project_dir) at(session.project_dir, session.updated_at);
+    if (session.kind === "project" && session.project_dir && !isConsultantSession(session)) at(session.project_dir, session.updated_at);
   }
   const dirs = [...byDir.values()];
   for (const entry of dirs) entry.listings.sort((a, b) => (a.modified_at < b.modified_at ? 1 : a.modified_at > b.modified_at ? -1 : 0));

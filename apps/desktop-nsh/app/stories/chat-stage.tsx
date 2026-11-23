@@ -12,7 +12,7 @@
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
 import { deep } from "../src/lib/reactive";
@@ -45,6 +45,8 @@ const MANY = ["pj-ask-many-1", "pj-ask-many-2", "pj-ask-many-3"];
 const refuseAsk = signal<string | null>(null);
 /** The running run's first subagent has ended. */
 const subagentDone = signal(false);
+/** The run has asked Codex for its view (ADR 0116): a consultant's task among the subagents (`story-consult`). */
+const consulted = signal(false);
 const planMode = signal(false);
 /** The project session's agent: Claude Code, or another whose composer the caps shape (`story-agent-*`). */
 const projectAgent = signal<"claude_code" | "codex" | "grok">("claude_code");
@@ -225,6 +227,9 @@ function runTasks(): AgentRun["tasks"] {
     task("sub-b", "subagent", "running", "读 CHANGELOG", "2026-10-20T09:32:11.000Z"),
     task("cmd-a", "shell", "completed", "bun test src/login.test.ts", "2026-10-20T09:32:12.000Z"),
     task("cmd-b", "shell", "running", "pnpm dev", "2026-10-20T09:32:13.000Z"),
+    ...(consulted()
+      ? [{ ...task("consult_c-1", "subagent", "running", "这个迁移的回滚顺序对不对", "2026-10-20T09:32:14.000Z"), agent_type: "Codex", agent: "codex", model: "gpt-5.6-terra" }]
+      : []),
   ] as unknown as AgentRun["tasks"];
 }
 
@@ -459,6 +464,15 @@ export default function ChatStageStory() {
             {button("story-run", "run", () => runOn.set("running"))}
             {button("story-agent-grok", "grok", () => projectAgent.set("grok"))}
             {button("story-agent-codex", "codex", () => projectAgent.set("codex"))}
+            {button("story-consult", "consult codex", () => {
+              // The popup reads the consultant through the runtime's client; the story answers for it.
+              const client = runtime.client as unknown as { agentTaskDetail: (run: string, id: string) => Promise<AgentTaskDetail> } | null;
+              if (client) {
+                client.agentTaskDetail = async (run, id) =>
+                  ({ task: { id, run_id: run }, output: null, output_bytes: null, prompt: "这个迁移的回滚顺序对不对", model: "gpt-5.6-terra", steps: [{ kind: "say", text: "先回滚索引，再回滚列。" }] }) as unknown as AgentTaskDetail;
+              }
+              consulted.set(true);
+            })}
             {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {

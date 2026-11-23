@@ -139,8 +139,8 @@ export class ShellWorkbench {
       const runtime = this.getRuntime();
       const live = {
         sessionIds: new Set(runtime.snapshot.sessions.map((row) => row.id)),
-        // A Bot↔Bot direct is read in its popup, never in a tab: one a saved layout kept goes (ADR 0091).
-        botDirectIds: new Set(runtime.snapshot.sessions.filter((row) => classifySession(row) === "bot-bot").map((row) => row.id)),
+        // A Bot↔Bot direct is read in its popup, never in a tab: one a saved layout kept goes (ADR 0091). A consultant has no tab either (ADR 0116).
+        botDirectIds: new Set(runtime.snapshot.sessions.filter((row) => ["bot-bot", "consultant"].includes(classifySession(row))).map((row) => row.id)),
         terminalIds: runtime.terminalsLoaded ? new Set(runtime.terminals.map((row) => row.id)) : null,
         knownKinds: PANE_KIND_SET,
       };
@@ -251,7 +251,7 @@ export class ShellWorkbench {
 
   private isBotDirect = (sessionId: string): boolean => {
     const session = this.getRuntime().snapshot.sessions.find((row) => row.id === sessionId);
-    return session ? classifySession(session) === "bot-bot" : false;
+    return session ? ["bot-bot", "consultant"].includes(classifySession(session)) : false;
   };
 
   /**
