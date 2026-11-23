@@ -677,6 +677,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         const reply = turnText.trim();
         const failed = agyFailure(reply);
         if (failed) {
+          // Its "⚠" lines are the failure line's words (ADR 0111, 6), not something it said: kept only there.
+          if (live.said.endsWith(turnText)) live.said = live.said.slice(0, live.said.length - turnText.length);
           failure = failed;
           return false;
         }

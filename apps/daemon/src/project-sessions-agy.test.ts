@@ -296,7 +296,8 @@ test("agy's own failure lines fail the run; Stop keeps what it had said; an agy 
   await h.say(id, "go");
   await h.settled(id);
   expect((await h.run(id))?.status).toBe("failed");
-  expect(h.lines(id).at(-1)?.body).toBe("Antigravity 出错停下了：Our servers are busy.");
+  // Its "⚠" lines are the failure line's words only: not kept as a line of its own as well.
+  expect(h.lines(id).map((line) => [line.kind, line.body])).toEqual([["user", "go"], ["system", "Antigravity 出错停下了：Our servers are busy."]]);
 
   await h.say(id, "go again");
   await h.until(async () => (await h.run(id))?.partial === "Working on it…");

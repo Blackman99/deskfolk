@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### Antigravity 项目会话出错时，那句错误只出现一次
+
+- Antigravity 项目会话里 agy 自己出了错（比如 `agent executor error: expected pending tool step at index 138, got status CORTEX_STEP_STATUS_CANCELED`），会话里会出现两行一样的话：一行「⚠ …」像是它说的，下面一行「Antigravity 出错停下了：…」。现在只留后面那行，和 Bot 里一样。
+- 那个错误是 agy 自己出的：它一次发了三条命令，第一条跑完时后两条已经被取消了。应用没有发过取消。
+
 ### 项目会话的 Agent 能读本机 Agent 的会话记录了
 
 - 在 Antigravity 项目会话里问「Claude 为什么是 200k 总上下文」，agy 写了一段只读的脚本去看 `~/.claude/projects` 里最近几个 Claude Code 会话文件，这一轮却被停下，说本机 Agent 自己的设置和凭据碰不得。应用把每个 Agent 的整个家目录都当成它的设置和登录信息，里面存的对话记录也算了进去；项目会话里的 Claude Code 读这些文件也被拒。

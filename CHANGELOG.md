@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An Antigravity project session's error shows once
+
+- When agy itself failed in an Antigravity project session (for example `agent executor error: expected pending tool step at index 138, got status CORTEX_STEP_STATUS_CANCELED`), the session showed the same words twice: a "⚠ …" line as if agy had said it, then "Antigravity stopped: …". Now only the second line is kept, as in a Bot.
+- That error is agy's own: it had sent three commands at once, and when the first one finished the other two were already cancelled. The app sent no cancel.
+
 ### A project session's agent can read your agents' session records
 
 - Asked why a Claude session showed a 200k context, an Antigravity project session ran a read-only script over the newest Claude Code session files in `~/.claude/projects`, and the turn was stopped: your agents' own settings and credentials are off limits. The app counted each agent's whole home folder as its settings and sign-in, the conversation records kept there included; Claude Code in a project session was refused the same files.
