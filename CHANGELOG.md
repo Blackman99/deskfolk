@@ -18,6 +18,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - The font, type size and conversation width tokens were not read by anything either, so setting them changed nothing; they now count as not taken. A desktop window reports the tokens and words the app takes to the Bots, and every window, the phone's too, reports which tokens did not take and why; a Bot that sets a token the app does not have is told right after the change. Colours and corners still change as before.
 - A fixed set of style choices comes next (corners, flat or shadowed, the conversation's width, the font); see ADR 0117.
 
+### A project session's agent can keep files in its own folder from a longer command
+
+- Antigravity stopped a turn with "your local agents' own settings and credentials are off limits" when one command changed into the project's worktree, built with `$(git rev-parse …)`, and then wrote a script into its own folder for the session (`~/.gemini/antigravity-cli/brain/<session>`). A `cd` or a `$(…)` elsewhere in a command no longer counts against the part that names that folder; only that part may not change directory, build a path, or hand the folder on. The same holds for Codex's memories and Grok's session folder. Credentials named in a command are still refused.
+
 ## 0.6.0 — 2026-11-22
 
 Linux has packages again, the native app as a deb and an AppImage (a preview). On Windows, a phone pairs with Windows Hello again, and notifications, voice input, the tray and opening files work as on the Mac. Project sessions also run Antigravity and Grok, carry on a Codex session from your terminal, and their agents can ask you questions on cards. The phone's page is the desktop app's own, with its terminal and files. Signed and notarized for macOS; the Windows and Linux packages are unsigned.

@@ -147,6 +147,18 @@ test("a call agy makes without asking is checked as it starts: the mode lets it 
   expect(h.lines(id).at(-1)?.body).toStartWith("Antigravity 没先问就做了「note.txt」");
 });
 
+test("a command that cds and builds elsewhere in its list may still keep a script in agy's own folder for the session", async () => {
+  const brain = agyBrainDir("agy-session-1", homedir());
+  const command = `cd /tmp && V=$(git rev-parse HEAD) && echo "$V" && python3 -c 'import pathlib; pathlib.Path("${brain}/scratch/deploy.sh").write_text("x")'`;
+  const h = start([{ prompts: [[{ tool: { kind: "execute", title: "deploy", rawInput: { CommandLine: command } } }, { say: "Wrote it." }]] }]);
+  const id = await h.open();
+  await h.say(id, "deploy to test");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(false);
+  expect(h.lines(id).at(-1)?.body).toBe("Wrote it.");
+});
+
 test("what agy asks about is answered by the rules, on a card under ask first", async () => {
   const h = start([{ prompts: [[{ ask: { kind: "execute", title: "npm test", rawInput: { CommandLine: "npm test" } } }, { say: "Tested." }]] }]);
   h.store.patchSettings({ permission_mode: "ask_first" });

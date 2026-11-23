@@ -52,8 +52,45 @@ posixTest("a command may name an open folder only where it cannot leave it", () 
     "cat $(echo ~/.codex/memories)/notes.md",
     "cat ~/.codex/memories/$NAME",
     "cat ~/.gemini/antigravity-cli/brain/session-2/plan.md",
+    // Handed on to be built on: a variable's value, a loop's list, a substitution's output.
+    "D=~/.codex/memories; cat $D/sneaky.md",
+    "export D=\"$HOME/.codex/memories\" && cd /tmp && cat \"$D\"/sneaky.md",
+    "for d in ~/.codex/memories; do cat $d/sneaky.md; done",
+    "cat $(echo x; echo ~/.codex/memories)/sneaky.md",
+    "cat `echo ~/.codex/memories`/sneaky.md",
+    // Built on where it is named, quoted or not.
+    "cat \"$HOME/.codex/memories\"/$NAME",
+    "cat ~/.codex/memories/\"$(cat /tmp/p)\"",
+    "cat ~/.codex/memories/$'sneaky.md'",
+    // A cd into it, however late in the list.
+    "cd /tmp && cd ~/.codex/memories && cat sneaky.md",
+    "echo ~/.codex/memories | xargs -I{} cat {}/../auth.json",
   ]) {
     expect([command, decideAction(shell(command), base).kind]).toEqual([command, "deny"]);
+  }
+});
+
+posixTest("a cd or a $(…) elsewhere in the list does not shut out a command that names an open folder only as a file to write", () => {
+  // As agy ran it on 2026-11-23: build in a worktree, then keep a script in its own folder for the session.
+  const script = [
+    "cd /tmp && git cherry-pick b2db52f && pnpm exec tsc --noEmit && rm -rf .next",
+    "(export $(grep -v '^#' .env.test | xargs) && pnpm run build)",
+    "COMMIT=$(git rev-parse --short=7 HEAD)",
+    "COPYFILE_DISABLE=1 tar --exclude='node_modules' -czf \"/tmp/webapp-test-${COMMIT}.tar.gz\" .next package.json",
+    "echo \"COMMIT=$COMMIT\"",
+    `python3 -c '
+import pathlib, textwrap
+lines = pathlib.Path(".github/workflows/deploy-test.yml").read_text().splitlines()
+start = next(i for i, l in enumerate(lines) if "bash -s\\" <<'\\''REMOTE'\\''" in l) + 1
+end = next(i for i in range(start, len(lines)) if lines[i] == "          REMOTE")
+script = textwrap.dedent("\\n".join(lines[start:end])) + "\\n"
+out = pathlib.Path("${brain}/scratch/deploy-remote.sh")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(script)
+'`,
+  ].join(" && ");
+  for (const command of [script, `cd /tmp && V=$(date) && cp notes.md ${brain}/scratch/`, `cat > ${brain}/scratch/run.sh <<'EOF'\necho "$HOME $PATH"\nEOF`]) {
+    expect([command, decideAction(shell(command), base)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
   }
 });
 

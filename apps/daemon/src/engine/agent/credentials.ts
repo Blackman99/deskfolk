@@ -133,15 +133,15 @@ export function namesDir(command: string, dir: string, home: string, platform: N
 /**
  * The command with every path it names inside one of `openDirs` taken out: an agent's own memory,
  * skills or plans, open to it as a folder outside the workspace is (ADR 0111). Null when the
- * command could leave such a folder by itself — it changes directory, climbs with `..`, or builds a
- * path the rules cannot read (`$(…)`, backquotes, a variable other than the home folder) — or when a
- * path it names there leads out through a link (`stays` says no). What is left is checked as any
- * command is, so naming anything else of an agent's still shuts it out.
+ * command could leave such a folder by itself: it climbs with `..` anywhere, or the part of it that
+ * names the folder ({@link leavesFrom}) changes directory, builds a path the rules cannot read, or
+ * hands the folder on to be built on; or a path it names there leads out through a link (`stays`
+ * says no). What is left is checked as any command is, so naming anything else of an agent's still
+ * shuts it out.
  */
 export function withoutOpenDirs(command: string, openDirs: string[], home: string, platform: NodeJS.Platform, stays: (abs: string) => boolean): string | null {
   if (openDirs.length === 0) return command;
-  if (/(?:^|[\s;&|(])(?:cd|pushd|chdir)(?=\s|$)/.test(command) || /(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
-  if (/\$\(|`/.test(command) || /\$\{?(?!HOME\b)[A-Za-z_]/.test(command)) return null;
+  if (/(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
   const win = platform === "win32";
   const sep = win ? "[\\\\/]+" : "/+";
   const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
@@ -154,16 +154,56 @@ export function withoutOpenDirs(command: string, openDirs: string[], home: strin
     for (const pattern of patterns) {
       const found = new RegExp(`${pattern}((?:${sep}[^\\s'"\`;|&<>()]*)?)(?![A-Za-z0-9._-])`, win ? "gi" : "g");
       let leaves = false;
-      out = out.replace(found, (_match, rest: string) => {
+      out = out.replace(found, (match: string, rest: string, at: number, whole: string) => {
         const inner = rest.replace(/^[\\/]+/, "");
         const abs = inner ? (win ? `${dir.replace(/[\\/]+$/, "")}\\${inner}` : posix.join(dir, inner)) : dir;
-        if (!stays(abs)) leaves = true;
+        if (!stays(abs) || leavesFrom(whole, at, at + match.length)) leaves = true;
         return "OPEN_DIR";
       });
       if (leaves) return null;
     }
   }
   return out;
+}
+
+/** Where one command of a list ends and the next begins: `&&`, `||`, `;`, `|`, `&`, a new line. */
+const BETWEEN_COMMANDS = /&&|\|\||[;|&\r\n]/g;
+
+/**
+ * Whether the command around a mention of an open folder (`start`…`end`) could take a path out of
+ * it. Only the command of the list that names the folder counts — a `cd` into the project or a
+ * `$(git rev-parse HEAD)` further along builds nothing on it — and it may not change directory or
+ * build a path with `$…` (but `$HOME`) or backquotes. Nor may the folder be handed on to be built
+ * on: as a variable's value (`D=<folder>`), a loop's list (`for d in <folder>`), or inside `$(…)`
+ * or backquotes, whose output another command could add to.
+ */
+function leavesFrom(command: string, start: number, end: number): boolean {
+  let from = 0;
+  for (const match of command.slice(0, start).matchAll(BETWEEN_COMMANDS)) from = match.index + match[0].length;
+  const after = command.slice(end).search(BETWEEN_COMMANDS);
+  const own = command.slice(from, after < 0 ? command.length : end + after);
+  if (/(?:^|[\s(])(?:cd|pushd|popd|chdir)(?=\s|$)/.test(own)) return true;
+  if (/`|\$(?!\{?HOME\b)[\w{('"@*#?!$-]/.test(own)) return true;
+  if (/(?:^|[\s(])for\s+\w+\s+in\s/.test(own)) return true;
+  const before = command.slice(0, start);
+  if (/(?:^|[\s;&|(`'"])[A-Za-z_]\w*\+?=\(?["']?$/.test(before)) return true;
+  return inSubstitution(before);
+}
+
+/** Whether text ending here is inside a `$(…)` or backquotes still open. */
+function inSubstitution(before: string): boolean {
+  let depth = 0;
+  let ticks = 0;
+  for (let i = 0; i < before.length; i += 1) {
+    const ch = before[i];
+    if (ch === "`") ticks += 1;
+    else if (ch === "$" && before[i + 1] === "(") {
+      depth += 1;
+      i += 1;
+    } else if (ch === "(" && depth > 0) depth += 1;
+    else if (ch === ")" && depth > 0) depth -= 1;
+  }
+  return depth > 0 || ticks % 2 === 1;
 }
 
 function escapeRegExp(text: string): string {
