@@ -265,6 +265,8 @@ test("while a consultant works, its task says what it is at and opens onto what 
   const task = async () => (await h.run(parent))!.tasks!.find((one) => one.id.startsWith("consult_"))!;
   await h.until(async () => (await task()).activity === "Grep shadow(");
   expect((await task()).status).toBe("running");
+  // The asking run's own line, which the working bubble shows unopened, says it too.
+  expect((await h.run(parent))!.activity).toBe("请教 Claude Code · Grep shadow(");
 
   const runId = (await h.run(parent))!.id;
   const detail = async () => (await h.call<AgentTaskDetail>("GET", `/v1/agent-runs/${runId}/tasks/${encodeURIComponent((await task()).id)}`)).body;

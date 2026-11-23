@@ -343,11 +343,16 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
       agent: project.agent, model: project.model,
     };
     putTask(runId, { ...task, status: "running", ended_at: null });
-    try {
-      store.updateAgentRun(runId, { activity: zh ? `请教 ${AGENT_NAMES[project.agent]}` : `Consulting ${AGENT_NAMES[project.agent]}` });
-    } catch {
-      // the run is gone
-    }
+    /** The asking run's own line while it waits, which the working bubble shows unopened: whom it asks, and what that one is at. */
+    const asking = (at: string | null) => {
+      const who = zh ? `请教 ${AGENT_NAMES[project.agent]}` : `Consulting ${AGENT_NAMES[project.agent]}`;
+      try {
+        store.updateAgentRun(runId, { activity: at ? clipTo(`${who} · ${at}`, ACTIVITY_MAX) : who });
+      } catch {
+        // the run is gone
+      }
+    };
+    asking(task.activity);
 
     const budget = deps.waitMs ?? CONSULT_WAIT_MS[parent.agent];
     const started = Date.now();
@@ -372,9 +377,11 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
         break;
       }
       const at = consultantDoing(store.latestAgentRun(consultant), en());
-      if (at !== null && at !== doing) {
+      // Nothing to say (between calls, its tasks back, nothing said yet) clears it: a stale line misleads.
+      if (at !== doing) {
         doing = at;
         putTask(runId, { ...task, status: "running", ended_at: null, activity: doing });
+        asking(doing);
       }
       await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
