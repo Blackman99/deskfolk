@@ -1,6 +1,6 @@
 # 界面也是你的：Bot 照你说的改外观和用法 / The interface is yours too: Bots change how it looks and works when you ask
 
-Status: implemented 2026-11-04. Supersedes in part [ADR 0014](0014-bot-catalog-tools.md)'s line that language and appearance are not the Bot's, and clarifies [ADR 0064](0064-built-in-prompts-you-and-your-bots-can-edit.md) decision 1 (the app's shell). Moves focus mode and where windows open ([ADR 0074](0074-where-windows-open.md)) from each window's storage into the daemon; [ADR 0025](0025-desktop-pane-workbench.md)'s rule that layout stays on the machine still holds for the layout and the widths.
+Status: implemented 2026-11-04. On the native app the stylesheet layer is gone: [ADR 0117](0117-styles-without-a-stylesheet.md) (2026-11-23). Supersedes in part [ADR 0014](0014-bot-catalog-tools.md)'s line that language and appearance are not the Bot's, and clarifies [ADR 0064](0064-built-in-prompts-you-and-your-bots-can-edit.md) decision 1 (the app's shell). Moves focus mode and where windows open ([ADR 0074](0074-where-windows-open.md)) from each window's storage into the daemon; [ADR 0025](0025-desktop-pane-workbench.md)'s rule that layout stays on the machine still holds for the layout and the widths.
 
 2026-11-04 你说：「让用户支持完整的 UI，UX 自定义机制，可以直接通过应用内的 Bot 对话进行」。到这一天，应用的样子只有主题和语言两项存在守护进程里；专注模式、窗口从哪打开、侧栏宽度这些都在各个窗口自己的存储里，守护进程看不到，Bot 也就够不着。令牌集中在 `tokens.css`（约 260 个），组件里六千多处用它们，所以改令牌就能换掉几乎所有颜色、圆角、阴影和字体；但没有注入你自己样式的地方，界面上的字改不了，ADR 0014 还写着「语言和外观是你个人的偏好，不归 Bot」。ADR 0064 定下应用是一份工作方式模板，「内置提示词 + 应用层 UI 壳」，那时只做了提示词。
 
