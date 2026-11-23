@@ -12,7 +12,7 @@
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
 import { deep } from "../src/lib/reactive";
@@ -48,6 +48,8 @@ const subagentDone = signal(false);
 /** The run has asked Codex for its view (ADR 0116): a consultant's task among the subagents (`story-consult`). */
 const consulted = signal(false);
 const planMode = signal(false);
+/** The composer's consultant switch (ADR 0116 addendum): what the story's session holds, as the daemon would store it. */
+const consultSetting = signal<ProjectConsultSetting | null>(null);
 /** The project session's agent: Claude Code, or another whose composer the caps shape (`story-agent-*`). */
 const projectAgent = signal<"claude_code" | "codex" | "grok">("claude_code");
 const projectLines = signal<Message[]>([]);
@@ -102,7 +104,7 @@ function botDmSession(): SessionSummary | null {
 function projectSession(): SessionSummary | null {
   const base = realSessions().find((s) => classifySession(s) === "group");
   return base
-    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: projectAgent(), project_mode: planMode() ? "plan" : null } as unknown as SessionSummary)
+    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: projectAgent(), project_mode: planMode() ? "plan" : null, project_consult: consultSetting() } as unknown as SessionSummary)
     : null;
 }
 
@@ -306,6 +308,8 @@ proto.send = function (this: unknown, ...args: unknown[]) {
 proto.tuneProjectSession = function (_id: unknown, change: unknown) {
   const mode = (change as { mode?: string | null }).mode;
   if (mode !== undefined) planMode.set(mode === "plan");
+  const consult = (change as { consult?: ProjectConsultSetting | null }).consult;
+  if (consult !== undefined) consultSetting.set(consult);
   said.set(`tune:${JSON.stringify(change)}`);
   return Promise.resolve(null);
 };
@@ -473,6 +477,9 @@ export default function ChatStageStory() {
               }
               consulted.set(true);
             })}
+            {button("story-consult-members", "consult: opus + codex", () =>
+              consultSetting.set({ on: true, members: [{ agent: "claude_code", model: "claude-opus-5-5", effort: null }, { agent: "codex", model: null, effort: "high" }] }),
+            )}
             {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
             {button("story-ask", "ask", () => {
@@ -496,6 +503,7 @@ export default function ChatStageStory() {
           <Text testID="story-session" class="text-[12px] text-ink-muted">{`session:${which()}`}</Text>
           <Text testID="story-posted" class="text-[12px] text-ink-muted">{`posted:${posted()}`}</Text>
           <Text testID="story-plan-mode" class="text-[12px] text-ink-muted">{`plan-mode:${planMode() ? "on" : "off"}`}</Text>
+          <Text testID="story-consult" class="text-[12px] text-ink-muted">{`consult:${consultSetting()?.on ? "on" : "off"}:${(consultSetting()?.members ?? []).map((m) => `${m.agent}/${m.model ?? "-"}/${m.effort ?? "-"}`).join(",")}`}</Text>
           <Text testID="story-state" class="text-[12px] text-ink-muted">{`lines:${lines().length} older:${(here() ? runtime.sessionView(here()!.id).hasOlderMessages : false) ? "yes" : "no"}`}</Text>
           <Text testID="story-last" class="text-[12px] text-ink-muted">{`last:${last()?.id ?? ""}`}</Text>
           <Text testID="story-answers" class="text-[12px] text-ink-muted">{`answers:${Object.entries(askAnswers()).map(([id, a]) => `${id}=${a.selected.join(",")}|${a.custom ?? ""}`).join(";")}`}</Text>

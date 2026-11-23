@@ -294,3 +294,77 @@ test("an answer refused on the way stops there: its question shows why, and the 
   await app.waitUntil(() => app.texts().includes("answers:pj-ask-many-1=docs 目录|;pj-ask-many-2=截图对比|;pj-ask-many-3=|慢慢来"), { timeout: 10_000 });
   await app.waitFor("id:project-asks-pj-ask-many-1", { timeout: 10_000 });
 });
+
+test("the consultant pill sits beside Plan for every agent; its menu lists the members, removing one sends the rest, and the switch toggles (ADR 0116)", async () => {
+  const app = await project();
+  await app.waitFor("id:project-consult", { timeout: 10_000 });
+  expect(app.texts()).toContain("consult:off:");
+  expect(app.shows("id:consult-logos")).toBe(false);
+  await app.press("id:story-consult-members");
+  await app.waitFor("id:consult-logos", { timeout: 10_000 });
+  expect(app.shows("id:project-consult >> id:agent-logo-claude_code")).toBe(true);
+  expect(app.shows("id:project-consult >> id:agent-logo-codex")).toBe(true);
+  // Codex has no plan switch of its own here; the consultant one is there all the same.
+  await app.press("id:story-agent-codex");
+  await app.waitFor("id:project-consult");
+  await app.press("id:project-consult");
+  await app.waitFor("id:consult-member-1", { timeout: 5_000 });
+  expect(app.texts()).toContain(t.project.consultSwitch);
+  expect(app.texts()).toContain("Opus 5.5");
+  expect(app.shows("id:consult-member-2")).toBe(false);
+  expect(app.shows("id:consult-add")).toBe(true);
+  // The switch turns it off and on; the members stay.
+  await app.press("id:consult-switch");
+  await app.waitUntil(() => app.texts().includes("consult:off:claude_code/claude-opus-5-5/-,codex/-/high"), { timeout: 10_000 });
+  await app.press("id:consult-switch");
+  await app.waitUntil(() => app.texts().includes("consult:on:claude_code/claude-opus-5-5/-,codex/-/high"), { timeout: 10_000 });
+  // Removing one sends the rest.
+  await app.press("id:consult-remove-0");
+  await app.waitUntil(() => app.texts().includes("consult:on:codex/-/high"), { timeout: 10_000 });
+  await app.waitFor("id:consult-member-1", { state: "gone" });
+  expect(JSON.parse(said(app).replace(/^tune:/, ""))).toEqual({ consult: { on: true, members: [{ agent: "codex", model: null, effort: "high" }] } });
+  // The last one out turns it off.
+  await app.press("id:consult-remove-0");
+  await app.waitUntil(() => app.texts().includes("consult:off:"), { timeout: 10_000 });
+});
+
+test("adding a consultant is a pick of agent, model and level; the first one turns the switch on, and the menu stops offering at three", async () => {
+  const app = await project();
+  await app.press("id:project-consult");
+  await app.waitFor("id:consult-add", { timeout: 5_000 });
+  // Nothing to ask yet: the switch cannot go on.
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-codex", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-codex");
+  await app.waitFor("id:tune-row-model-default", { timeout: 5_000 });
+  await app.press("id:tune-row-model-default");
+  await app.waitFor("id:tune-row-effort-high", { timeout: 5_000 });
+  await app.press("id:tune-row-effort-high");
+  await app.waitUntil(() => app.texts().includes("consult:on:codex/-/high"), { timeout: 10_000 });
+  await app.waitFor("id:consult-member-0", { timeout: 5_000 });
+  // The same agent on another model is another consultant.
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-claude_code", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-claude_code");
+  await app.waitFor("id:tune-row-model-opus", { timeout: 5_000 });
+});
+
+test("a press outside the consultant menu puts it away; a pick in its add picker does not", async () => {
+  const app = await project();
+  await app.press("id:project-consult");
+  await app.waitFor("id:consult-menu", { timeout: 5_000 });
+  // Plan, beside it, is outside the menu.
+  await app.press("id:project-plan");
+  await app.waitFor("id:consult-menu", { state: "gone", timeout: 5_000 });
+  // Open again: a pick in the add picker keeps the menu up, with the new member in it.
+  await app.press("id:project-consult");
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-codex", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-codex");
+  await app.waitFor("id:tune-row-model-default", { timeout: 5_000 });
+  await app.press("id:tune-row-model-default");
+  await app.waitFor("id:tune-row-effort-high", { timeout: 5_000 });
+  await app.press("id:tune-row-effort-high");
+  await app.waitFor("id:consult-member-0", { timeout: 5_000 });
+  expect(app.shows("id:consult-menu")).toBe(true);
+});

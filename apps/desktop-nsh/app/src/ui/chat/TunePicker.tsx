@@ -52,11 +52,16 @@ export function TunePicker(props: {
   /** The phone sheet's heading at its top level. */
   sheetTitle: string;
   disabled: boolean;
+  /** Instead of the closed picker's box, one plain row with this word (the consultants' "add one", inside their menu). */
+  plain?: string;
   /** Called as the picker opens: what it lists may have changed since (another sign-in). */
   onOpen?: () => void;
+  /** Whether its columns are out now: a menu it sits in leaves a press on them alone. */
+  onOpenChange?: (open: boolean) => void;
   testID?: string;
 }) {
   const tune = createTune({ tree: () => props.tree, disabled: () => props.disabled, phone: phoneSheet, sheetTitle: () => props.sheetTitle, onOpen: () => props.onOpen?.() });
+  effect(() => props.onOpenChange?.(tune.open()));
   const phone = phoneSheet;
   // The phone sheet's levels have history entries of their own on the hosted page; Back there steps up one.
   cleanup(holdLevels({ name: "tune-sheet", depth: () => tune.sheetDepth(), inModal: true, stepOut: () => tune.sheetBack() }));
@@ -120,7 +125,24 @@ export function TunePicker(props: {
     },
   );
 
-  const trigger = (
+  const plainRow = (word: string) => (
+    <View
+      role="button"
+      testID={props.testID ?? "tune-trigger"}
+      ref={(node: ViewRef) => (triggerRef = node)}
+      accessibilityLabel={word}
+      accessibilityState={{ expanded: tune.open(), disabled: props.disabled }}
+      disabled={props.disabled}
+      onPress={() => (tune.open() ? tune.close() : tune.openPicker())}
+      class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.45] hover:bg-line-subtle ${tune.open() ? "bg-line-subtle" : ""}`}
+    >
+      <Icon name="plus" size={16} class="tint-ink opacity-75" />
+      <Text class="flex-1 min-w-0 text-[13px] font-medium text-ink line-clamp-1">{word}</Text>
+      <Icon name="chevron-right" size={12} class="tint-ink-muted" />
+    </View>
+  );
+
+  const trigger = props.plain ? plainRow(props.plain) : (
     <View
       role="button"
       testID={props.testID ?? "tune-trigger"}

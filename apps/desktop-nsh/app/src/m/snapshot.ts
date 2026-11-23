@@ -194,6 +194,9 @@ export function applyEvent(snapshot: Snapshot, event: ClientEvent): Snapshot {
           session.unread_count !== undefined ? session.unread_count : (existing?.unread_count ?? 0),
         project_parent_id:
           session.project_parent_id !== undefined ? session.project_parent_id : (existing?.project_parent_id ?? null),
+        // The composer's consultant switch (ADR 0116): null is a choice (never set), so it is carried as sent.
+        project_consult:
+          session.project_consult !== undefined ? session.project_consult : (existing?.project_consult ?? null),
         waiting_on_you:
           session.waiting_on_you !== undefined ? session.waiting_on_you : (existing?.waiting_on_you ?? null),
         last_message: (() => {

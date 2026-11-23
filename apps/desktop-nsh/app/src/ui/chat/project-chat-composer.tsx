@@ -1,6 +1,6 @@
 /**
  * A project session's composer (the box of `ProjectChat.svelte`): the line on top, the clip, Plan
- * mode, the account / model / thinking picker, the microphone, Stop and Send under it, as in the
+ * mode, the consultant switch, the account / model / thinking picker, the microphone, Stop and Send under it, as in the
  * agents' own apps. Pictures and files of any type go with a line as in a Bot's composer: pasted
  * (a Finder copy too), dropped from Finder on the conversation, or picked with the clip, staged on
  * the conversation and kept there until the Mac has them (`composer-drop.tsx`); rows dragged from a
@@ -27,6 +27,7 @@ import { Icon } from "../Icon";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentTune } from "./AgentTune";
+import { ConsultPill } from "./ConsultPill";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
@@ -36,7 +37,7 @@ import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
-import { agentModels } from "../../m/chat/project-agent-options.svelte";
+import { agentModels, agentsStatus } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 
@@ -220,7 +221,7 @@ export function ProjectComposer(props: {
               view().draft = text;
               sendFailed.set(false);
             }}
-            placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
+            placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : s().consulting() ? t().project.composerPlaceholderConsult(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
             editable
             commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
             onSend={() => void send()}
@@ -255,6 +256,16 @@ export function ProjectComposer(props: {
                 <Text class={`text-[12px] font-medium ${s().planning() ? "text-brand" : "text-ink-muted group-hover:text-ink"}`}>{t().project.plan}</Text>
               </View>
             </If>
+            {/* The consultant switch (ADR 0116), the session's own: on, every line goes to the chosen consultants first. Every agent has it. */}
+            <ConsultPill
+              setting={props.selected.project_consult}
+              agentName={s().agentName()}
+              disabled={!connected()}
+              agents={agentsStatus()}
+              client={runtime.client}
+              onOpen={s().askOptions}
+              onChange={(next) => void s().setConsult(next)}
+            />
             {/* An account changes for the next run: Claude Code keeps the session under the account it ran on. */}
             <View class="shrink min-w-0 flex-row">
               <AgentTune

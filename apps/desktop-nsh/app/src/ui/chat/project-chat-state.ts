@@ -18,6 +18,7 @@ import {
   type Attachment,
   type Message,
   type PatchProjectSessionRequest,
+  type ProjectConsultSetting,
   type SessionSummary,
 } from "@real-bot/protocol";
 import { annotationsByMessage } from "../../m/annotations/model.ts";
@@ -131,6 +132,12 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
   const planning = () => selected().project_mode === "plan";
   function togglePlan(): void {
     if (connected() && caps().plan) void tune({ mode: planning() ? null : "plan" });
+  }
+
+  /** The consultant switch (ADR 0116 addendum), the session's own: on, each line is talked over with the members first. */
+  const consulting = () => Boolean(selected().project_consult?.on) && (selected().project_consult?.members.length ?? 0) > 0;
+  function setConsult(next: ProjectConsultSetting): Promise<void> {
+    return connected() ? tune({ consult: next }) : Promise.resolve();
   }
 
   // --- the working bubble's clock, commands and steps ---
@@ -333,6 +340,8 @@ export function createProjectState(selected: () => SessionSummary, onOpenArtifac
     tune,
     planning,
     togglePlan,
+    consulting,
+    setConsult,
     nowMs,
     tasks,
     goingTasks,
