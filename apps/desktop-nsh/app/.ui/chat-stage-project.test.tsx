@@ -390,3 +390,27 @@ test("in a Claude Code session the consultant menu offers another agent's own mo
   await app.waitFor("id:consult-member-0", { timeout: 5_000 });
   expect(said(app)).toContain('"agent":"antigravity","model":"story-agy-alpha"');
 });
+
+test("a project session's composer shows context window usage when reported and hides it when cleared", async () => {
+  const app = await project();
+  expect(app.shows("id:project-context")).toBe(false);
+
+  await app.press("id:story-context-normal");
+  await app.waitFor("id:project-context", { timeout: 5_000 });
+  expect(app.texts()).toContain("34%");
+  expect(app.shows("label:上下文占用：68k / 200k tokens（34%）")).toBe(true);
+  const normalColor = app.spanStyle("id:project-context >> text:34%").color;
+
+  await app.press("id:story-context-high");
+  await app.waitUntil(() => app.texts().includes("92%"), { timeout: 5_000 });
+  expect(app.shows("label:上下文占用：184k / 200k tokens（92%）")).toBe(true);
+  const dangerColor = app.spanStyle("id:project-context >> text:92%").color;
+  expect(dangerColor).not.toBe(normalColor);
+
+  await app.press("id:story-context-nolimit");
+  await app.waitUntil(() => app.texts().includes("42.3k"), { timeout: 5_000 });
+  expect(app.shows("label:上下文占用：42.3k tokens")).toBe(true);
+
+  await app.press("id:story-context-clear");
+  await app.waitFor("id:project-context", { state: "gone", timeout: 5_000 });
+});

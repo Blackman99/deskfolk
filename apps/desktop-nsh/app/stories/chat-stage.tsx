@@ -12,7 +12,7 @@
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type ProjectContextUsage, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
 import { LocalApi } from "../src/m/local-api.ts";
@@ -52,6 +52,7 @@ const consulted = signal(false);
 const planMode = signal(false);
 /** The composer's consultant switch (ADR 0116 addendum): what the story's session holds, as the daemon would store it. */
 const consultSetting = signal<ProjectConsultSetting | null>(null);
+const projectContext = signal<ProjectContextUsage | null>(null);
 /** The project session's agent: Claude Code, or another whose composer the caps shape (`story-agent-*`). */
 const projectAgent = signal<"claude_code" | "codex" | "grok">("claude_code");
 const projectLines = signal<Message[]>([]);
@@ -106,7 +107,7 @@ function botDmSession(): SessionSummary | null {
 function projectSession(): SessionSummary | null {
   const base = realSessions().find((s) => classifySession(s) === "group");
   return base
-    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: projectAgent(), project_mode: planMode() ? "plan" : null, project_consult: consultSetting() } as unknown as SessionSummary)
+    ? ({ ...base, id: PROJECT_ID, kind: "project", name: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", project_agent: projectAgent(), project_mode: planMode() ? "plan" : null, project_consult: consultSetting(), project_context: projectContext() } as unknown as SessionSummary)
     : null;
 }
 
@@ -510,6 +511,10 @@ export default function ChatStageStory() {
             {button("story-consult-members", "consult: opus + codex", () =>
               consultSetting.set({ on: true, members: [{ agent: "claude_code", model: "claude-opus-5-5", effort: null }, { agent: "codex", model: null, effort: "high" }] }),
             )}
+            {button("story-context-normal", "ctx 34%", () => projectContext.set({ used: 68_000, limit: 200_000, model: "claude-opus-4-6" }))}
+            {button("story-context-high", "ctx 92%", () => projectContext.set({ used: 184_000, limit: 200_000, model: "claude-opus-4-6" }))}
+            {button("story-context-nolimit", "ctx 42.3k", () => projectContext.set({ used: 42_300, limit: null }))}
+            {button("story-context-clear", "ctx clear", () => projectContext.set(null))}
             {button("story-agents", "fixed agents", () => {
               forgetClaudeOptions();
               fakeAgents.set(true);
