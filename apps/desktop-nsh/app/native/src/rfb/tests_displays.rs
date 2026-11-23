@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 
 use super::displays::{Want, parse_layout};
-use super::protocol::{encodings, set_display, update_request};
+use super::protocol::{auto_update, encodings, set_display, update_request};
 use super::session::Session;
 use super::tests::server_init;
 
@@ -80,7 +80,14 @@ fn types(events: &[Value]) -> Vec<&str> {
 }
 
 fn full(fb: (u16, u16)) -> Vec<u8> {
-    update_request(false, fb.0 as usize, fb.1 as usize)
+    let mut m = update_request(false, fb.0 as usize, fb.1 as usize);
+    m.extend(auto_update(fb.0 as usize, fb.1 as usize));
+    m
+}
+
+#[test]
+fn auto_update_bytes() {
+    assert_eq!(auto_update(5120, 2880), [0x09, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14, 0x00, 0x0b, 0x40]);
 }
 
 #[test]
@@ -135,9 +142,22 @@ fn the_combined_view_is_narrowed_to_the_main_screen() {
     assert_eq!(ev[1]["asking"], false);
     assert_eq!(std::mem::take(&mut s.out), full(MAIN));
 
-    // Updates after it ask for what changed, as before.
+    // Auto-updates are already active, so subsequent frames do not send another request.
     s.feed(&[0, 0, 0, 0]);
-    assert_eq!(s.out, update_request(true, 5120, 2880));
+    assert!(s.out.is_empty());
+}
+
+#[test]
+fn desktop_size_on_a_mac_reasks_for_a_full_frame_and_auto_updates() {
+    let mut s = mac(Some(Want::All));
+    s.feed(&layout_update(None, COMBINED, &SCREENS));
+    s.out.clear();
+    let mut m = vec![0, 0, 0, 1, 0, 0, 0, 0, 0x14, 0x00, 0x0b, 0x40];
+    m.extend((-223i32).to_be_bytes());
+    s.feed(&m);
+    assert_eq!(std::mem::take(&mut s.out), full(MAIN));
+    s.feed(&[0, 0, 0, 0]);
+    assert!(s.out.is_empty());
 }
 
 #[test]
@@ -270,7 +290,7 @@ fn a_request_from_the_page_ends_a_wait_the_mac_never_answers() {
     s.request_update(true);
     assert_eq!(s.out, full(COMBINED));
     s.out.clear();
-    // Updates ask for what changed again.
+    // Auto-updates are now active; no extra request follows an incoming update.
     s.feed(&[0, 0, 0, 0]);
-    assert_eq!(s.out, update_request(true, COMBINED.0 as usize, COMBINED.1 as usize));
+    assert!(s.out.is_empty());
 }

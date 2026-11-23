@@ -131,8 +131,10 @@ impl Session {
     /// A layout from the Mac: take its framebuffer, say what it has, and ask for the screen the
     /// page wants when the Mac is sending another view.
     pub(super) fn on_layout(&mut self, payload: &[u8]) -> Result<(), Failure> {
-        // The Mac dropped what it held either way: the next request asks for the whole screen.
+        // The Mac dropped both pending update requests and auto-updates either way: ask for the
+        // whole screen and re-enable auto-updates once the target view is in place.
         self.repaint = true;
+        self.auto_updates = false;
         let layout = match parse_layout(payload) {
             Ok(layout) => layout,
             // One this client can't read is passed over rather than ending a session that showed
@@ -164,6 +166,7 @@ impl Session {
     fn ask_display(&mut self, target: Option<u32>) {
         self.out.extend(set_display(target));
         self.display_asked = Some(target);
+        self.auto_updates = false;
     }
 
     /// The page's choice. Before the Mac's first layout it is only kept; after it, the Mac is asked

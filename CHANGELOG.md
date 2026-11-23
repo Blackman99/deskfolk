@@ -27,6 +27,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### A Mac with several displays: the remote screen shows one at a time
 
 - With several displays on the Mac, the phone's remote screen used to get all of them as one picture shrunk to the phone's width, so each display was a narrow strip with unreadable text, and the picture carried every display's pixels. Now it shows the main display by default, filling the phone's width. Tap **Main screen ▾** in the top bar to switch to another display (the list says where it sits from the main one and its size), or pick **All screens** to see them side by side; the phone remembers the choice. It uses macOS Screen Sharing's own display selection; the Mac's displays are left alone.
+- Viewing a single display no longer freezes the remote picture when another display on the Mac changes (clicks and keys still reached the Mac, while the phone kept showing an old frame): on a Mac the client now uses macOS Screen Sharing's continuous update mode instead of asking frame by frame, which macOS silently dropped whenever the next change landed on a different display.
 - **Smooth** still lowers only the main display's resolution, so it does nothing while you look at another one.
 
 ### Project sessions can bring in a consultant

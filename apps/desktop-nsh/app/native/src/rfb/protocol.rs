@@ -74,6 +74,22 @@ pub fn update_request(incremental: bool, w: usize, h: usize) -> Vec<u8> {
     m
 }
 
+/// Apple's AutoFrameBufferUpdate (`0x09`): asks macOS Screen Sharing to stream dirty rectangles
+/// continuously (`interval = 0` uses the server's default; `u32::MAX` turns it off). Standard
+/// incremental `FramebufferUpdateRequest` (`0x03`) deadlocks in single-display views: when another
+/// display changes, `screensharingd` pops that rect, clears its pending request flag before
+/// checking the selected display's bounds, and sends nothing back, leaving the client waiting
+/// forever.
+pub fn auto_update(w: usize, h: usize) -> Vec<u8> {
+    let mut m = vec![0x09, 0, 0, 0];
+    m.extend_from_slice(&0u32.to_be_bytes());
+    m.extend_from_slice(&0u16.to_be_bytes());
+    m.extend_from_slice(&0u16.to_be_bytes());
+    m.extend_from_slice(&(w.min(65535) as u16).to_be_bytes());
+    m.extend_from_slice(&(h.min(65535) as u16).to_be_bytes());
+    m
+}
+
 /// Apple's SetDisplay: share one screen (`Some(id)`, an id from the layout) or all of them combined.
 pub fn set_display(id: Option<u32>) -> Vec<u8> {
     let mut m = vec![0x0d, id.is_none() as u8, 0, 0];

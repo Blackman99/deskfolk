@@ -68,6 +68,8 @@ pub struct Session {
     pub(super) display_asked: Option<Option<u32>>,
     /// The next update request asks for the whole screen, not for what changed.
     pub(super) repaint: bool,
+    /// Apple's AutoFrameBufferUpdate (`0x09`) is active for the current layout/framebuffer.
+    pub(super) auto_updates: bool,
 }
 
 impl Session {
@@ -91,6 +93,7 @@ impl Session {
             layout: None,
             display_asked: None,
             repaint: false,
+            auto_updates: false,
         }
     }
 
@@ -211,17 +214,29 @@ impl Session {
         }
     }
 
-    /// noVNC asks for the next (incremental) update as soon as one is complete; after a Mac's
-    /// display layout, for the whole screen. While a SetDisplay is out it asks for nothing: the
-    /// Mac's answering layout comes unasked, and a request sent now would bring a second whole
-    /// screen after the switch (`displays`).
+    /// noVNC asks for the next (incremental) update as soon as one is complete; on macOS Screen
+    /// Sharing (`apple`) incremental updates use Apple's `AutoFrameBufferUpdate` (`0x09`) instead,
+    /// because standard incremental requests deadlock in single-display views when another display
+    /// changes (`protocol::auto_update`). While a SetDisplay is out it asks for nothing: the Mac's
+    /// answering layout comes unasked, and a request sent now would bring a second whole screen
+    /// after the switch (`displays`).
     fn finish_update(&mut self) {
         self.changed = true;
         if self.display_asked.is_some() {
             return;
         }
-        let incremental = !std::mem::take(&mut self.repaint);
-        self.out.extend(update_request(incremental, self.fb.w, self.fb.h));
+        let full = std::mem::take(&mut self.repaint);
+        if self.apple {
+            if full {
+                self.out.extend(update_request(false, self.fb.w, self.fb.h));
+            }
+            if full || !self.auto_updates {
+                self.out.extend(auto_update(self.fb.w, self.fb.h));
+                self.auto_updates = true;
+            }
+            return;
+        }
+        self.out.extend(update_request(!full, self.fb.w, self.fb.h));
     }
 
     fn rect(&mut self, data: &[u8]) -> Result<Step, Failure> {
@@ -234,6 +249,10 @@ impl Session {
         let used = match encoding {
             PSEUDO_DESKTOP_SIZE => {
                 self.resize(w, h)?;
+                if self.apple {
+                    self.auto_updates = false;
+                    self.repaint = true;
+                }
                 0
             }
             PSEUDO_EXTENDED_DESKTOP_SIZE => {
@@ -248,6 +267,10 @@ impl Session {
                 // request of ours changes nothing.
                 if !(x == 1 && y != 0) {
                     self.resize(w, h)?;
+                    if self.apple {
+                        self.auto_updates = false;
+                        self.repaint = true;
+                    }
                 }
                 total
             }
@@ -341,6 +364,10 @@ impl Session {
         }
         if self.connected() {
             self.out.extend(update_request(!full, self.fb.w, self.fb.h));
+            if self.apple && (full || !self.auto_updates) {
+                self.out.extend(auto_update(self.fb.w, self.fb.h));
+                self.auto_updates = true;
+            }
         }
     }
 }

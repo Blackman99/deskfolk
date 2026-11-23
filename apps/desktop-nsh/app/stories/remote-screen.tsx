@@ -172,6 +172,7 @@ export class FakeChannel implements ScreenChannel {
       } else this.#update();
       return true;
     }
+    if (type === 0x09) return this.#take(16) !== null;
     if (type === 0x0d) {
       const m = this.#take(8);
       if (!m) return false;
