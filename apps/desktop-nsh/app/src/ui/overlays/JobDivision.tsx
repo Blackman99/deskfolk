@@ -70,7 +70,7 @@ export function JobDivision(props: {
                       when={face().src}
                       else={
                         <Text
-                          class="text-[9px] font-bold"
+                          class="text-[10px] font-bold"
                           style={{ color: face().palette ? cssColor(face().palette!.text) : undefined }}
                         >
                           {face().letter}

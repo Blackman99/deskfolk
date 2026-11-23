@@ -42,15 +42,20 @@ import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
 import type { SendFlight } from "./send-flight";
 import { ComposerEditor } from "../lazy-views";
+import { ScrollBottomButton } from "./ScrollBottomButton";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
 import { tuneLine, type ShownTuneHandle } from "./TunePicker";
 import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
+import { WaitingJump } from "./WaitingJump";
+import type { HiddenWaiting } from "./waiting-jump";
 import { agentModels, agentsStatus } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 import { phoneChips } from "../../m/chat/phone-chips";
+
+const NO_WAITING: HiddenWaiting = { items: [], above: false };
 
 /** How the conversation hands this box files dropped elsewhere on it, and rows dragged from a file tree. */
 export type ProjectComposerHandle = {
@@ -65,6 +70,12 @@ export function ProjectComposer(props: {
   state: ProjectState;
   /** The line went out: the stage goes to the newest one. */
   onSent: () => void;
+  /** The stage owns stick-to-bottom; this draws the jump control on the card. */
+  showScrollBottom?: boolean;
+  onScrollToBottom?: () => void;
+  /** Pending approval or questions scrolled out of sight. */
+  hiddenWaiting?: HiddenWaiting;
+  onJumpWaiting?: (id: string) => void;
   /** The microphone's recording, unless a test brings its own. */
   makeRecorder?: () => VoiceRecorder;
   /** Reads the local files a drop or a Finder copy names; by default through `fs`. */
@@ -277,13 +288,15 @@ export function ProjectComposer(props: {
       onLayout={(e) => width.set(e.bounds.size.width)}
     >
       <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[800px]"}`}>
+        <WaitingJump hidden={props.hiddenWaiting ?? NO_WAITING} onJump={(id) => props.onJumpWaiting?.(id)} />
+        <View class="w-full relative">
         {/* Focused, it keeps its focus border under the pointer, as a Bot's composer does (`Composer`). */}
         <View
           testID="project-composer-card"
           onFileDragEnter={() => fileOver.set(true)}
           onFileDragLeave={() => fileOver.set(false)}
           onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
-          class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
+          class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
           style={docked() ? undefined : { boxShadow: shadow("raised") }}
         >
           <If when={refused()}>
@@ -441,6 +454,8 @@ export function ProjectComposer(props: {
           {/* The consultants' chip's sheet: outside the row, so switching them off there takes the chip, not the sheet. */}
           <If when={phone()}>{consultPill((handle) => (chipConsult = handle))}</If>
           <DropVeil shown={dropShown()} testID="project-drop-veil" />
+        </View>
+        <ScrollBottomButton shown={props.showScrollBottom === true} onScrollToBottom={props.onScrollToBottom} />
         </View>
       </View>
     </View>

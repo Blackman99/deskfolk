@@ -16,7 +16,8 @@ import { copy } from "../../runtime";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
 import { Icon, type IconName } from "../Icon";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { MENU_ITEM, MENU_SURFACE, shadow } from "../styles";
+import { rovingMenu } from "./menu-roving";
 
 export function SessionContextMenu(props: {
   session: SessionSummary;
@@ -55,6 +56,21 @@ export function SessionContextMenu(props: {
     action();
     props.onClose();
   };
+  const desktopKeys = () => {
+    const d = data();
+    const keys: string[] = ["session-menu-pin"];
+    if (d.canViewInfo) keys.push("session-menu-info");
+    if (d.canShowJob && props.onShowJobView) keys.push("session-menu-job");
+    if (d.canShowMap && props.onShowMap) keys.push("session-menu-map");
+    if (d.canOpenProjectDir && props.onOpenProjectDir) keys.push("session-menu-project-dir");
+    if (d.canOpenProjectDir && props.onOpenProjectTerminal) keys.push("session-menu-project-terminal");
+    if (d.canRename && props.onRename) keys.push("session-menu-rename");
+    if (d.canClearHistory) keys.push("session-menu-clear");
+    if (d.archive.enabled) keys.push("session-menu-archive");
+    if (d.delete.enabled) keys.push("session-menu-delete");
+    return keys;
+  };
+  const roving = rovingMenu({ open: () => !narrowWindow(), keys: desktopKeys, onTab: () => props.onClose() });
 
   function Item(p: {
     sheet: boolean;
@@ -73,19 +89,22 @@ export function SessionContextMenu(props: {
           <View
             role="menuitem"
             testID={p.testID}
+            ref={roving.ref(p.testID)}
             accessibilityLabel={p.label}
             accessibilityState={{ disabled: p.disabled }}
             disabled={p.disabled}
+            onFocus={() => roving.focused(p.testID)}
+            onBlur={() => roving.blurred(p.testID)}
             onPress={p.onPress}
-            class={`cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) disabled:opacity-[0.4] ${p.danger ? "hover:bg-danger-bg" : "hover:bg-line-subtle"}`}
+            class={`cursor-pointer select-none disabled:cursor-default ${MENU_ITEM} group ${p.danger ? "hover:bg-danger-bg focus:bg-danger-bg focus-visible:bg-danger-bg" : ""}`}
           >
             <Icon
               name={p.icon}
               filled={p.filled}
               size={16}
-              class={p.danger ? "tint-ink opacity-75 group-hover:tint-danger" : "tint-ink opacity-75 group-hover:tint-brand"}
+              class={p.danger ? "tint-ink opacity-75 group-hover:tint-danger group-focus:tint-danger" : "tint-ink opacity-75 group-hover:tint-brand group-focus:tint-brand"}
             />
-            <Text class={`text-[13px] font-medium text-ink ${p.danger ? "group-hover:text-danger-text" : "group-hover:text-brand"}`}>{p.label}</Text>
+            <Text class={`text-[13px] font-medium text-ink ${p.danger ? "group-hover:text-danger-text group-focus:text-danger-text" : "group-hover:text-brand group-focus:text-brand"}`}>{p.label}</Text>
           </View>
         }
       >
@@ -200,7 +219,7 @@ export function SessionContextMenu(props: {
             role="menu"
             testID="session-context-menu"
             accessibilityLabel={title()}
-            class="min-w-[168px] p-[5px] gap-[2px] bg-pane border border-line rounded-(--radius-md)"
+            class={`min-w-[168px] gap-[2px] ${MENU_SURFACE}`}
             style={{ boxShadow: shadow("menu") }}
           >
             {items(false)}

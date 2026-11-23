@@ -106,7 +106,7 @@ function PinnedItem(props: {
           {(count) => (
             <View
               testID="pinned-badge"
-              class="absolute items-center justify-center min-w-[15px] h-[15px] px-[3px] rounded-(--radius-md) bg-warn"
+              class="absolute items-center justify-center min-w-[15px] h-[15px] px-[3px] rounded-(--radius-md) bg-warn-text"
               style={{ top: -4, right: -4, borderWidth: 1.5, borderColor: token("sidebar-bg") }}
             >
               <Text class="text-[10px] font-bold text-on-warn">{String(count())}</Text>

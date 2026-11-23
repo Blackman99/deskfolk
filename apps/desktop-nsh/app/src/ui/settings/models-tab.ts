@@ -6,15 +6,15 @@
  * page head and its Back.
  */
 import { signal } from "nsh";
-import { widthAtMost } from "../../platform/viewport";
+import { narrowWindow } from "../Modal";
 
 export type ModelsSection = "endpoints" | "speech";
 
 /** The sections, in the order the tabs and the phone's list show them. */
 export const MODELS_SECTIONS: readonly ModelsSection[] = ["endpoints", "speech"];
 
-/** The messenger's breakpoint for this page. */
-export const modelsPhone = () => widthAtMost(720);
+/** The shared phone breakpoint (`PHONE_WIDTH = 680`). */
+export const modelsPhone = () => narrowWindow();
 
 export function createModelsState(label: (of: ModelsSection) => string) {
   const picked = signal<ModelsSection>("endpoints");

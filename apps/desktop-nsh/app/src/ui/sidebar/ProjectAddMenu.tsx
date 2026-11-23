@@ -20,7 +20,7 @@ import { copy } from "../../runtime";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
 import { Icon, type IconName } from "../Icon";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { MENU_SURFACE, shadow } from "../styles";
 import { AgentLogo } from "../settings/AgentLogo";
 
 type Entry = { id: string; testID: string; label: string; icon?: IconName; agent?: ProjectAgent; run: () => void };
@@ -176,8 +176,8 @@ function Dropdown(props: ProjectAddMenuProps): JSX.Element {
         role="menu"
         testID="project-add-menu"
         accessibilityLabel={props.label}
-        class="min-w-[200px] p-[5px] bg-pane border border-line rounded-(--radius-md)"
-        style={{ boxShadow: shadow("lg") }}
+        class={`min-w-[200px] ${MENU_SURFACE}`}
+        style={{ boxShadow: shadow("menu") }}
       >
         {() =>
           groups().flatMap((group, i) => [

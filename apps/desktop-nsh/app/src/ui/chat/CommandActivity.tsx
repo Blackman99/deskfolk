@@ -17,7 +17,7 @@ import { copy } from "../../runtime";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
-import { tip } from "../tip";
+import { Tip } from "../tip";
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
 
@@ -93,6 +93,24 @@ export function CommandActivity(props: {
   const failed = () => done().filter(isFailed).length;
   const expanded = signal(false);
   const opened = signal<string | null>(null);
+  // Controlled row tooltip: one at a time, dismissed on scroll, click or collapse.
+  const openTip = signal<string | null>(null);
+  const rowTip = (row: () => CommandRow) => (
+    <Tip
+      testID={`command-tip-${row().id}`}
+      label={row().command ?? row().name}
+      open={openTip() === row().id}
+      onOpenChange={(e) => {
+        const id = row().id;
+        if (e.open) openTip.set(id);
+        else if (openTip() === id) openTip.set(null);
+      }}
+      mono
+      align="start"
+      maxWidth={420}
+      maxLines={6}
+    />
+  );
 
   // The list follows new commands the way a terminal does, unless you have scrolled up to read. Each
   // time it opens it starts at its end, as the messenger's does.
@@ -118,7 +136,10 @@ export function CommandActivity(props: {
             role="button"
             testID="command-summary"
             accessibilityState={{ expanded: expanded() }}
-            onPress={() => expanded.set(!expanded())}
+            onPress={() => {
+              openTip.set(null);
+              expanded.set(!expanded());
+            }}
             class="cursor-pointer select-none group flex-row items-center gap-[6px] max-w-full py-[2px]"
           >
             <Icon name="terminal" size={16} class={expanded() ? "tint-ink-secondary" : "tint-ink-muted group-hover:tint-ink-secondary"} />
@@ -137,6 +158,7 @@ export function CommandActivity(props: {
         <If when={expanded()}>
           <View testID="command-card" class="self-stretch overflow-hidden border border-line rounded-(--radius-md) bg-pane" style={{ boxShadow: shadow("xs") }}>
             <Scroll
+              testID="command-scroll"
               ref={(node) => {
                 list = node;
                 atEnd = true;
@@ -154,6 +176,7 @@ export function CommandActivity(props: {
                 toEnd();
               }}
               onScroll={(e) => {
+                openTip.set(null);
                 atEnd = e.contentSize.height - e.offset.y - e.size.height < 8;
               }}
             >
@@ -166,7 +189,7 @@ export function CommandActivity(props: {
                       <If
                         when={openable()}
                         else={
-                          <View class="flex-row items-center gap-[8px] w-full min-h-[30px] px-[10px]" tooltip={tip(row().command ?? row().name)}>
+                          <View class="flex-row items-center gap-[8px] w-full min-h-[30px] px-[10px]" tooltip={rowTip(row)}>
                             <Line row={row()} openable={false} open={false} />
                           </View>
                         }
@@ -175,8 +198,11 @@ export function CommandActivity(props: {
                           role="button"
                           testID="command-line"
                           accessibilityState={{ expanded: open() }}
-                          tooltip={tip(row().command ?? row().name)}
-                          onPress={() => opened.set(opened() === row().id ? null : row().id)}
+                          tooltip={rowTip(row)}
+                          onPress={() => {
+                            openTip.set(null);
+                            opened.set(opened() === row().id ? null : row().id);
+                          }}
                           class={`cursor-pointer select-none flex-row items-center gap-[8px] w-full min-h-[30px] px-[10px] hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
                         >
                           <Line row={row()} openable open={open()} />

@@ -205,7 +205,7 @@ export function MemoryCard(props: {
                         <Text class={`font-semibold text-ink group-hover:text-brand line-clamp-1 ${phone() ? "text-[15px]" : "text-[13px]"}`}>{memory().subject}</Text>
                         <If when={!memory().enabled}>
                           <View class="px-[6px] py-[1px] rounded-full bg-sidebar-bg border border-line shrink-0">
-                            <Text class="text-[11px] font-medium text-ink-muted">已停用</Text>
+                            <Text class="text-[11px] font-medium text-ink-muted">{t().sidebar.memoryDisabledBadge}</Text>
                           </View>
                         </If>
                       </View>
@@ -331,10 +331,10 @@ export function MemoryCard(props: {
                   </ModalAction>
                 }
               >
+                <ModalAction testID="memory-cancel" disabled={busy()} onPress={closeEdit}>{t().sidebar.memoryCancel}</ModalAction>
                 <ModalAction kind="primary" testID="memory-save" disabled={busy() || !memoryDraftDirty(draft(), baseline())} onPress={() => void save()}>
                   {t().sidebar.memorySave}
                 </ModalAction>
-                <ModalAction testID="memory-cancel" disabled={busy()} onPress={closeEdit}>{t().sidebar.memoryCancel}</ModalAction>
               </If>
             }
           >
@@ -348,9 +348,9 @@ export function MemoryCard(props: {
                 value={draft().subject}
                 readonly={busy()}
                 autoCorrect={false}
-                placeholder="例如：用户的回复偏好、核心业务口径"
+                placeholder={t().sidebar.memorySubjectPlaceholder}
                 onChange={(e) => draft.set({ ...draft(), subject: e.value })}
-                class={`${FIELD} ${errors().subject ? "border-warn-line" : ""}`}
+                class={`${FIELD} ${errors().subject ? "border-danger" : ""}`}
               />
               <If when={errors().subject}>
                 {(message) => <Text role="alert" testID="memory-subject-error" class={FIELD_ERROR}>{message()}</Text>}
@@ -359,7 +359,7 @@ export function MemoryCard(props: {
 
             <FormCard>
               <CardHeader label={t().sidebar.memoryBody} required>
-                <Text class="text-[12px] text-ink-muted">长期有效的事实或偏好</Text>
+                <Text class="text-[12px] text-ink-muted">{t().sidebar.memoryBodyHint}</Text>
               </CardHeader>
               <Input
                 testID="memory-body"
@@ -367,9 +367,9 @@ export function MemoryCard(props: {
                 multiline
                 value={draft().body}
                 readonly={busy()}
-                placeholder="输入具体的记忆结论..."
+                placeholder={t().sidebar.memoryBodyPlaceholder}
                 onChange={(e) => draft.set({ ...draft(), body: e.value })}
-                class={`${FIELD} min-h-[100px] ${errors().body ? "border-warn-line" : ""}`}
+                class={`${FIELD} min-h-[100px] ${errors().body ? "border-danger" : ""}`}
               />
               <If when={errors().body}>
                 {(message) => <Text role="alert" testID="memory-body-error" class={FIELD_ERROR}>{message()}</Text>}
@@ -385,7 +385,7 @@ export function MemoryCard(props: {
                 return (
                   <>
                     <FormCard testID="memory-origin-card">
-                      <CardHeader label="形成来源与更新">
+                      <CardHeader label={t().sidebar.memoryOriginTitle}>
                         <Text class="text-[12px] text-ink-muted">{memoryAgeLabel(live().updated_at, t())}</Text>
                       </CardHeader>
                       <View class="flex-col gap-[6px]">
@@ -425,7 +425,7 @@ export function MemoryCard(props: {
                       <EditorSwitchRow
                         testID="memory-enabled-row"
                         title={t().sidebar.memoryEnabled}
-                        desc={live().enabled ? "已启用，Bot 每轮对话都将参考此事实" : "已停用，Bot 将暂时不读取此记忆"}
+                        desc={live().enabled ? t().sidebar.memoryEnabledOnDesc : t().sidebar.memoryEnabledOffDesc}
                       >
                         <Switch
                           testID="memory-editor-enabled"

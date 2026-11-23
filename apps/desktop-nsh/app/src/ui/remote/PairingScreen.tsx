@@ -16,10 +16,8 @@ import { previewPairing, type PairingProgress } from "../../m/remote/pairing.ts"
 import { copy, runtime } from "../../runtime";
 import { BrandMark } from "../BrandMark";
 import { narrowWindow } from "../Modal";
+import { shadow } from "../styles";
 import { pageOrigin, pairingPayload } from "./pairing-code";
-
-/** `.modal-dialog`'s shadow. */
-const CARD_SHADOW = "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)";
 
 export function PairingScreen(props: { origin?: string }) {
   const raw = signal("");
@@ -50,7 +48,7 @@ export function PairingScreen(props: { origin?: string }) {
     <View testID="pairing-screen" class={`flex-1 bg-bg ${phone() ? "items-stretch" : "items-center justify-center p-6"}`}>
       <View
         class={`flex-col bg-pane overflow-hidden ${phone() ? "flex-1" : "rounded-(--radius-xl) border border-line"}`}
-        style={{ width: phone() ? undefined : Math.min(520, viewportSize().width - 48), boxShadow: phone() ? undefined : CARD_SHADOW }}
+        style={{ width: phone() ? undefined : Math.min(520, viewportSize().width - 48), boxShadow: phone() ? undefined : shadow("dialog") }}
       >
         <View
           class={`flex-row items-center gap-[10px] border-b border-line bg-pane ${phone() ? "px-4" : "px-5 py-[14px]"}`}

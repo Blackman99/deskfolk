@@ -258,7 +258,7 @@ export function SidebarRail(props: {
             </If>
           }
         >
-          <View testID="rail-file-drop" accessible={false} class="w-[40px] h-[40px] items-center justify-center rounded-[12px] bg-accent-tint">
+          <View testID="rail-file-drop" accessible={false} class="w-[40px] h-[40px] items-center justify-center rounded-(--radius-card-sm) bg-accent-tint">
             <Icon name="file-down" class="tint-brand" />
           </View>
         </If>
@@ -273,7 +273,7 @@ export function SidebarRail(props: {
             </If>
           }
         >
-          <View testID="rail-badge-waiting" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-warn border-[1.5px] border-ground">
+          <View testID="rail-badge-waiting" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-warn-text border-[1.5px] border-ground">
             <Text class="text-[10px] font-bold text-on-warn">{String(status().count)}</Text>
           </View>
         </If>

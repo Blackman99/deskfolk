@@ -116,7 +116,7 @@ export function ModelPicker(props: {
       disabled={props.disabled}
       onLayout={(e) => width.set(e.bounds.size.width)}
       onPress={() => (picker.phone() ? (picker.open() ? picker.close() : picker.openPicker()) : undefined)}
-      class={`cursor-pointer select-none disabled:cursor-default w-full flex-row items-center gap-[8px] rounded-(--radius-md) border bg-input-bg disabled:opacity-[0.55] ${
+      class={`cursor-pointer select-none disabled:cursor-default w-full flex-row items-center gap-[8px] rounded-(--radius-md) border bg-input-bg disabled:opacity-[0.45] ${
         small() ? "px-[10px] py-[6px]" : large() ? "min-h-12 px-[12px] py-[10px]" : "px-[12px] py-[8px]"
       } ${props.error ? "border-danger-line" : picker.open() ? "border-field-focus-border" : "border-line hover:border-line-hover hover:bg-line-subtle"} ${props.class ?? ""}`}
       style={{ boxShadow: shadow("xs") }}
@@ -176,7 +176,7 @@ export function ModelPicker(props: {
                               picker.activate(source());
                               picker.column.set("rows");
                             }}
-                            class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] w-full px-[6px] py-[5px] rounded-(--radius-sm) border-2 disabled:opacity-[0.5] ${
+                            class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[8px] w-full px-[6px] py-[5px] rounded-(--radius-sm) border-2 disabled:opacity-[0.45] ${
                               active() ? "bg-pane" : ""
                             } ${picker.column() === "sources" && active() ? "border-accent-border" : "border-transparent"}`}
                             style={active() ? { boxShadow: shadow("xs") } : undefined}
@@ -233,7 +233,7 @@ export function ModelPicker(props: {
           }}
           trigger={trigger}
           popupClass="rounded-(--radius-md) border border-line bg-pane"
-          popupStyle={{ width: panelWidth(), boxShadow: shadow("lg") }}
+          popupStyle={{ width: panelWidth(), boxShadow: shadow("menu") }}
         >
           <Panel />
         </Popover>

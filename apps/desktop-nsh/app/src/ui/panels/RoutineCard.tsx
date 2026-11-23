@@ -244,7 +244,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
       accessibilityLabel={t().routines.add}
       disabled={disabled()}
       onPress={() => open()}
-      class="cursor-pointer select-none disabled:cursor-default group flex-row items-center justify-center gap-[6px] w-full min-h-[44px] px-[14px] rounded-(--radius-lg) border border-dashed border-line hover:border-brand hover:bg-accent-tint disabled:opacity-[0.55]"
+      class="cursor-pointer select-none disabled:cursor-default group flex-row items-center justify-center gap-[6px] w-full min-h-[44px] px-[14px] rounded-(--radius-lg) border border-dashed border-line hover:border-brand hover:bg-accent-tint disabled:opacity-[0.45]"
     >
       <Icon name="plus" size={12} class="tint-ink-muted group-hover:tint-brand" />
       <Text class="text-[13px] font-semibold text-ink-muted group-hover:text-brand">{t().routines.add}</Text>
@@ -287,10 +287,10 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
           autoFocus={!page}
           value={draft().title}
           readonly={disabled()}
-          placeholder="例如：每日早间资讯汇总、周度代码巡检"
+          placeholder={t().routines.namePlaceholder}
           onChange={(e) => set({ title: e.value })}
           onSubmit={() => void save()}
-          class={`${FIELD} ${errors().title ? "border-warn-line" : ""}`}
+          class={`${FIELD} ${errors().title ? "border-danger" : ""}`}
         />
         <If when={errors().title}>
           {(message) => <Text role="alert" testID="routine-title-error" class={FIELD_ERROR}>{message()}</Text>}
@@ -371,7 +371,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
               autoCorrect={false}
               onChange={(e) => set({ time: e.value })}
               onSubmit={() => void save()}
-              class={`${FIELD} w-[120px] text-[16px] font-bold ${errors().time ? "border-warn-line" : ""}`}
+              class={`${FIELD} w-[120px] text-[16px] font-bold ${errors().time ? "border-danger" : ""}`}
             />
           </View>
           <If when={errors().time}>
@@ -383,7 +383,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
       <FormCard>
         <CardHeader>
           <CardTitle>{t().routines.instruction}</CardTitle>
-          <Text class="text-[12px] text-ink-muted">触发时自动发送</Text>
+          <Text class="text-[12px] text-ink-muted">{t().routines.instructionHint}</Text>
         </CardHeader>
         <Input
           testID="routine-instruction"
@@ -391,7 +391,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
           multiline
           value={draft().instruction}
           readonly={disabled()}
-          placeholder="到达设定时间后，将向该 Bot 发送此指令开始工作，如输入提问或特定工作任务..."
+          placeholder={t().routines.instructionPlaceholder}
           onChange={(e) => set({ instruction: e.value })}
           class={`${FIELD} min-h-[100px]`}
         />
@@ -401,7 +401,7 @@ export function RoutineCard(props: { bot: Bot; onApi?: (api: RoutineCardApi) => 
         <EditorSwitchRow
           testID="routine-enabled-row"
           title={t().routines.enabled}
-          desc={draft().enabled ? "已开启，将按设定周期自动准时触发" : "已暂停，日程暂时不会自动触发"}
+          desc={draft().enabled ? t().routines.enabledOnDesc : t().routines.enabledOffDesc}
         >
           <Switch testID="routine-enabled" label={t().routines.enabled} disabled={disabled()} checked={draft().enabled} onChange={(checked) => set({ enabled: checked })} />
         </EditorSwitchRow>

@@ -1,7 +1,10 @@
 /**
- * Whether the system asks for less motion, so a glide or slide goes straight to where it ends.
- * Where there is nothing to ask (no `matchMedia`), it does not.
+ * Whether to move as little as possible: your interface profile's `motion: "reduce"`, or the
+ * system asking (`matchMedia`, backed by NSH's `reduceMotion()` on desktop).
  */
+import { interfaceBehaviour } from "./interface/behaviour.svelte.ts";
+
 export function prefersReducedMotion(): boolean {
-	return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (interfaceBehaviour().motion === "reduce") return true;
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

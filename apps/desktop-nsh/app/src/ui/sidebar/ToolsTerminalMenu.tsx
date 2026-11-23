@@ -9,7 +9,7 @@
 import { effect, keymap, Overlay, Text, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
-import { shadow } from "../styles";
+import { MENU_SURFACE, shadow } from "../styles";
 import { tip } from "../tip";
 import { rovingMenu } from "./menu-roving";
 
@@ -75,8 +75,8 @@ export function ToolsTerminalMenu(props: {
         testID="tools-terminal-menu"
         accessibilityLabel={copy().terminal.title}
         onMouseEnter={() => props.onMouseEnter()}
-        class="w-[232px] p-[5px] bg-pane border border-line rounded-(--radius-md)"
-        style={{ boxShadow: shadow("lg"), marginTop: -INSET }}
+        class={`w-[232px] ${MENU_SURFACE}`}
+        style={{ boxShadow: shadow("menu"), marginTop: -INSET }}
       >
         {row("new", () => copy().terminal.newTab, () => props.onNew())}
         <View role="none" class="h-[1px] m-[5px] bg-line shrink-0" />

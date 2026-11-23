@@ -163,11 +163,11 @@ export function CreateBotSheet(props: { onClose: () => void }) {
       bodyClass={narrowWindow() ? "px-4 py-[18px] gap-4" : "px-6 py-5 gap-4"}
       foot={
         <>
-          <ModalAction kind="primary" testID="bot-save" busy={saving()} onPress={() => void save()}>
-            {saving() ? t().common.creating : t().sidebar.create}
-          </ModalAction>
           <ModalAction testID="bot-cancel" disabled={saving()} onPress={props.onClose}>
             {t().common.close}
+          </ModalAction>
+          <ModalAction kind="primary" testID="bot-save" busy={saving()} onPress={() => void save()}>
+            {saving() ? t().common.creating : t().sidebar.create}
           </ModalAction>
         </>
       }

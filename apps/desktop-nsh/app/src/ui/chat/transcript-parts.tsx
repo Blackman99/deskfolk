@@ -9,7 +9,7 @@
  * (`message-pill.tsx`) so it never moves the layout and no row above covers it. On a phone (window
  * 680 wide or less) it has no job: the long press opens the menu.
  */
-import { createMotion, signal, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
+import { cleanup, createMotion, effect, signal, Text, token, View, type JSX, type Point, type ViewStyle } from "nsh";
 import { reduceMotion } from "../interface/motion";
 import type { Bot, Message } from "@real-bot/protocol";
 import { avatarSrc, botAvatarColor } from "../../m/avatar.ts";
@@ -57,7 +57,7 @@ export function BotPortrait(props: { bot: Bot | undefined; author: string; stage
   const pal = () => botAvatarColor(props.author);
   const face = () => (
     <View
-      class="w-[32px] h-[32px] rounded-[10px] items-center justify-center overflow-hidden border"
+      class="w-[32px] h-[32px] rounded-(--radius-md) items-center justify-center overflow-hidden border"
       style={{
         backgroundColor: cssColor(pal().bg),
         borderColor: cssColor(pal().border),
@@ -158,7 +158,7 @@ export function arriveMotion(on: () => boolean): () => ViewStyle {
   return () => (rising() ? style : STILL);
 }
 
-const PILL_BUTTON = "min-w-[24px] h-[24px] px-[5px] rounded-[7px] flex-row items-center justify-center gap-[4px] hover:bg-row-hover active:scale-[0.92]";
+const PILL_BUTTON = "min-w-[24px] h-[24px] px-[5px] rounded-(--radius-control-sm) flex-row items-center justify-center gap-[4px] hover:bg-row-hover active:scale-[0.92]";
 
 /**
  * What the pill that stands on a message's top edge holds while the pointer is over it (placed by
@@ -188,7 +188,7 @@ export function MessageToolbar(props: {
               accessibilityLabel={t().chat.reactWith(emoji())}
               tooltip={tip(emoji())}
               onPress={() => void runtime.toggleReaction(props.message.id, emoji())}
-              class="cursor-pointer select-none w-[24px] h-[24px] rounded-[7px] items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
+              class="cursor-pointer select-none w-[24px] h-[24px] rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover hover:scale-[1.15] active:scale-[0.95]"
             >
               <Text class="text-[14px]">{emoji()}</Text>
             </View>
@@ -249,3 +249,14 @@ export function MessageToolbar(props: {
 
 /** Whether the hover pill is wanted at all: not on a phone, where the long press opens the menu. */
 export const toolbarWanted = () => !narrowWindow();
+
+/** The blinking cursor after what has been streamed so far (shared by Bot and project conversations). */
+export function StreamingCursor() {
+  const m = createMotion();
+  effect(() => {
+    if (reduceMotion()) return void m.reset();
+    void m.play({ duration: 800, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0] } });
+    cleanup(() => m.reset());
+  });
+  return <View testID="streaming-cursor" accessible={false} class="w-[7px] h-[14px] ml-[3px] bg-brand" style={{ opacity: m.opacity, verticalAlign: "middle" }} />;
+}

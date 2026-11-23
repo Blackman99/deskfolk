@@ -65,7 +65,7 @@ function ZoomStep(props: { testID: string; label: string; disabled: boolean; tex
       disabled={props.disabled}
       tooltip={tip(props.label)}
       onPress={props.onPress}
-      class="cursor-pointer select-none disabled:cursor-default min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle disabled:opacity-[0.4]"
+      class="cursor-pointer select-none disabled:cursor-default min-w-[28px] h-[26px] px-[6px] items-center justify-center rounded-full hover:bg-line-subtle disabled:opacity-[0.45]"
     >
       <Text class="text-[12px] font-medium text-ink-muted">{props.text}</Text>
     </View>

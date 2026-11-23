@@ -6,8 +6,7 @@
  * the conversation's end, so what it asks is where you look, under what it said before asking. The
  * step opens what is going on now when there is more to show than it says.
  */
-import { cleanup, createMotion, effect, Text, View } from "nsh";
-import { reduceMotion } from "../interface/motion";
+import { Text, View } from "nsh";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import { copy } from "../../runtime";
@@ -15,7 +14,7 @@ import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../lazy-views";
 import { shadow } from "../styles";
-import { tip } from "../tip";
+import { Tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";
 import { pulseMotion } from "./labels";
 import { ProjectAsks } from "./project-chat-asks";
@@ -23,18 +22,8 @@ import { ProjectPlanCard } from "./ProjectPlanCard";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { ProjectTaskSteps } from "./ProjectTaskSteps";
 import type { ProjectState } from "./project-chat-state";
+import { StreamingCursor } from "./transcript-parts";
 import { isCommandTask } from "../../m/chat/project-tasks.ts";
-
-/** The blinking cursor after what has been said so far. */
-function Cursor() {
-  const m = createMotion();
-  effect(() => {
-    if (reduceMotion()) return void m.reset();
-    void m.play({ duration: 800, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0] } });
-    cleanup(() => m.reset());
-  });
-  return <View testID="streaming-cursor" accessible={false} class="w-[7px] h-[14px] ml-[3px] bg-brand" style={{ opacity: m.opacity, verticalAlign: "middle" }} />;
-}
 
 export function ProjectWorking(props: { state: ProjectState }) {
   const t = () => copy();
@@ -47,7 +36,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
     <If
       when={s().footOpens() && !focusMode.on}
       else={
-        <View class="shrink min-w-0" tooltip={tip(full)}>
+        <View class="shrink min-w-0" tooltip={<Tip testID="project-step-tip" label={full} align="start" maxWidth={420} maxLines={6} />}>
           <Text testID="project-step" class="text-[12px] font-medium text-brand line-clamp-1">
             {text}
           </Text>
@@ -59,7 +48,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
         testID="project-steps-toggle"
         accessibilityLabel={text}
         accessibilityState={{ expanded: s().stepsOpen() }}
-        tooltip={tip(`${full}\n${t().chat.activity.showSteps}`)}
+        tooltip={<Tip testID="project-step-tip" label={`${full}\n${t().chat.activity.showSteps}`} disabled={s().stepsOpen()} align="start" maxWidth={420} maxLines={6} />}
         onPress={() => s().stepsOpen.set(!s().stepsOpen())}
         class="cursor-pointer select-none group flex-row items-center gap-[4px] shrink min-w-0"
       >
@@ -117,7 +106,7 @@ export function ProjectWorking(props: { state: ProjectState }) {
                 onOpenArtifact={(path) => s().openCited(path)}
                 files={s().files()}
               >
-                <Cursor />
+                <StreamingCursor />
               </MarkdownBody>
             </If>
             <If when={!focusMode.on}>

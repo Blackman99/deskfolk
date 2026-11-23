@@ -488,6 +488,8 @@ test("MCP: an HTTP server asks for an address, search narrows the list, the box 
     await app.press("text:T-web");
     await app.waitFor("id:mcp-delete");
     await app.press("id:mcp-delete");
+    await app.waitFor("id:danger-confirm");
+    await app.press("id:danger-confirm");
     await app.waitFor("id:mcp-editor", { state: "gone", timeout: 15_000 });
     expect((await api()).mcp.find((row) => row.name === "T-web")).toBeUndefined();
   } finally {

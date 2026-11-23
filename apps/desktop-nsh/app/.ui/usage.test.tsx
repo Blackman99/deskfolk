@@ -90,6 +90,13 @@ test("a press pins the card open, Escape folds everything", async () => {
   await app.waitFor("id:usage-card-codex:", { state: "gone" });
   await app.waitFor("id:usage-column", { state: "gone" });
   expect(app.texts().some((t) => t.includes('"open":false'))).toBe(true);
+
+  // The expanded card also carries an explicit Hide button so hiding does not rely on right click alone.
+  await app.press("id:usage-ball");
+  await app.waitFor("id:usage-card-claude_code:");
+  await app.press("id:usage-card-hide");
+  await app.waitFor("id:usage-ball", { state: "gone" });
+  await app.waitFor("id:usage-tab-widget");
 });
 
 test("dragged by a side it docks there, dragged inward it floats free, and the place is remembered", async () => {

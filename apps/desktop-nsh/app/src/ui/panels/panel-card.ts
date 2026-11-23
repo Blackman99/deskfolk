@@ -9,7 +9,7 @@ export const PANEL_CARD_HEAD = "flex-row items-center justify-between px-4 py-3 
 export const PANEL_CARD_TITLE = "text-[12px] font-semibold text-ink-muted";
 export const PANEL_CARD_BODY = "p-4";
 export const PANEL_COUNTER = "px-[7px] py-[2px] rounded-full bg-chip border border-chip-line";
-/** A field's warning line (`.field-error`). */
-export const FIELD_ERROR = "text-[12px] font-medium text-warn-text";
-/** A boxed text field (the drawer and the modals style every input so). */
-export const FIELD = "w-full px-3 py-2 rounded-(--radius-md) border border-line bg-input-bg text-ink text-[14px] focus:border-brand disabled:opacity-[0.6]";
+/** A field's error line (`.field-error`). */
+export const FIELD_ERROR = "text-[12px] font-medium text-danger-text";
+/** A boxed text field (aligned with `provider-fields.tsx`'s `fieldClass`). */
+export const FIELD = "w-full px-3 py-2 rounded-(--radius-md) border border-line bg-input-bg text-ink text-[14px] focus:border-field-focus-border disabled:opacity-[0.45]";

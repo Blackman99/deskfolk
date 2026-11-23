@@ -27,7 +27,19 @@ thread_local! {
 /// The menu bar's workbench commands, by the ids the app runs them by (`workbench-commands.ts`
 /// `MENU_COMMANDS`, `shell-workbench`'s `runMenuCommand`); an item's tag is its index here. They go
 /// to the window in front, as the 0.4.0 menu's did.
-const PANE_COMMANDS: &[&str] = &["view-spend", "pane-split-right", "pane-split-down", "pane-close", "pane-equalise", "pane-reset", "pane-close-tab"];
+const PANE_COMMANDS: &[&str] = &[
+    "view-spend",
+    "pane-split-right",
+    "pane-split-down",
+    "pane-close",
+    "pane-equalise",
+    "pane-reset",
+    "pane-close-tab",
+    "app-settings",
+    "app-search",
+    "app-workspace",
+    "view-toggle-sidebar",
+];
 
 fn pane_command_tag(id: &str) -> isize {
     PANE_COMMANDS.iter().position(|c| *c == id).expect("a known pane command") as isize
@@ -352,15 +364,27 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
     let name = crate::config::APP_NAME;
     let hide_others = item(mtm, "Hide Others", Some(sel!(hideOtherApplications:)), "h");
     hide_others.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Option);
+    // The menu bar's workbench and shell commands (`PANE_COMMANDS`, dispatched via `paneCommand:`).
+    let command = |title: &str, id: &str, key: &str| {
+        let it = targeted(mtm, title, sel!(paneCommand:), key, delegate);
+        it.setTag(pane_command_tag(id));
+        it
+    };
     submenu(mtm, &bar, name, &[
         item(mtm, &format!("About {name}"), Some(sel!(orderFrontStandardAboutPanel:)), ""),
+        NSMenuItem::separatorItem(mtm),
+        command("Settings…", "app-settings", ","),
         NSMenuItem::separatorItem(mtm),
         item(mtm, &format!("Hide {name}"), Some(sel!(hide:)), "h"),
         hide_others,
         NSMenuItem::separatorItem(mtm),
         item(mtm, &format!("Quit {name}"), Some(sel!(terminate:)), "q"),
     ]);
-    submenu(mtm, &bar, "File", &[targeted(mtm, "New Window", sel!(newWindow:), "n", delegate)]);
+    submenu(mtm, &bar, "File", &[
+        targeted(mtm, "New Window", sel!(newWindow:), "n", delegate),
+        NSMenuItem::separatorItem(mtm),
+        command("Workspace", "app-workspace", "o"),
+    ]);
     submenu(mtm, &bar, "Edit", &[
         item(mtm, "Undo", Some(sel!(undo:)), "z"),
         redo,
@@ -369,23 +393,22 @@ fn main_menu(mtm: MainThreadMarker, delegate: &Delegate) -> Retained<NSMenu> {
         item(mtm, "Copy", Some(sel!(copy:)), "c"),
         item(mtm, "Paste", Some(sel!(paste:)), "v"),
         item(mtm, "Select All", Some(sel!(selectAll:)), "a"),
+        NSMenuItem::separatorItem(mtm),
+        command("Search…", "app-search", "k"),
     ]);
-    // The View menu, as 0.4.0 had it: the workbench's commands, with ⌘\ and ⌘⇧\ for the splits.
-    let command = |title: &str, id: &str, key: &str| {
-        let it = targeted(mtm, title, sel!(paneCommand:), key, delegate);
-        it.setTag(pane_command_tag(id));
-        it
-    };
     let split_down = command("Split Down", "pane-split-down", "\\");
     split_down.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
+    let equalise = command("Equalise", "pane-equalise", "0");
+    equalise.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Option);
     submenu(mtm, &bar, "View", &[
+        command("Toggle Sidebar", "view-toggle-sidebar", "b"),
         command("Spend", "view-spend", ""),
         NSMenuItem::separatorItem(mtm),
         command("Split Right", "pane-split-right", "\\"),
         split_down,
         NSMenuItem::separatorItem(mtm),
         command("Close Pane", "pane-close", ""),
-        command("Equalise", "pane-equalise", ""),
+        equalise,
         command("Reset Layout", "pane-reset", ""),
     ]);
     // ⌘W closes the tab in front of you; the window hides once there is none left (the app asks,

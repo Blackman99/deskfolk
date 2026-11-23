@@ -41,15 +41,24 @@ test("wide: a conversation pulled from the list onto the workbench opens as a ta
   expect(app.count("id:chat-tab-name")).toBe(1);
 });
 
-test("⌘K opens search and Escape puts it away; Escape also closes the settings window", async () => {
+test("⌘K and ⌘⇧K open search, ⌘, opens settings without closing it on a second press, and Escape puts them away", async () => {
   const app = await open({ width: 1280 });
   await app.keyboard.press("mod+k");
   await app.waitFor("id:global-search");
   await app.keyboard.press("escape");
   await app.waitUntil(() => app.count("id:global-search") === 0);
 
-  await app.press("id:story-settings");
+  await app.keyboard.press("mod+shift+k");
+  await app.waitFor("id:global-search");
+  await app.keyboard.press("escape");
+  await app.waitUntil(() => app.count("id:global-search") === 0);
+
+  await app.keyboard.press("mod+,");
   await app.waitUntil(() => has(app, "settings:1"));
+  // Pressing ⌘, again keeps Settings open rather than toggling it shut.
+  await app.keyboard.press("mod+,");
+  await app.wait(100);
+  expect(has(app, "settings:1")).toBe(true);
   await app.keyboard.press("escape");
   await app.waitUntil(() => has(app, "settings:0"));
 });

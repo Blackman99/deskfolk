@@ -167,7 +167,7 @@ export function ProjectDirPicker(props: {
                               picked.set(session());
                               importError.set(null);
                             }}
-                            class={`cursor-pointer select-none flex-col items-start gap-[2px] min-h-[44px] px-[10px] py-[6px] rounded-[8px] min-w-0 hover:bg-row-hover ${picked()?.session_id === session().session_id ? "bg-accent-tint" : ""}`}
+                            class={`cursor-pointer select-none flex-col items-start gap-[2px] min-h-[44px] px-[10px] py-[6px] rounded-(--radius-control) min-w-0 hover:bg-row-hover ${picked()?.session_id === session().session_id ? "bg-accent-tint" : ""}`}
                           >
                             <Text class="max-w-full text-[14px] text-ink line-clamp-1">{session().title || t().sidebar.importClaudeNoTitle}</Text>
                             <Text class="max-w-full text-[12px] text-ink-muted line-clamp-1">{importSubtitle(session(), now, locale(), accountOf(session()))}</Text>
@@ -209,7 +209,7 @@ export function ProjectDirPicker(props: {
                 tooltip={tip(entry().dir)}
                 disabled={pending()}
                 onPress={() => void start(entry().dir)}
-                class="cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 w-full min-h-[44px] px-[10px] py-[6px] rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.6]"
+                class="cursor-pointer select-none disabled:cursor-default group flex-row items-center gap-2 w-full min-h-[44px] px-[10px] py-[6px] rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.45]"
               >
                 <Icon name="folder" size={16} class="tint-ink" />
                 {names(entry().label, tildePath(entry().dir))}

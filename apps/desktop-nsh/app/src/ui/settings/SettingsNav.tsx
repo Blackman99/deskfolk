@@ -21,9 +21,9 @@ import { safeArea, Scroll, Text, View } from "nsh";
 import { copy, runtime } from "../../runtime";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
 import { navTabs, type NavTab, type SettingsTab } from "./settings-nav";
-import { widthAtMost } from "../../platform/viewport";
 
 export type { SettingsTab };
 
@@ -43,7 +43,7 @@ export function SettingsNav(props: {
 }) {
   const t = () => copy();
   const snapshot = () => runtime.snapshot;
-  const phone = () => widthAtMost(720);
+  const phone = () => narrowWindow();
   const headless = () => phone() && props.head === false;
   const wizardBadge = () => (
     <View testID="settings-wizard-badge" class="shrink-0 px-2 py-[2px] rounded-full bg-warn-bg border border-warn-line">

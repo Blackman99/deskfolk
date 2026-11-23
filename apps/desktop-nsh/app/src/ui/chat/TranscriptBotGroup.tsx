@@ -203,7 +203,7 @@ function Reply(props: { item: MessageItem; last: boolean; stage: TranscriptStage
       ref={(node: ViewRef) => self.set(node)}
       {...hover.message}
       onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
-      class={`relative w-full transition-colors duration-[120ms] ${ringed() ? "rounded-[16px]" : ""} ${grounded() ? "bg-row-hover" : ""}`}
+      class={`relative w-full transition-colors duration-[120ms] ${ringed() ? "rounded-(--radius-bubble)" : ""} ${grounded() ? "bg-row-hover" : ""}`}
       style={{ ...ringStyle(ringed()), ...arrive() }}
     >
       {/* An overlay on this part's top edge (`message-pill`), above the rows around it. */}

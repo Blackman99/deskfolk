@@ -27,7 +27,7 @@ type Frame = { x: number; y: number; width: number; height: number };
 export type EdgeScroller = { ref: ScrollRef | null; offset: () => number };
 
 /** How close to a scroller's edge the pointer sits before it moves, and how far one tick moves it. */
-export const SCROLL_EDGE_PX = 24;
+export const SCROLL_EDGE_PX = 40;
 export const SCROLL_STEP_PX = 12;
 const SCROLL_TICK_MS = 16;
 

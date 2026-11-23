@@ -6,7 +6,7 @@
  * deeper, Back (or ✕) stepping out of the deepest thing open.
  *
  * It is `nsh/base`'s `Dialog` (the card is a row, the nav beside the page, so `Modal`'s head does not
- * fit): 880 by 640 on a desktop, the whole window on a phone (720 wide or less, where `SettingsNav` is
+ * fit): 880 by 640 on a desktop, the whole window on a phone (680 wide or less, where `SettingsNav` is
  * the first page). Escape, the scrim and ✕ close it unless the endpoint editor or a confirmation is up;
  * in a narrow window, below the list, Escape (the dialog's `onCancel`) and ✕ step out one level
  * instead, as ‹ does. On the phone's page each level has a history entry of its own, written under
@@ -45,6 +45,8 @@ import { mapSettingsError, planWorkspaceSave, type SettingsFieldErrors } from ".
 import { parseHostRelay, type HostRelayField } from "../../m/remote/pairing-host.ts";
 import { IconButton } from "../IconButton";
 import { MobileNavigation, type Destination } from "../MobileNavigation";
+import { narrowWindow } from "../Modal";
+import { shadow } from "../styles";
 import { AboutTab } from "./AboutTab";
 import { AgentsTab, type AgentsTabController } from "./AgentsTab";
 import { AutosaveState } from "./AutosaveState";
@@ -65,7 +67,7 @@ import { SettingsNav, type SettingsTab } from "./SettingsNav";
 import { holdLevels } from "../../platform/page-levels";
 import { stepIn } from "../../platform/page-route";
 import { revealOnEntry } from "../../platform/reveal-on-entry";
-import { widthAtMost, viewportSize } from "../../platform/viewport";
+import { viewportSize } from "../../platform/viewport";
 import { WheelLayer } from "../../platform/wheel-layer";
 
 /** What the shell calls on the window: its Back, and the endpoint editor's. */
@@ -79,8 +81,8 @@ export type SettingsModalHandle = {
 
 type Patch = { locale?: "zh" | "en"; theme?: "system" | "light" | "dark"; launch_at_login?: boolean };
 
-/** The phone breakpoint `SettingsNav` and the Svelte window share. */
-const phone = () => widthAtMost(720);
+/** The shared phone breakpoint (`PHONE_WIDTH = 680`). */
+const phone = () => narrowWindow();
 
 export function SettingsModal(props: {
   mobileSettingsDetail?: boolean;
@@ -693,7 +695,7 @@ export function SettingsModal(props: {
           style={{
             width: width(),
             height: height(),
-            boxShadow: phone() || !shown() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+            boxShadow: phone() || !shown() ? undefined : shadow("dialog"),
           }}
         >
           <WheelLayer>

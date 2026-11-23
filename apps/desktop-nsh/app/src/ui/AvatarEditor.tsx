@@ -161,7 +161,7 @@ export function AvatarEditor(props: {
             accessibilityLabel={copy().sidebar.botAvatarCustom}
             disabled={uploading()}
             onPress={() => void upload()}
-            class="cursor-pointer select-none disabled:cursor-default rounded-full hover:opacity-90 disabled:opacity-[0.6]"
+            class="cursor-pointer select-none disabled:cursor-default rounded-full hover:opacity-90 disabled:opacity-[0.45]"
           >
             {preview()}
           </View>

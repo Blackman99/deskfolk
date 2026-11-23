@@ -7,8 +7,7 @@
  * Like a finished reply it sits on the page flat, no bubble: the cues that it is working are the
  * portrait's glow (the group's), the pulse, the cursor and the last line.
  */
-import { cleanup, createMotion, effect, Text, View } from "nsh";
-import { reduceMotion } from "../interface/motion";
+import { Text, View } from "nsh";
 import type { Bot, Turn } from "@real-bot/protocol";
 import { formatLiveDuration } from "../../m/chat/chat-view.ts";
 import type { CommandRow } from "../../m/chat/command-activity.ts";
@@ -18,21 +17,11 @@ import { copy, runtime } from "../../runtime";
 import { Icon } from "../Icon";
 import { MarkdownBody } from "../lazy-views";
 import { workspaceFiles } from "../file-on-disk";
-import { tip } from "../tip";
+import { Tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";
 import { pulseMotion } from "./labels";
+import { StreamingCursor } from "./transcript-parts";
 import { TurnStepList } from "./TurnStepList";
-
-/** The blinking cursor after what has been said so far. */
-function Cursor() {
-  const m = createMotion();
-  effect(() => {
-    if (reduceMotion()) return void m.reset();
-    void m.play({ duration: 800, iterations: "infinite", direction: "alternate", keyframes: { opacity: [1, 0] } });
-    cleanup(() => m.reset());
-  });
-  return <View testID="streaming-cursor" class="w-[7px] h-[14px] ml-[3px] bg-brand" style={{ opacity: m.opacity, verticalAlign: "middle" }} accessible={false} />;
-}
 
 export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage: TranscriptStage }) {
   const t = () => copy();
@@ -90,7 +79,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
           onOpenImage={(path, from) => stage().openInlineImage(null, path, from as never)}
           onOpenProfile={stage().onOpenProfile}
         >
-          <Cursor />
+          <StreamingCursor />
         </MarkdownBody>
       </If>
       {/* What it is doing while it does it. Ephemeral: the turn's own record is what survives a reload. */}
@@ -113,7 +102,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
               <If
                 when={opensMore()}
                 else={
-                  <View class="shrink min-w-0" tooltip={tip(line().full)}>
+                  <View class="shrink min-w-0" tooltip={<Tip testID="stream-step-tip" label={line().full} align="start" maxWidth={420} maxLines={6} />}>
                     <Text testID="stream-step" class="text-[12px] font-medium text-brand line-clamp-1">
                       {line().text}
                     </Text>
@@ -125,7 +114,7 @@ export function StreamingReply(props: { turn: Turn; bot: Bot | undefined; stage:
                   testID="stream-step"
                   accessibilityLabel={line().text}
                   accessibilityState={{ expanded: open() }}
-                  tooltip={tip(`${line().full}\n${t().chat.activity.showSteps}`)}
+                  tooltip={<Tip testID="stream-step-tip" label={`${line().full}\n${t().chat.activity.showSteps}`} disabled={open()} align="start" maxWidth={420} maxLines={6} />}
                   onPress={toggle}
                   class="cursor-pointer select-none group flex-row items-center gap-[4px] shrink min-w-0"
                 >

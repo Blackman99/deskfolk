@@ -168,6 +168,7 @@ const ZH_FAIL: Record<string, string> = {
   unparseable: "回答读不懂",
   truncated: "回答被截断",
   call_error: "调用出错",
+  call_failed: "调用失败",
   endpoint_error: "端点出错",
   claude_unavailable: "Claude Code 用不了",
   claude_failed: "Claude Code 出错",
@@ -176,6 +177,7 @@ const ZH_FAIL: Record<string, string> = {
   context_full: "超出上下文",
   empty: "什么也没写",
   aborted: "被打断",
+  interrupted: "被打断",
 };
 
 const EN_FAIL: Record<string, string> = {
@@ -186,6 +188,7 @@ const EN_FAIL: Record<string, string> = {
   unparseable: "answer did not read",
   truncated: "answer cut off",
   call_error: "the call failed",
+  call_failed: "the call failed",
   endpoint_error: "endpoint error",
   claude_unavailable: "Claude Code unavailable",
   claude_failed: "Claude Code failed",
@@ -194,6 +197,7 @@ const EN_FAIL: Record<string, string> = {
   context_full: "over the context",
   empty: "wrote nothing",
   aborted: "cut short",
+  interrupted: "interrupted",
 };
 
 export const zh = {

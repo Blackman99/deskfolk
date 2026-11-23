@@ -1,7 +1,7 @@
 /**
  * What the map's 「加一个环节」 card offers (`settings/PlaybookAddMenu.svelte`, ADR 0105): the starter
  * templates that fit its round and a blank step. Choosing one hands back a draft — nothing is saved
- * until the panel's Save. A dropdown under the card; on a phone (720 wide or less), a sheet from the
+ * until the panel's Save. A dropdown under the card; on a phone (680 wide or less), a sheet from the
  * bottom. Past the limit it only says so. Mount it while it is open.
  *
  * Props: `hook`; `anchor` (the card's ref: it hangs there and gets the focus back); `full`;
@@ -15,8 +15,8 @@ import { blankStep, templateStep, templatesFor, type CustomStepTemplateId } from
 import { rovingMenu } from "../sidebar/menu-roving";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
-import { widthAtMost } from "../../platform/viewport";
 
 export function PlaybookAddMenu(props: {
   hook: PlaybookHook;
@@ -27,7 +27,7 @@ export function PlaybookAddMenu(props: {
   onchoose: (step: CustomStep) => void;
 }) {
   const c = () => copy().playbooks.own;
-  const phone = () => widthAtMost(720);
+  const phone = () => narrowWindow();
   const roving = rovingMenu({ open: () => !phone() && !props.full, keys: () => [...templatesFor(props.hook), "blank"], onTab: () => close() });
 
   function choose(step: CustomStep): void {

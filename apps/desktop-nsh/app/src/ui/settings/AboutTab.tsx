@@ -20,6 +20,7 @@ import { localeSection, releaseNoteGroups } from "../../m/settings/release-notes
 import { BrandMark } from "../BrandMark";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { shadow } from "../styles";
 import { SettingsCard } from "./SettingsCard";
 import { widthAtMost } from "../../platform/viewport";
@@ -45,7 +46,7 @@ export function AboutTab(props: { locale: "zh" | "en" }) {
   const narrow = () => widthAtMost(540);
 
   return (
-    <View testID="settings-about" class={`flex-col ${widthAtMost(720) ? "gap-3" : "gap-[14px]"}`}>
+    <View testID="settings-about" class={`flex-col ${narrowWindow() ? "gap-3" : "gap-[14px]"}`}>
       <SettingsCard testID="settings-card-about">
         {/* One block: the pane is already titled About, so the card leads with the app itself. */}
         <View class="flex-row flex-wrap items-center gap-[14px]">

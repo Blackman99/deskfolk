@@ -42,6 +42,7 @@ import type { GroupDetailDraft } from "../../m/panels/group-edit.ts";
 import type { ProviderEditorState } from "../../m/settings/provider-form.ts";
 import type { SettingsModalHandle as SettingsHandle } from "../settings/SettingsModal";
 import { WINDOW_CHROME } from "../../m/window-chrome.ts";
+import { listenToWindow } from "../../m/desktop-shell.ts";
 import { setLook } from "../../platform/appearance";
 import { widthAtMost } from "../../platform/viewport";
 import { wireInterfaceHere } from "../interface/look";
@@ -690,6 +691,28 @@ export function createShellState() {
     });
   });
 
+  /** Shell-level commands shared by `shell-keys.ts` and native macOS menu items (`pane-command`). */
+  function runShellCommand(id: "app-settings" | "app-search" | "app-workspace" | "view-toggle-sidebar"): void {
+    if (id === "app-settings") {
+      if (!showOnboarding() && !runtime.settingsOpen) runtime.openSettings();
+    } else if (id === "app-search") {
+      openGlobalSearch();
+    } else if (id === "app-workspace") {
+      if (!searchOpen() && !showOnboarding()) artifact.toggleWorkspaceExplorer();
+    } else if (id === "view-toggle-sidebar") {
+      if (sidebarColumn()) toggleSidebar();
+    }
+  }
+
+  // Native macOS menu commands that apply at shell level regardless of workbench width.
+  effect(() =>
+    listenToWindow("pane-command", (id) => {
+      if (id === "app-settings" || id === "app-search" || id === "app-workspace" || id === "view-toggle-sidebar") {
+        runShellCommand(id);
+      }
+    }),
+  );
+
   return {
     snapshot,
     t,
@@ -778,6 +801,7 @@ export function createShellState() {
     // The phone's page: Back between the entries of settings' pages (`page-route.ts`).
     stepOutOfDialog: () => settingsHandle?.stepOutOfSettings(),
     escape,
+    runShellCommand,
     openCreateBot: () => runtime.openCreateBot(),
     openCreateGroup: () => runtime.openCreateGroup(),
     openCreateProject: () => runtime.openCreateProject(),

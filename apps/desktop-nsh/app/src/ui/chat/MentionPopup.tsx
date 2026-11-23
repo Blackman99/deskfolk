@@ -87,7 +87,7 @@ function Avatar(props: { cand: MentionCandidate }) {
     <If
       when={!props.cand.isEveryone}
       else={
-        <View class="shrink-0 w-[26px] h-[26px] rounded-[8px] items-center justify-center bg-chip border border-line">
+        <View class="shrink-0 w-[26px] h-[26px] rounded-(--radius-control) items-center justify-center bg-chip border border-line">
           <Text class="text-[14px]">👥</Text>
         </View>
       }
@@ -96,7 +96,7 @@ function Avatar(props: { cand: MentionCandidate }) {
         when={Boolean(props.cand.avatar && avatarSrc(props.cand.avatar))}
         else={
           <View
-            class="shrink-0 w-[26px] h-[26px] rounded-[8px] items-center justify-center border"
+            class="shrink-0 w-[26px] h-[26px] rounded-(--radius-control) items-center justify-center border"
             style={{ backgroundColor: cssColor(palette().bg), borderColor: cssColor(palette().border) }}
           >
             <Text class="text-[12px] font-bold" style={{ color: cssColor(palette().text) }}>{rosterLetter(props.cand.name)}</Text>

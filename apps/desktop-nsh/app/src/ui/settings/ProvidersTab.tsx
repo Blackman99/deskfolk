@@ -19,6 +19,7 @@ import { copy, runtime } from "../../runtime";
 import { botAvatarColor } from "../../m/avatar.ts";
 import { endpointPickerSources } from "../../m/model-picker-sources.ts";
 import { rosterLetter } from "../../m/sidebar/roster-letter.ts";
+import { EmptyState } from "../EmptyState";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { ModelPicker } from "../ModelPicker";
@@ -273,9 +274,7 @@ export function ProvidersTab(props: {
         </View>
       </View>
       <If when={providers().length === 0}>
-        <View testID="providers-empty" class="p-6 items-center">
-          <Text class="text-[13px] text-ink-muted text-center">{t().providerEmpty}</Text>
-        </View>
+        <EmptyState testID="providers-empty" size="inline" title={t().providerEmpty} />
       </If>
       <View class={`flex-col ${phone() ? "gap-5" : "gap-4"}`}>
         <Each of={providers()} key={(provider) => provider.id}>

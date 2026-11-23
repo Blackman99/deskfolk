@@ -287,6 +287,9 @@ export function TraceView(props: {
     const token = focusToken();
     const asked = props.focus ?? null;
     const drift = canvas.focusDrifted();
+    // Subscribe to the floating tools strip height so the opening fit clears it even when pills wrap.
+    const bottomChrome = hasTools() ? toolsHeight() : 0;
+    void bottomChrome;
     if (!width || !id || !canvas.viewportEl) return;
     // The board keeps the previous job on screen, where it was, until the next one arrives.
     if (job.trace?.id !== id) return;
@@ -653,7 +656,7 @@ export function TraceView(props: {
       </If>
       {/* Over the corner, above the zoom: the board's ways around sit together. */}
       <If when={minimapShown() && board() && !job.failed && !(job.loading && !job.trace)}>
-        <View class="absolute" style={{ right: 10, bottom: 46 }}>
+        <View class="absolute" style={{ right: 10, bottom: Math.max(46, toolsHeight() + 8) }}>
           <TraceMinimap
             flow={board()!}
             view={canvas.view}

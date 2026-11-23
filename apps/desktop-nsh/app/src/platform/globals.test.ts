@@ -8,6 +8,9 @@ test("the messenger's media queries answer from the width", () => {
   expect(mediaMatches("(min-width: 1000px)", 1100)).toBe(true);
   expect(mediaMatches("(min-width: 621px) and (max-width: 999px)", 800)).toBe(true);
   expect(mediaMatches("(prefers-color-scheme: dark)", 800)).toBe(false);
+  expect(typeof mediaMatches("(prefers-reduced-motion: reduce)", 800)).toBe("boolean");
+  expect(mediaMatches("(prefers-reduced-motion: reduce)", 800, true)).toBe(true);
+  expect(mediaMatches("(prefers-reduced-motion: reduce)", 800, false)).toBe(false);
 });
 
 test("localStorage keeps what is set, synchronously", () => {

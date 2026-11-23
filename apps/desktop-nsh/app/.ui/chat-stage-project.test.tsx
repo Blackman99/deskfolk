@@ -414,3 +414,57 @@ test("a project session's composer shows context window usage when reported and 
   await app.press("id:story-context-clear");
   await app.waitFor("id:project-context", { state: "gone", timeout: 5_000 });
 });
+
+test("project lines open the line menu on right click without triggering the pane menu, while blank space opens the pane menu", async () => {
+  const app = await project();
+  await app.waitFor("id:project-line-agent", { timeout: 10_000 });
+  await app.rightClick("id:project-line-agent");
+  await app.waitFor("id:project-line-menu", { timeout: 5_000 });
+  expect(app.texts()).not.toContain("pane-menu");
+  // Arrow keys navigate inside the menu and Copy ID writes the line's id.
+  await app.keyboard.press("arrowdown");
+  await app.press("id:project-menu-copy-id");
+  await app.waitFor("id:project-line-menu", { state: "gone", timeout: 5_000 });
+  await app.waitUntil(() => app.clipboard() === "pj-2", { timeout: 5_000 });
+
+  // Right clicking a user bubble also opens the line menu; Escape puts it away.
+  await app.rightClick("id:project-line-you >> nth=0");
+  await app.waitFor("id:project-line-menu", { timeout: 5_000 });
+  await app.keyboard.press("escape");
+  await app.waitFor("id:project-line-menu", { state: "gone", timeout: 5_000 });
+
+  // Hovering an agent line reveals the message pill whose More button opens the same menu.
+  await app.hover("id:project-line-agent");
+  await app.waitFor("id:act-more", { timeout: 5_000 });
+  await app.press("id:act-more");
+  await app.waitFor("id:project-line-menu", { timeout: 5_000 });
+  await app.keyboard.press("escape");
+  await app.waitFor("id:project-line-menu", { state: "gone", timeout: 5_000 });
+
+  // Right clicking a day divider reaches the pane menu instead of the line menu.
+  await app.rightClick("id:project-day >> nth=0");
+  await app.waitUntil(() => app.texts().includes("pane-menu"), { timeout: 5_000 });
+  expect(app.shows("id:project-line-menu")).toBe(false);
+});
+
+test("an empty project session renders the branded empty state", async () => {
+  const app = await openStory("chat-stage");
+  await app.waitFor("id:story-project-empty", { timeout: 15_000 });
+  await app.press("id:story-project-empty");
+  await app.waitFor("id:project-empty", { timeout: 10_000 });
+  expect(app.texts()).toContain(t.project.empty(t.project.agentNames.claude_code));
+});
+
+test("on a phone width the consultants' settings open in a BottomSheet from the composer's +", async () => {
+  const app = await openStory("chat-stage", { width: 390, height: 844 });
+  await app.waitFor("id:show-project", { timeout: 15_000 });
+  await app.press("id:show-project");
+  await app.waitFor("id:project-plus", { timeout: 15_000 });
+  // Off, the consultants are in the + (ADR 0116 addendum 2026-11-23); on, a chip on the row.
+  expect(app.shows("id:project-consult")).toBe(false);
+  await app.press("id:project-plus");
+  await app.press("id:project-plus-consult");
+  await app.waitFor("id:bottom-sheet-panel >> id:consult-menu", { timeout: 5_000 });
+  await app.press("id:consult-sheet >> id:bottom-sheet-close");
+  await app.waitFor("id:consult-menu", { state: "gone", timeout: 5_000 });
+});

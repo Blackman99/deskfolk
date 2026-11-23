@@ -179,7 +179,7 @@ export function SessionRow(props: {
                 </Text>
                 <If when={(props.showCount ?? true) && props.status.count}>
                   {(count) => (
-                    <View class="h-[16px] min-w-[16px] px-[4px] ml-[2px] rounded-full bg-warn items-center justify-center">
+                    <View class="h-[16px] min-w-[16px] px-[4px] ml-[2px] rounded-full bg-warn-text items-center justify-center">
                       <Text class="text-[10px] font-bold text-on-warn">{String(count())}</Text>
                     </View>
                   )}
@@ -208,7 +208,7 @@ export function SessionRow(props: {
           style={{ pointerEvents: "box-none" }}
         >
           <View
-            class="flex-row gap-[2px] p-[2px] rounded-[9px] bg-pane border border-line"
+            class="flex-row gap-[2px] p-[2px] rounded-(--radius-pill-group) bg-pane border border-line"
             style={{ boxShadow: shadow("md") }}
           >
             <View
@@ -218,7 +218,7 @@ export function SessionRow(props: {
               accessibilityState={{ selected: props.pinned === true }}
               tooltip={tip(props.pinned ? t().sidebar.unpin : t().sidebar.pin)}
               onPress={() => props.onTogglePin?.()}
-              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
+              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
               <Icon name="pin" size={16} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
@@ -228,7 +228,7 @@ export function SessionRow(props: {
               accessibilityLabel={t().chat.moreActions}
               tooltip={tip(t().chat.moreActions)}
               onPress={(e) => props.onContextMenu(at(e))}
-              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-[7px] items-center justify-center hover:bg-row-hover active:scale-[0.9]"
+              class="cursor-pointer select-none group w-[26px] h-[26px] rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9]"
             >
               <Icon name="more" size={16} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>

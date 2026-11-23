@@ -99,7 +99,7 @@ function DateDivider(props: { at: string; locale: "en" | "zh" }) {
 }
 
 /** Above the first message that came in since you last read here, for as long as the conversation stays open. */
-function NewDivider() {
+export function NewDivider() {
   return (
     <View testID="new-divider" role="group" accessibilityLabel={copy().stream.newMessages} class="flex-row items-center gap-[10px] mt-[6px] mb-[2px] w-full">
       <View class="flex-1 h-[1px] bg-accent-border" />

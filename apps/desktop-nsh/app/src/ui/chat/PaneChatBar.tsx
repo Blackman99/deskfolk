@@ -195,7 +195,7 @@ export function PaneChatBar(props: {
                 accessibilityState={action().id === "pin" ? { selected: Boolean(action().active) } : undefined}
                 tooltip={tip(action().label)}
                 onPress={() => action().run()}
-                class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] min-w-[32px] h-[32px] px-[8px] rounded-[8px] active:scale-[0.94] ${
+                class={`cursor-pointer select-none group flex-row items-center justify-center gap-[6px] min-w-[32px] h-[32px] px-[8px] rounded-(--radius-control) active:scale-[0.94] ${
                   action().active ? "bg-accent-tint" : "hover:bg-row-hover"
                 }`}
               >

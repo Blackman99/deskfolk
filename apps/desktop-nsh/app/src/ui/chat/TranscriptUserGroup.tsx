@@ -120,7 +120,7 @@ function Segment(props: {
         testID={`msg-${msg().id}`}
         {...hover.message}
         onContextMenu={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
-        class={`relative items-end ${editing() ? "w-full" : narrowWindow() ? "max-w-full" : "max-w-[80%]"} ${ringed() ? "rounded-[16px]" : ""} ${
+        class={`relative items-end ${editing() ? "w-full" : narrowWindow() ? "max-w-full" : "max-w-[80%]"} ${ringed() ? "rounded-(--radius-bubble)" : ""} ${
           grouped() ? "mt-[4px] pt-[8px] border-t border-line-subtle" : ""
         }`}
         style={{ ...ringStyle(ringed()), ...arrive(), ...(flies ? flight?.hides(msg().id) : undefined) }}

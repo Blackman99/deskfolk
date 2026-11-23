@@ -81,7 +81,7 @@ A Bot would say "done" and nothing changed, the opposite of the app holding work
    - **第一批四个选项：**
      - `radius`：sharp / default / round，换主题的圆角令牌；
      - `elevation`：default / flat，改 `styles.ts` 的 `shadow()` 一处；
-     - `chat_width`：narrow / default / wide / full，改 `Composer`、`ProjectChat` 和 `project-chat-composer` 里写死的 760 / 800；
+     - `chat_width`：narrow / default / wide / full，改 `Composer`、`stage-parts`、`ProjectChat` 和 `project-chat-composer` 里写死的 760 / 800；
      - `font`：system / rounded / serif，外加等宽字体，经主题的 `font-sans` / `font-mono`。
    - **规矩：** 每个都是协议校验的固定选项，每个值都看得出变化，没有一个能藏住底线。手机上守住触控尺寸，`chat_width` 在窄屏上不起作用。
    - **之后：** 疏密、字号倍数，各自接到读它的视图上再开。
@@ -91,7 +91,7 @@ A Bot would say "done" and nothing changed, the opposite of the app holding work
    - **The first four choices:**
      - `radius`: sharp / default / round, through the theme's radius tokens;
      - `elevation`: default / flat, through `shadow()` in `styles.ts`;
-     - `chat_width`: narrow / default / wide / full, replacing the 760 / 800 written into `Composer`, `ProjectChat` and `project-chat-composer`;
+     - `chat_width`: narrow / default / wide / full, replacing the 760 / 800 written into `Composer`, `stage-parts`, `ProjectChat` and `project-chat-composer`;
      - `font`: system / rounded / serif, plus a mono, through the theme's `font-sans` / `font-mono`.
    - **Rules:** each is a closed choice the protocol checks, every value visibly changes something, and none can hide a floor. The phone keeps its touch sizes, and `chat_width` does nothing on a narrow screen.
    - **Later:** density and a text scale, each once the views that read it are wired.

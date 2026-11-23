@@ -6,7 +6,7 @@
 import { Overlay, Text, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { Icon } from "../Icon";
-import { shadow } from "../styles";
+import { MENU_SURFACE, shadow } from "../styles";
 import { rovingMenu } from "./menu-roving";
 
 export function BotAddMenu(props: {
@@ -53,8 +53,8 @@ export function BotAddMenu(props: {
             role="menu"
             testID="bot-add-menu"
             accessibilityLabel={copy().sidebar.createMenu}
-            class="min-w-[200px] p-[5px] bg-pane border border-line rounded-(--radius-md)"
-            style={{ boxShadow: shadow("lg") }}
+            class={`min-w-[200px] ${MENU_SURFACE}`}
+            style={{ boxShadow: shadow("menu") }}
           >
             {item("bot", "bot", () => copy().sidebar.addBot, props.onCreateBot)}
             {item("group", "users", () => copy().sidebar.addGroup, props.onCreateGroup)}

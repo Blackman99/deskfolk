@@ -224,7 +224,7 @@ export function ChatStage(props: {
                 locale={ctx.locale()}
                 label={t().stream.messageIndex}
                 emptyLabel={t().stream.messageIndexEmpty}
-                sender={(mark) => (mark.kind === "system" ? (ctx.locale() === "zh" ? "系统" : "System") : ctx.whoAuthor(mark.author))}
+                sender={(mark) => (mark.kind === "system" ? t().common.system : ctx.whoAuthor(mark.author))}
                 hasEarlier={hasOlder()}
                 loading={Boolean(view()?.olderLoading)}
                 earlierLabel={view()?.olderLoading ? t().stream.loadingEarlier : t().stream.loadEarlier}

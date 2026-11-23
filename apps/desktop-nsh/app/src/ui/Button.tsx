@@ -12,11 +12,11 @@ import { shadow } from "./styles";
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-soft";
 
 const BOX: Record<ButtonVariant, string> = {
-  primary: "bg-brand hover:bg-accent-hover active:bg-accent-active",
-  secondary: "bg-btn-secondary-bg hover:bg-btn-secondary-hover border border-line hover:border-line-hover",
-  ghost: "bg-transparent hover:bg-row-hover",
-  danger: "bg-danger",
-  "danger-soft": "bg-transparent hover:bg-danger-bg",
+  primary: "bg-brand hover:bg-accent-hover active:bg-accent-active border border-transparent focus-visible:border-ink",
+  secondary: "bg-btn-secondary-bg hover:bg-btn-secondary-hover border border-line hover:border-line-hover focus-visible:border-brand",
+  ghost: "bg-transparent hover:bg-row-hover border border-transparent focus-visible:border-brand",
+  danger: "bg-danger border border-transparent focus-visible:border-ink",
+  "danger-soft": "bg-transparent hover:bg-danger-bg border border-transparent focus-visible:border-danger",
 };
 
 const INK: Record<ButtonVariant, string> = {
@@ -43,8 +43,8 @@ const INK_TOKEN: Record<ButtonVariant, string> = { primary: "on-accent", seconda
 export const SECONDARY_LOOK = { box: BOX.secondary, tint: TINT.secondary, ink: INK_TOKEN.secondary, ground: "btn-secondary-bg" };
 
 const SIZE = {
-  sm: { box: "h-[28px] px-[10px] rounded-[7px]", text: "text-[12px]" },
-  md: { box: "h-[32px] px-[12px] rounded-[8px]", text: "text-[13px]" },
+  sm: { box: "h-[28px] px-[10px] rounded-(--radius-control-sm)", text: "text-[12px]" },
+  md: { box: "h-[32px] px-[12px] rounded-(--radius-control)", text: "text-[13px]" },
   lg: { box: "h-[40px] px-[16px] rounded-(--radius-md)", text: "text-[14px]" },
 } as const;
 

@@ -20,6 +20,7 @@ import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { setLaunchAtLogin, type IndependentStatus } from "../../m/settings/independent-runtime.ts";
 import type { FieldErrorKind, SettingsFieldErrors } from "../../m/settings/wizard-save.ts";
 import { Icon, type IconName } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { Switch } from "../Switch";
 import { PermissionModeCard } from "./PermissionModeCard";
 import { SettingsCard } from "./SettingsCard";
@@ -94,7 +95,7 @@ export function GeneralTab(props: {
   };
 
   return (
-    <View testID="settings-general" class={`flex-col ${widthAtMost(720) ? "gap-3" : "gap-[14px]"}`}>
+    <View testID="settings-general" class={`flex-col ${narrowWindow() ? "gap-3" : "gap-[14px]"}`}>
       <SettingsCard testID="settings-card-workspace">
         <SettingsCardHeader
           title={t().settings.sectionWorkspace}

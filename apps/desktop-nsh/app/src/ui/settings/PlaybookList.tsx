@@ -194,7 +194,7 @@ export function PlaybookList(props: {
           accessibilityState={{ expanded: menu()?.id === item.id }}
           ref={(node: ViewRef) => rowRefs.set(`more:${item.id}`, node)}
           onPress={() => openMenu(item.id, rowRefs.get(`more:${item.id}`) ?? null, null)}
-          class={`cursor-pointer select-none absolute top-[9px] right-2 w-[26px] h-[26px] items-center justify-center rounded-[7px] ${platform.desktop ? `bg-pane border border-line ${menu()?.id === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}` : ""}`}
+          class={`cursor-pointer select-none absolute top-[9px] right-2 w-[26px] h-[26px] items-center justify-center rounded-(--radius-control-sm) ${platform.desktop ? `bg-pane border border-line ${menu()?.id === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}` : ""}`}
         >
           <Icon name="more" class="tint-ink-muted" />
         </View>

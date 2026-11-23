@@ -4,7 +4,7 @@
  * whole before the app starts, written through), `sessionStorage`, `navigator`, `structuredClone`
  * and a `matchMedia` that answers from the window's size.
  */
-import { locale, platform, Storage } from "nsh";
+import { locale, platform, reduceMotion as systemReducesMotion, Storage } from "nsh";
 import { RelativeTimeFormat } from "./relative-time";
 import { widthAtMost, viewportSize } from "./viewport";
 
@@ -63,13 +63,14 @@ function clone<T>(value: T, seen = new Map<unknown, unknown>()): T {
 }
 
 /** `(max-width: 680px)`, `(min-width: …)`, `(prefers-reduced-motion: reduce)`: what the app asks. */
-export function mediaMatches(query: string, width: number): boolean {
+export function mediaMatches(query: string, width: number, reducesMotion: boolean = systemReducesMotion()): boolean {
   let all = true;
   for (const part of query.split(/\band\b/)) {
     const max = /max-width:\s*(\d+(?:\.\d+)?)px/.exec(part);
     const min = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(part);
     if (max) all &&= width <= Number(max[1]);
     else if (min) all &&= width >= Number(min[1]);
+    else if (/prefers-reduced-motion:\s*reduce/.test(part)) all &&= reducesMotion;
     else if (/hover:\s*hover|pointer:\s*fine/.test(part)) all &&= platform.desktop;
     else if (/hover:\s*none|pointer:\s*coarse/.test(part)) all &&= !platform.desktop;
     else all &&= false;

@@ -17,7 +17,8 @@ import { deriveMessageContextMenu } from "../../m/chat/message-context-menu.ts";
 import type { IconName } from "../Icon";
 import { Icon } from "../Icon";
 import { BottomSheet, SheetItem } from "../BottomSheet";
-import { shadow } from "../styles";
+import { rovingMenu } from "../sidebar/menu-roving";
+import { MENU_ITEM, MENU_SURFACE, shadow } from "../styles";
 import { tip } from "../tip";
 import { copy } from "../../runtime";
 
@@ -83,6 +84,17 @@ export function MessageContextMenu(props: {
   ];
   const visible = () => rows.filter((row) => (row.show ? row.show() : true));
   const files = () => (data().associatedFiles.length > 1 ? data().associatedFiles.slice(0, SUBLIST) : []);
+  const roving = rovingMenu({
+    open: () => !props.sheet,
+    keys: () => [
+      ...visible()
+        .filter((row) => row.enabled())
+        .map((row) => row.id),
+      ...files().map((file) => `file:${file}`),
+      "copy-id",
+    ],
+    onTab: () => props.onClose(),
+  });
 
   const reactions = (sheet: boolean) => (
     <View testID="msg-reaction-row" class={`flex-row items-center justify-between ${sheet ? "px-[2px] pt-[2px] pb-[10px]" : "px-1 py-[3px]"}`}>
@@ -119,7 +131,7 @@ export function MessageContextMenu(props: {
             role="menu"
             testID="msg-context-menu"
             accessibilityLabel={t().chat.copyMessage}
-            class="min-w-[172px] max-w-[260px] p-[5px] gap-[2px] bg-pane border border-line rounded-(--radius-md)"
+            class={`min-w-[172px] max-w-[260px] gap-[2px] ${MENU_SURFACE}`}
             style={{ boxShadow: shadow("menu") }}
           >
             {reactions(false)}
@@ -129,15 +141,18 @@ export function MessageContextMenu(props: {
                 <View
                   role="menuitem"
                   testID={`msg-context-${row().id}`}
+                  ref={roving.ref(row().id)}
                   accessibilityLabel={row().label()}
                   accessibilityState={{ disabled: !row().enabled() }}
                   tooltip={row().hint?.() ? tip(row().hint!()!) : undefined}
                   disabled={!row().enabled()}
+                  onFocus={() => roving.focused(row().id)}
+                  onBlur={() => roving.blurred(row().id)}
                   onPress={act(row().run)}
-                  class="cursor-pointer select-none disabled:cursor-default flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group disabled:opacity-[0.45]"
+                  class={`cursor-pointer select-none disabled:cursor-default ${MENU_ITEM} group`}
                 >
-                  <Icon name={row().icon} size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100" />
-                  <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{row().label()}</Text>
+                  <Icon name={row().icon} size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100 group-focus:tint-brand group-focus:opacity-100" />
+                  <Text class="text-[13px] font-medium text-ink group-hover:text-brand group-focus:text-brand">{row().label()}</Text>
                 </View>
               )}
             </Each>
@@ -148,12 +163,15 @@ export function MessageContextMenu(props: {
                     <View
                       role="menuitem"
                       testID="msg-context-subitem"
+                      ref={roving.ref(`file:${file()}`)}
                       accessibilityLabel={file()}
+                      onFocus={() => roving.focused(`file:${file()}`)}
+                      onBlur={() => roving.blurred(`file:${file()}`)}
                       onPress={act(() => props.onOpenFileTree(file()))}
-                      class="cursor-pointer select-none flex-row items-center gap-1 px-[6px] py-[3px] rounded-(--radius-sm) hover:bg-line-subtle group"
+                      class="cursor-pointer select-none flex-row items-center gap-1 px-[6px] py-[3px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle focus-visible:bg-line-subtle group"
                     >
                       <Text class="text-[11px] font-bold text-ink-secondary opacity-60">›</Text>
-                      <Text class="flex-1 min-w-0 text-[11px] text-ink-secondary group-hover:text-brand line-clamp-1">{file()}</Text>
+                      <Text class="flex-1 min-w-0 text-[11px] text-ink-secondary group-hover:text-brand group-focus:text-brand line-clamp-1">{file()}</Text>
                     </View>
                   )}
                 </Each>
@@ -163,12 +181,15 @@ export function MessageContextMenu(props: {
             <View
               role="menuitem"
               testID="msg-context-copy-id"
+              ref={roving.ref("copy-id")}
               accessibilityLabel={t().chat.copyMessageId}
+              onFocus={() => roving.focused("copy-id")}
+              onBlur={() => roving.blurred("copy-id")}
               onPress={act(() => props.onCopyId())}
-              class="cursor-pointer select-none flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle group"
+              class={`cursor-pointer select-none ${MENU_ITEM} group`}
             >
-              <Icon name="hash" size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100" />
-              <Text class="text-[13px] font-medium text-ink group-hover:text-brand">{t().chat.copyMessageId}</Text>
+              <Icon name="hash" size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100 group-focus:tint-brand group-focus:opacity-100" />
+              <Text class="text-[13px] font-medium text-ink group-hover:text-brand group-focus:text-brand">{t().chat.copyMessageId}</Text>
             </View>
           </View>
         </Overlay>

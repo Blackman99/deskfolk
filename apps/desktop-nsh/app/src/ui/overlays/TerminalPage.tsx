@@ -24,6 +24,7 @@ import { NshTerminal } from "../lazy-views";
 import { copy, runtime } from "../../runtime";
 import { BottomSheet } from "../BottomSheet";
 import { Button } from "../Button";
+import { EmptyState } from "../EmptyState";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 
@@ -239,12 +240,17 @@ export function TerminalPage() {
                 </Text>
               }
             >
-              <View testID="terminal-empty" class="m-auto p-6 items-center gap-3">
-                <Text class="text-[15px] text-ink">{t().empty}</Text>
-                <Text class="text-[13px] text-ink-muted text-center">{t().emptyHint}</Text>
-                <Button variant="primary" testID="terminal-empty-new" onPress={() => void start()}>
-                  {t().newSession}
-                </Button>
+              <View class="flex-1 items-center justify-center">
+                <EmptyState
+                  testID="terminal-empty"
+                  title={t().empty}
+                  hint={t().emptyHint}
+                  badge={<Icon name="terminal" size={12} class="tint-ink-muted" />}
+                >
+                  <Button variant="primary" testID="terminal-empty-new" onPress={() => void start()}>
+                    {t().newSession}
+                  </Button>
+                </EmptyState>
               </View>
             </If>
           }

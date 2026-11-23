@@ -33,10 +33,10 @@ import type { Copy } from "../../m/copy.ts";
 import { Autosave } from "../../m/autosave.svelte.ts";
 import { speechServiceSource } from "../../m/model-source.ts";
 import { offeredShortcuts, type SpeechShortcut } from "../../m/settings/speech-shortcut.ts";
+import { narrowWindow } from "../Modal";
 import { Select } from "../Select";
 import { Switch } from "../Switch";
 import { AutosaveState } from "./AutosaveState";
-import { widthAtMost } from "../../platform/viewport";
 
 /** What a speech endpoint still lacks before the microphone shows; null once it has it all. */
 export function speechMissing(speech: SpeechSettings, s: Copy["speech"]): string | null {
@@ -90,7 +90,7 @@ export function SpeechCard(props: {
     return speechMissing(current, s()) ?? s().ready;
   };
   /** Two columns on a wide window, one on a phone. */
-  const half = (): { width: `${number}%` } => ({ width: widthAtMost(720) ? "100%" : "48.5%" });
+  const half = (): { width: `${number}%` } => ({ width: narrowWindow() ? "100%" : "48.5%" });
   const wide: { width: `${number}%` } = { width: "100%" };
 
   async function save(body: PatchSpeechRequest): Promise<boolean> {

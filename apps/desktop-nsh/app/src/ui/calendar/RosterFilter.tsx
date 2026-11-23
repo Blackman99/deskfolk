@@ -12,13 +12,13 @@ import { frameOf, keepFocusIn } from "../../platform/press";
 import { copy } from "../../runtime";
 import { BottomSheet } from "../BottomSheet";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { cssColor, shadow } from "../styles";
 import type { CalSource } from "./calendar-dates";
 import { SmallFace } from "./EventFace";
-import { widthAtMost } from "../../platform/viewport";
 
-/** `PHONE_SHEET_QUERY` (`bottom-sheet.ts`): what drops down opens as a sheet at this width or less. */
-const phone = () => widthAtMost(720);
+/** What drops down opens as a sheet at the phone breakpoint or less. */
+const phone = () => narrowWindow();
 
 export function RosterFilter(props: {
   sources: readonly CalSource[];
@@ -183,7 +183,7 @@ export function RosterFilter(props: {
             align="start"
             offset={6}
             popupClass="w-[280px] bg-pane border border-line rounded-(--radius-md) overflow-hidden"
-            popupStyle={{ boxShadow: shadow("lg") }}
+            popupStyle={{ boxShadow: shadow("menu") }}
             trigger={trigger}
           >
             {body}

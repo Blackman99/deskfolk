@@ -16,7 +16,7 @@ import {
   type PickerRow,
   type PickerSource,
 } from "../../m/model-picker";
-import { widthAtMost } from "../../platform/viewport";
+import { narrowWindow } from "../Modal";
 
 /** A source shows its groups as a level of their own on the phone once it lists this many. */
 export const SHEET_GROUPS_AT = 30;
@@ -46,7 +46,7 @@ export function createPicker(o: PickerOptions) {
   const sheetSource = signal<string | null>(null);
   const sheetGroup = signal<string | null>(null);
 
-  const phone = () => widthAtMost(720);
+  const phone = () => narrowWindow();
   const picked = computed(() => findPicked(o.data(), o.value()));
   const specials = () => o.data().specials;
   const sources = () => o.data().sources;

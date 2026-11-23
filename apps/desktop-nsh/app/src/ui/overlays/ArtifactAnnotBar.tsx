@@ -42,6 +42,8 @@ export function ArtifactAnnotBar(props: {
   loader: ArtifactLoader;
   /** The phone's header already carries the download. */
   hideDownload?: boolean;
+  /** Compact inline mode inside the phone header when there is no hint/notice, saving a full stacked bar. */
+  inline?: boolean;
 }) {
   const t = () => copy().stream;
   const other = () => props.showAnnotToggle || props.showAnnotMode || props.annotHint !== null || props.fileNotice !== null || props.showSourceToggle;
@@ -55,13 +57,18 @@ export function ArtifactAnnotBar(props: {
 
   return (
     <If when={visible() && !(narrowWindow() && !other())}>
-      <View testID="artifact-annot-bar" class="flex-row items-center gap-2 min-h-[38px] px-3 py-1 border-b border-line bg-pane shrink-0">
-        <If when={props.fileNotice !== null} else={
-          <If when={props.annotHint !== null} else={<View class="flex-1" />}>
-            <Text testID="artifact-annotation-hint" class="flex-1 min-w-0 text-[12px] text-ink-muted">{hint()}</Text>
+      <View
+        testID={props.inline ? "artifact-annot-inline" : "artifact-annot-bar"}
+        class={props.inline ? "flex-row items-center gap-[6px] pr-2 self-center shrink-0" : "flex-row items-center gap-2 min-h-[38px] px-3 py-1 border-b border-line bg-pane shrink-0"}
+      >
+        <If when={!props.inline}>
+          <If when={props.fileNotice !== null} else={
+            <If when={props.annotHint !== null} else={<View class="flex-1" />}>
+              <Text testID="artifact-annotation-hint" class="flex-1 min-w-0 text-[12px] text-ink-muted">{hint()}</Text>
+            </If>
+          }>
+            <Text testID="artifact-file-notice" class="flex-1 min-w-0 text-[12px] text-ink-muted">{props.fileNotice ?? ""}</Text>
           </If>
-        }>
-          <Text testID="artifact-file-notice" class="flex-1 min-w-0 text-[12px] text-ink-muted">{props.fileNotice ?? ""}</Text>
         </If>
         <If when={props.hasResolved && props.mode !== "workspace"}>
           <View tooltip={tip(t().annotationShowResolvedHint)} class={`shrink-0 justify-center px-2 rounded-full border ${narrowWindow() ? "h-[32px]" : "h-[26px]"} ${props.annot.annotShowResolved ? "bg-accent-tint border-accent-border" : "bg-btn-secondary-bg border-line"}`}>

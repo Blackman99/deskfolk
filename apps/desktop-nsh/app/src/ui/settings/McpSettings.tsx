@@ -31,7 +31,9 @@ import {
 } from "../../m/settings/mcp-form.ts";
 import { filterMcpServers, mcpConnectionSummary } from "../../m/settings/mcp-list.ts";
 import { Checkbox } from "../Checkbox";
+import { EmptyState } from "../EmptyState";
 import { Modal, ModalAction, narrowWindow } from "../Modal";
+import { DangerDialog } from "../overlays/DangerDialog";
 import { Select } from "../Select";
 import { tip } from "../tip";
 import { AutosaveState } from "./AutosaveState";
@@ -214,6 +216,11 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
     }
   }
 
+  const confirmDelete = signal(false);
+  effect(() => {
+    if (!editor()) confirmDelete.set(false);
+  });
+
   async function removeServer(): Promise<void> {
     const server = editing();
     if (!server || busy()) return;
@@ -221,6 +228,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
     busy.set(true);
     const error = await runtime.deleteMcpServer(server.id);
     busy.set(false);
+    confirmDelete.set(false);
     if (error) failed.set(true);
     else closeEditor();
   }
@@ -280,9 +288,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
       </View>
       <View role="region" accessibilityLabel={t().sectionMcpServers} testID="mcp-server-list" class="flex-col gap-2 p-[2px]">
         <If when={filteredServers().length === 0}>
-          <View testID="mcp-empty" class="p-6 items-center">
-            <Text class="text-[13px] text-ink-muted text-center">{servers().length === 0 ? t().mcpEmpty : t().mcpNoResults}</Text>
-          </View>
+          <EmptyState testID="mcp-empty" size="inline" title={servers().length === 0 ? t().mcpEmpty : t().mcpNoResults} />
         </If>
         <Each of={filteredServers()} key={(server) => server.id}>
           {(server) => (
@@ -331,7 +337,7 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
           width={540}
           maxHeight={0.88}
           pageOnPhone
-          busy={busy()}
+          busy={busy() || confirmDelete()}
           onClose={closeEditor}
           headExtra={
             <If when={editor() !== "add" && !narrowWindow()}>
@@ -339,21 +345,46 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
             </If>
           }
           foot={
-            <>
-              <If when={showSubmit()}>
-                <ModalAction kind="primary" testID="mcp-submit" disabled={busy()} onPress={() => void submit()}>
-                  {submitLabel()}
-                </ModalAction>
-              </If>
-              <ModalAction testID="mcp-cancel" disabled={busy()} onPress={closeEditor}>
-                {t().mcpCancel}
-              </ModalAction>
-              <If when={editing()}>
-                <ModalAction kind="deny" testID="mcp-delete" disabled={busy()} onPress={() => void removeServer()}>
-                  {t().mcpDelete}
-                </ModalAction>
-              </If>
-            </>
+            <If
+              when={!narrowWindow()}
+              else={
+                <>
+                  <If when={editing()}>
+                    <ModalAction kind="deny" testID="mcp-delete" disabled={busy()} onPress={() => confirmDelete.set(true)}>
+                      {t().mcpDelete}
+                    </ModalAction>
+                  </If>
+                  <ModalAction testID="mcp-cancel" disabled={busy()} onPress={closeEditor}>
+                    {t().mcpCancel}
+                  </ModalAction>
+                  <If when={showSubmit()}>
+                    <ModalAction kind="primary" testID="mcp-submit" disabled={busy()} onPress={() => void submit()}>
+                      {submitLabel()}
+                    </ModalAction>
+                  </If>
+                </>
+              }
+            >
+              <View class="flex-row items-center justify-between w-full">
+                <View class="flex-row items-center gap-2">
+                  <If when={editing()}>
+                    <ModalAction kind="deny" testID="mcp-delete" disabled={busy()} onPress={() => confirmDelete.set(true)}>
+                      {t().mcpDelete}
+                    </ModalAction>
+                  </If>
+                </View>
+                <View class="flex-row items-center gap-2">
+                  <ModalAction testID="mcp-cancel" disabled={busy()} onPress={closeEditor}>
+                    {t().mcpCancel}
+                  </ModalAction>
+                  <If when={showSubmit()}>
+                    <ModalAction kind="primary" testID="mcp-submit" disabled={busy()} onPress={() => void submit()}>
+                      {submitLabel()}
+                    </ModalAction>
+                  </If>
+                </View>
+              </View>
+            </If>
           }
         >
           <Text class="text-[12px] text-ink-muted">{t().mcpMustConfirm}</Text>
@@ -484,6 +515,20 @@ export function McpSettings(props: { closeSettings?: () => void; registerBack?: 
             />
           </If>
         </Modal>
+      </If>
+      <If when={confirmDelete() && editing()}>
+        <DangerDialog
+          copy={{
+            title: t().mcpDeleteTitle,
+            body: t().mcpDeleteBody,
+            confirm: t().mcpConfirmDelete,
+            cancel: t().mcpCancel,
+            busy: copy().common.deleting,
+          }}
+          busy={busy()}
+          onDismiss={() => confirmDelete.set(false)}
+          onConfirm={() => void removeServer()}
+        />
       </If>
     </View>
   );

@@ -17,6 +17,7 @@
 import { computed, effect, PanResponder, signal, Text, View, type ViewRef } from "nsh";
 import { copy } from "../../runtime";
 import { onWheel } from "../../platform/wheel";
+import { shadow } from "../styles";
 import type { FloatFrame, LayoutNode, MinSizeLookup, Rect, WorkbenchLayout } from "../../m/workbench/layout-types.ts";
 import { computeGeometry } from "../../m/workbench/layout-geometry.ts";
 import { leafById, tiledLeaves } from "../../m/workbench/layout-tree.ts";
@@ -384,7 +385,7 @@ export function Workbench(props: WorkbenchProps) {
                   testID="wb-ghost"
                   accessible={false}
                   class="absolute px-2 py-[2px] rounded-(--radius-sm) bg-pane"
-                  style={{ left: ghost().x + 12, top: ghost().y + 12, boxShadow: "0 4px 12px rgb(0 0 0 / 0.2)" }}
+                  style={{ left: ghost().x + 12, top: ghost().y + 12, boxShadow: shadow("drag") }}
                 >
                   {/* One line even at the window's edge, where the room left would wrap it. */}
                   <Text class="text-[12px] text-ink whitespace-nowrap">{ghost().label}</Text>

@@ -47,7 +47,7 @@ function Field(props: { testID: string; value: string; placeholder: string; inva
       readonly={props.busy}
       autoCorrect={false}
       onChange={(e) => props.onChange(e.value)}
-      class={`${FIELD} ${props.invalid ? "border-warn-line" : ""}`}
+      class={`${FIELD} ${props.invalid ? "border-danger" : ""}`}
     />
   );
 }
@@ -124,7 +124,7 @@ export function SkillEditor(props: {
             <CardHeader label={t().skillName} required>
               <EditorOwnerBadge name={props.bot.name} title={`${copy().routines.owner}: ${props.bot.name}`} />
             </CardHeader>
-            <Field testID="skill-name" value={props.skillDraft.name} onChange={(v) => set({ name: v })} placeholder="例如：web_search, git_commit" invalid={!!props.skillErrors.name} busy={props.skillBusy} />
+            <Field testID="skill-name" value={props.skillDraft.name} onChange={(v) => set({ name: v })} placeholder={t().skillNamePlaceholder} invalid={!!props.skillErrors.name} busy={props.skillBusy} />
             <If when={props.skillErrors.name}>
               <Text testID="skill-name-error" class={FIELD_ERROR}>{nameCopy()}</Text>
             </If>
@@ -132,17 +132,17 @@ export function SkillEditor(props: {
 
           <Card>
             <CardHeader label={t().skillDescription} required>
-              <Hint>何时自动调用</Hint>
+              <Hint>{t().skillDescriptionHint}</Hint>
             </CardHeader>
             <Input
               testID="skill-description"
               accessibilityLabel={t().skillDescription}
               multiline
               value={props.skillDraft.description}
-              placeholder="描述此技能适用的场景或触发条件，方便模型识别何时使用..."
+              placeholder={t().skillDescriptionPlaceholder}
               readonly={props.skillBusy}
               onChange={(e) => set({ description: e.value })}
-              class={`${FIELD} min-h-[72px] ${props.skillErrors.description ? "border-warn-line" : ""}`}
+              class={`${FIELD} min-h-[72px] ${props.skillErrors.description ? "border-danger" : ""}`}
             />
             <If when={props.skillErrors.description}>
               <Text testID="skill-description-error" class={FIELD_ERROR}>{t().skillDescriptionEmpty}</Text>
@@ -151,7 +151,7 @@ export function SkillEditor(props: {
 
           <Card>
             <CardHeader label={t().skillBody} required>
-              <Hint>Markdown 指令</Hint>
+              <Hint>{t().skillBodyHint}</Hint>
             </CardHeader>
             <Input
               testID="skill-body"
@@ -159,10 +159,10 @@ export function SkillEditor(props: {
               multiline
               autoCorrect={false}
               value={props.skillDraft.body}
-              placeholder="输入具体的 Markdown 指令、规则或提示词内容..."
+              placeholder={t().skillBodyPlaceholder}
               readonly={props.skillBusy}
               onChange={(e) => set({ body: e.value })}
-              class={`${FIELD} font-mono text-[13px] min-h-[140px] ${props.skillErrors.body ? "border-warn-line" : ""}`}
+              class={`${FIELD} font-mono text-[13px] min-h-[140px] ${props.skillErrors.body ? "border-danger" : ""}`}
             />
             <If when={props.skillErrors.body}>
               <Text testID="skill-body-error" class={FIELD_ERROR}>{t().skillBodyEmpty}</Text>
@@ -171,7 +171,7 @@ export function SkillEditor(props: {
 
           <Card>
             <CardHeader label={t().skillUses}>
-              <Hint>可选</Hint>
+              <Hint>{t().skillOptional}</Hint>
             </CardHeader>
             <Field testID="skill-uses" value={props.skillDraft.uses} onChange={(v) => set({ uses: v })} placeholder={t().skillUsesPlaceholder} busy={props.skillBusy} />
             <Text class="text-[12px] text-ink-muted">{t().skillUsesHint}</Text>
@@ -181,7 +181,7 @@ export function SkillEditor(props: {
             <EditorSwitchRow
               testID="skill-enabled-row"
               title={t().skillEnabled}
-              desc={props.skillDraft.enabled ? "已启用，Bot 在匹配任务中将自动读取并执行" : "已停用，Bot 将暂时忽略此技能"}
+              desc={props.skillDraft.enabled ? t().skillEnabledOnDesc : t().skillEnabledOffDesc}
             >
               <Switch
                 testID="skill-enabled"

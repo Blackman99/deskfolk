@@ -45,13 +45,14 @@ export function splitAsks(lines: readonly Message[], awaits: (id: string) => boo
   return { shown, open };
 }
 
-/** A row for each group of lines shown, with the day above the first of each day. */
-export function lineRows(shown: readonly Message[][]): ProjectRow[] {
+/** A row for each group of lines shown, with the day above the first of each day and a "New" mark on the first unread line. */
+export function lineRows(shown: readonly Message[][], newMarkId: string | null = null): ProjectRow[] {
   return shown.map((group, index): ProjectRow => {
     const first = group[0]!;
     const previous = index > 0 ? shown[index - 1]!.at(-1)! : null;
     const date = !previous || isDifferentDay(previous.created_at, first.created_at) ? first.created_at : null;
-    return group.length > 1 ? { id: `asks:${first.id}`, kind: "asks", messages: group, date } : { id: first.id, kind: "line", message: first, date };
+    const fresh = newMarkId !== null && group.some((message) => message.id === newMarkId);
+    return group.length > 1 ? { id: `asks:${first.id}`, kind: "asks", messages: group, date, fresh } : { id: first.id, kind: "line", message: first, date, fresh };
   });
 }
 
@@ -79,8 +80,8 @@ export function createProjectRowKeeper(): (rows: readonly ProjectRow[]) => Proje
 const sameMessage = (a: Message, b: Message) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 function sameRow(a: ProjectRow, b: ProjectRow): boolean {
-  if (a.kind === "line" && b.kind === "line") return a.date === b.date && sameMessage(a.message, b.message);
-  if (a.kind === "asks" && b.kind === "asks") return a.date === b.date && a.messages.length === b.messages.length && a.messages.every((message, index) => sameMessage(message, b.messages[index]!));
+  if (a.kind === "line" && b.kind === "line") return a.date === b.date && Boolean(a.fresh) === Boolean(b.fresh) && sameMessage(a.message, b.message);
+  if (a.kind === "asks" && b.kind === "asks") return a.date === b.date && Boolean(a.fresh) === Boolean(b.fresh) && a.messages.length === b.messages.length && a.messages.every((message, index) => sameMessage(message, b.messages[index]!));
   return a.kind === b.kind && a.kind !== "line" && a.kind !== "asks";
 }
 

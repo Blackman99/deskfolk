@@ -54,7 +54,9 @@
     - 交互：`pointer-drag.ts`（拖动改宽高）、`autosave.svelte.ts`（边输边存）、`keymap.ts` 的 `isPrimaryModifier`；平台这一侧的 `app/src/platform/`（`press.ts` 的 `onPressOutside`、`wheel.ts`、`lifecycle.ts`、`viewport.ts` 的 `widthAtMost`）。
   - **界面组件（`apps/desktop-nsh/app/src/ui`，NSH TSX，写法见 `apps/desktop-nsh/PORTING.md`）**
     - `Button.tsx`、`IconButton.tsx`、`Icon.tsx`（图标表在 `m/icons.ts`）；右上角提示 `m/toast.svelte.ts` 的 `showToast`（`ToastHost.tsx` 外壳挂一个）。
-    - `Switch.tsx`、`Checkbox.tsx`、`Select.tsx`、`MultiSelect.tsx`、`Modal.tsx`、`EmptyState.tsx`。
+    - `styles.ts` 的 `shadow()`（含 `dialog` / `drag` / `menu` 阴影）、`MENU_SURFACE`、`MENU_ITEM`（仅管桌面弹出菜单外观，不管关闭规则）；语义圆角令牌在 `assets/tokens.css`（`--radius-control-xs/sm`、`--radius-control`、`--radius-pill-group`、`--radius-card-sm`、`--radius-bubble`、`--radius-ball`）。
+    - `Switch.tsx`、`Checkbox.tsx`、`Select.tsx`、`MultiSelect.tsx`、`Modal.tsx`（含共享断点 `narrowWindow()`）、`EmptyState.tsx`（含行内空提示 `EmptyInline`）。
+    - 对话流共用小件：`chat/transcript-parts.tsx` 的 `StreamingCursor`（Bot 对话与项目会话共用）。
     - 手机上的下拉：`BottomSheet.tsx`（从底部升起的面板；一层层往下选的面板给 `onBack`；行用同文件的 `SheetItem`、`SheetSeparator`）；桌面弹出、手机底部弹出的选择器是 `Select`、`ModelPicker`。
     - 设置页：`settings/SettingsRow`、`SettingsCard`、`SettingsCardHeader`、`SettingsSubpageButton`、`AutosaveState`；分块标签和手机列表 `SettingsSectionTabs`、`SettingsSectionList`。
     - 提示词：`settings/PromptEditorPage`（编辑页，宽窗弹窗、手机内页）、`PromptRowList`（一行一条，带状态和读不懂次数），提示词页和「分工」页共用；`m/settings/prompts-view.ts` 的 `promptChip`。
@@ -76,9 +78,8 @@
 - 约 25 处 `JSON.parse(row.x)` 遇到坏数据会抛错。
 - 搬进 API 类的 9 个方法没带修订号。
 - `clip` / `oneLine` / `handleCorner` 有几份不完全相同的副本。
-- 「已复制」提示：设置里的三处一直亮着，聊天页的 1.8 秒后复原，而且卸载时没清计时器。
-- 手机上，端点编辑的返回 / 关闭按钮宽 44px，其他页面是 40px；提示词编辑页没有关闭按钮。
-- 技能、记忆、日程三个编辑页：表单间距 8 / 8 / 10px，开关行高 40 / 40 / 44px。
+- 「已复制」提示：设置里的三处一直亮着，聊天页（含项目会话）的 1.8 秒后复原，而且 Bot 聊天页卸载时没清计时器。
+- 技能、记忆、日程三个编辑页：表单卡片间距仍有轻微差异（8 / 8 / 10px）。
 
 ## 纯搬迁怎么做、怎么证明
 

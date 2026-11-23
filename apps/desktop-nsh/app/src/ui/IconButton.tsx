@@ -8,9 +8,9 @@ import { Icon, type IconName } from "./Icon";
 import { tip } from "./tip";
 
 const SIZE = {
-  xs: "w-[24px] h-[24px] rounded-[6px]",
-  sm: "w-[28px] h-[28px] rounded-[7px]",
-  md: "w-[32px] h-[32px] rounded-[8px]",
+  xs: "w-[24px] h-[24px] rounded-(--radius-control-xs)",
+  sm: "w-[28px] h-[28px] rounded-(--radius-control-sm)",
+  md: "w-[32px] h-[32px] rounded-(--radius-control)",
   lg: "w-[40px] h-[40px] rounded-(--radius-md)",
 } as const;
 
@@ -35,7 +35,7 @@ export function IconButton(props: {
         accessibilityState={{ selected: on(), disabled: props.disabled }}
         disabled={props.disabled}
         onPress={() => props.onPress?.()}
-        class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 active:scale-[0.92] disabled:opacity-[0.4] ${SIZE[props.size ?? "md"]} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"} ${props.class ?? ""}`}
+        class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 border border-transparent focus-visible:border-brand active:scale-[0.92] disabled:opacity-[0.45] ${SIZE[props.size ?? "md"]} ${on() ? "bg-accent-tint" : "hover:bg-row-hover"} ${props.class ?? ""}`}
       >
         <Icon
           name={props.icon}

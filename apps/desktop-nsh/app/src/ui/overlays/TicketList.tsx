@@ -27,13 +27,17 @@ import {
 import { boardColumns } from "../../m/overlays/ticket-board.ts";
 import { TicketEdits } from "../../m/overlays/ticket-edits.svelte.ts";
 import { copy } from "../../runtime";
+import { EmptyInline } from "../EmptyState";
 import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
 import { TicketCard } from "./TicketCard";
 import type { CardDrag } from "./ticket-list-drag";
 
-/** A column is at least this wide; wider panes share the room evenly. */
-const COLUMN_MIN = 220;
+/** A non-empty column is at least this wide; wider panes share room with empty columns compacted. */
+const COLUMN_MIN = 250;
+const COLUMN_MAX = 480;
+const COLUMN_EMPTY = 116;
+const COLUMN_EMPTY_MAX = 180;
 const GAP = 8;
 
 export function TicketList(props: {
@@ -111,7 +115,28 @@ export function TicketList(props: {
   /** The hint says tickets are left open, so it waits for one to be. */
   const hasOpenCards = () => tickets().some((row) => row.status === "todo" || row.status === "doing" || row.status === "review");
   const columns = () => boardColumns(tickets(), edits.optimistic);
-  const columnWidth = () => Math.max(COLUMN_MIN, (board().width - GAP * 4) / 5);
+  const columnWidths = () => {
+    const cols = columns();
+    const available = Math.max(0, board().width - GAP * Math.max(0, cols.length - 1));
+    const compact = cols.map((col) => col.tickets.length === 0 && filter() !== col.status);
+    const compactCount = compact.filter(Boolean).length;
+    const fullCount = cols.length - compactCount;
+    if (fullCount === 0) {
+      const equal = Math.max(COLUMN_MIN, available / Math.max(1, cols.length));
+      return cols.map(() => equal);
+    }
+    const rawFull = (available - compactCount * COLUMN_EMPTY) / fullCount;
+    const fullWidth = Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, rawFull));
+    const emptyWidth =
+      compactCount > 0
+        ? Math.max(COLUMN_EMPTY, Math.min(COLUMN_EMPTY_MAX, (available - fullCount * fullWidth) / compactCount))
+        : COLUMN_EMPTY;
+    return compact.map((isCompact) => (isCompact ? emptyWidth : fullWidth));
+  };
+  const columnWidthOf = (status: TicketStatus) => {
+    const idx = columns().findIndex((col) => col.status === status);
+    return columnWidths()[idx >= 0 ? idx : 0] ?? COLUMN_MIN;
+  };
 
   /** A different plan clears the conflict line; the first read only records it. */
   let conflictFor: string | null = null;
@@ -130,7 +155,9 @@ export function TicketList(props: {
     const status = filter();
     if (status === "all") return;
     const index = columns().findIndex((column) => column.status === status);
-    boardScroll?.scrollTo({ x: Math.max(0, index * (columnWidth() + GAP)), animated: true });
+    const widths = columnWidths();
+    const offset = widths.slice(0, Math.max(0, index)).reduce((sum, w) => sum + w + GAP, 0);
+    boardScroll?.scrollTo({ x: Math.max(0, offset), animated: true });
   });
 
   /** Left / Right pass the focus to the neighbouring column's card (the nearest below this one's number), changing no status. */
@@ -216,7 +243,7 @@ export function TicketList(props: {
         when={tickets().length > 0}
         else={
           <View class="my-3 px-3 py-4 rounded-(--radius-md) bg-line-subtle">
-            <Text testID="ticket-list-empty" class="text-[12px] text-center text-ink-muted">{t().plan.ticketsNone}</Text>
+            <EmptyInline testID="ticket-list-empty" text={t().plan.ticketsNone} />
           </View>
         }
       >
@@ -237,11 +264,11 @@ export function TicketList(props: {
                   accessibilityLabel={t().plan.ticketStatus[column().status]}
                   testID={`board-column-${column().status}`}
                   ref={(node) => (columnViews[column().status] = node)}
-                  class={`min-h-0 rounded-(--radius-md) border bg-line-subtle ${filter() === column().status ? "border-accent-border" : "border-line"} ${drag()?.over === column().status && drag()?.from !== column().status ? "border-dashed border-brand" : ""}`}
-                  style={{ width: columnWidth(), height: Math.max(board().height, 0) }}
+                  class={`min-h-0 rounded-(--radius-md) border ${drag()?.over === column().status && drag()?.from !== column().status ? "border-dashed border-brand bg-accent-tint/40" : drag() && drag()?.from !== column().status ? "border-dashed border-line-hover bg-line-subtle" : filter() === column().status ? "border-accent-border bg-line-subtle" : "border-line bg-line-subtle"}`}
+                  style={{ width: columnWidthOf(column().status), height: Math.max(board().height, 0) }}
                 >
-                  <View class="flex-row items-center gap-[6px] min-w-0 px-2 pt-2 pb-1 bg-line-subtle rounded-t-(--radius-md)">
-                    <Text class={`text-[11px] font-semibold ${filter() === column().status ? "text-brand" : "text-ink-muted"}`}>
+                  <View class="flex-row items-center gap-[6px] min-w-0 px-2 pt-2 pb-1 rounded-t-(--radius-md)">
+                    <Text class={`min-w-0 shrink line-clamp-1 text-[11px] font-semibold ${filter() === column().status ? "text-brand" : "text-ink-muted"}`}>
                       {t().plan.ticketStatus[column().status]}
                     </Text>
                     <Text testID={`board-count-${column().status}`} class="text-[10px] font-mono text-ink-muted">{String(column().tickets.length)}</Text>

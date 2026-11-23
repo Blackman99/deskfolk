@@ -67,7 +67,7 @@
 | `src/ui/Button` | `variant`（primary / secondary / ghost / danger / danger-soft）、`size`、`icon`、`trailingIcon`、`onPress` |
 | `src/ui/IconButton` | `icon`、`label`（必填，也是提示）、`size`（xs/sm/md/lg）、`pressed` |
 | `src/ui/Switch` | `checked` + `onChange` |
-| `src/ui/tip` | `tooltip={tip("…")}` |
+| `src/ui/tip` | `tooltip={tip("…", options?)}` 或可控的 `<Tip label={…} open={…} onOpenChange={…} />`（自动限制宽高和行数，空文案不弹出） |
 | `src/ui/Select` | `value`、`options`（字符串或 `{ value, label, hint, group, disabled }`）、`onChange`；桌面弹出、手机底部弹出 |
 | `src/ui/MultiSelect` | 多选，选中的成小标签 |
 | `src/ui/BottomSheet` | `open`、`onClose`、`onBack`；行用同文件的 `SheetItem`、`SheetSeparator` |

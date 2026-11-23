@@ -44,13 +44,13 @@ import { claudeAccountOptions, claudeReady } from "../../m/settings/claude-agent
 import { ladderPlace, ladderSlot, movedTo, type LadderDrag } from "../../m/settings/ladder-drag.ts";
 import type { ModelLadder } from "../../m/settings/model-ladder.svelte.ts";
 import { Icon } from "../Icon";
+import { narrowWindow } from "../Modal";
 import { ModelPicker } from "../ModelPicker";
 import { ModelSourceMark } from "../ModelSourceMark";
 import { Select } from "../Select";
 import { shadow } from "../styles";
 import { tip } from "../tip";
 import { mixColors } from "../spend/spend-style";
-import { widthAtMost } from "../../platform/viewport";
 
 /** How far a press moves before it is a drag rather than a press on the grip. */
 const DRAG_PX = 4;
@@ -72,7 +72,7 @@ export function ModelLadderCard(props: {
 }) {
   const t = () => copy();
   const ladder = props.ladder;
-  const phone = () => widthAtMost(720);
+  const phone = () => narrowWindow();
 
   const claudeStatus = signal<ClaudeCodeStatus | null>(null);
   const agentsFound = signal<AgentsStatusResponse | null>(null);

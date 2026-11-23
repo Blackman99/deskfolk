@@ -21,7 +21,6 @@ import type { SessionSummary } from "@real-bot/protocol";
 import { cleanup, computed, PanResponder, Text, View } from "nsh";
 import { snapshot } from "../../lib/reactive";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
-import { spendCopyFor } from "../../m/spend/spend-copy.ts";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
 import { activateTab, focusLeaf, replaceTabParams } from "../../m/workbench/layout-tree.ts";
 import { provideMenuCommands } from "../workbench/menu-commands";
@@ -500,44 +499,8 @@ function ShellWorkbench(props: { s: ShellState; onApi: (api: WorkbenchApi) => vo
           </Button>
         </View>
       )}
-      emptyActions={(leafId) => (
-        <View class="gap-1">
-          <PaneOpen label={t().terminal.newTab} onPress={() => void workbench.openNewTerminal(leafId)} />
-          <Each of={workbench.untabbedTerminals.slice()} key={(row) => row.id}>
-            {(row) => <PaneOpen label={t().terminal.reattach(workbench.terminalName(row()))} onPress={() => workbench.openInPane(leafId, { kind: "terminal", terminalId: row().id })} />}
-          </Each>
-          <PaneOpen
-            label={t().sidebar.workspace}
-            disabled={!s.snapshot().settings.workspace_path}
-            onPress={() => workbench.openInPane(leafId, { kind: "workspace", selected: null })}
-          />
-          <PaneOpen label={t().routines.title} onPress={() => workbench.openInPane(leafId, { kind: "routines" })} />
-          <PaneOpen
-            label={spendCopyFor(s.snapshot().settings.locale === "en" ? "en" : "zh").title}
-            onPress={() => workbench.openInPane(leafId, { kind: "spend" })}
-          />
-          <PaneOpen label={t().usage.title} onPress={() => workbench.openInPane(leafId, { kind: "usage" })} />
-        </View>
-      )}
       menuActions={(leafId, query, close) => <NewPaneMenu workbench={workbench} leafId={leafId} query={query} onPick={close} />}
     />
-  );
-}
-
-function PaneOpen(props: { label: string; disabled?: boolean; onPress: () => void }) {
-  return (
-    <View
-      role="button"
-      accessibilityLabel={props.label}
-      accessibilityState={{ disabled: props.disabled ?? false }}
-      class="cursor-pointer select-none rounded-[8px] px-3 py-[6px] hover:bg-line-subtle"
-      classList={{ "opacity-50": props.disabled ?? false }}
-      onPress={() => {
-        if (!props.disabled) props.onPress();
-      }}
-    >
-      <Text class="text-[13px] text-ink">{props.label}</Text>
-    </View>
   );
 }
 
@@ -637,17 +600,6 @@ function ShellLayers(props: { s: ShellState }) {
             />
           )}
         </WorkspaceExplorer>
-      </If>
-      <If when={runtime.threadOpen}>
-        <View testID="thread" class="absolute top-0 right-0 bottom-0 w-[320px] border-l border-line bg-pane p-4 gap-3" style={{ zIndex: 20 }}>
-          <View class="flex-row items-center">
-            <Text class="flex-1 text-[14px] font-semibold text-ink">{t().thread.title}</Text>
-            <Button variant="ghost" onPress={() => (runtime.threadOpen = false)}>
-              {t().common.close}
-            </Button>
-          </View>
-          <Text class="text-[13px] text-ink-muted">{t().thread.none}</Text>
-        </View>
       </If>
       <SessionSettings s={s} beside={null} />
       <If when={s.dangerConfirmCopy()}>

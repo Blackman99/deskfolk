@@ -130,7 +130,7 @@ export function SpendHeader(props: {
             accessibilityLabel={copy().refresh}
             disabled={props.ledger.loading || !!props.ledger.rangeIssue || !props.api}
             onPress={() => props.ledger.refresh()}
-            class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 disabled:opacity-[0.4] hover:bg-line-subtle ${narrow() ? "w-[44px] h-[44px] rounded-full" : "w-[38px] h-[38px] border border-line rounded-(--radius-sm) bg-pane hover:border-line-hover"}`}
+            class={`cursor-pointer select-none disabled:cursor-default group items-center justify-center shrink-0 disabled:opacity-[0.45] hover:bg-line-subtle ${narrow() ? "w-[44px] h-[44px] rounded-full" : "w-[38px] h-[38px] border border-line rounded-(--radius-sm) bg-pane hover:border-line-hover"}`}
           >
             <SpendIcon name="refresh" class={`${props.ledger.loading ? "animate-spin " : ""}tint-ink-muted group-hover:tint-ink`} />
           </View>

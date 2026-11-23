@@ -34,7 +34,7 @@ export function DelegationRecords(props: {
         <View class="gap-[8px]">
           <Each of={ordered()} key={(row) => row.id}>
             {(row) => (
-              <View testID={`delegation-${row().id}`} class={`min-w-0 border border-line rounded-[10px] ${narrowWindow() ? "px-[12px] py-[10px]" : "px-[14px] py-[12px]"}`}>
+              <View testID={`delegation-${row().id}`} class={`min-w-0 border border-line rounded-(--radius-md) ${narrowWindow() ? "px-[12px] py-[10px]" : "px-[14px] py-[12px]"}`}>
                 <View class="flex-row flex-wrap items-baseline gap-x-[10px] gap-y-[6px] mb-[7px]">
                   <Text class="text-[11px] font-medium text-ink-secondary">{`${nameOf(row().from_bot_id)} → ${nameOf(row().to_bot_id)}`}</Text>
                   <Text class="text-[10px] text-ink-muted">{t().delegation.expects[row().expects]}</Text>

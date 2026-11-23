@@ -12,33 +12,39 @@
  * Not as the messenger, whose agent line without commands has its time under it on the left. The
  * transcript is one selection (`ProjectChat`), and the times, the day lines and the earlier line
  * stay out of it, so a drag runs from one line into the next and copies the words alone. No line is a
- * selection area of its own (no `selectable` view, Markdown with `selectable={false}`): the nearest
- * area takes a right click before the pane hears it (`pane-menu.ts`).
+ * selection area of its own (no `selectable` view, Markdown with `selectable={false}`): right-clicking
+ * a user or agent line opens `project-line-menu` via its nearest `onContextMenu`, while blank space
+ * (day lines, padding) still reaches the pane's menu (`pane-menu.ts`).
  */
-import { Text, View, type ViewRef } from "nsh";
-import type { Annotation, Message } from "@real-bot/protocol";
+import { signal, Text, View, type Point, type ViewRef } from "nsh";
+import type { Annotation, Attachment, Message } from "@real-bot/protocol";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { formatDateDivider, formatMessageTime } from "../../m/chat/chat-view.ts";
 import { snapshot } from "../../lib/reactive";
 import { copy, runtime } from "../../runtime";
 import { AnnotationCards } from "../annotations/AnnotationCards";
+import { Icon } from "../Icon";
+import { shadow } from "../styles";
+import { tip } from "../tip";
 import { CommandActivity } from "./CommandActivity";
 import { SEAM_LINE } from "../glass";
 import { AskCard } from "./AskCard";
+import { messageHover, MessagePill } from "./message-pill";
 import { ProjectAsks } from "./project-chat-asks";
 import { MarkdownBody } from "../lazy-views";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProjectSubagentEntry } from "./ProjectSubagentEntry";
 import { lineOf, type ProjectState } from "./project-chat-state";
 import { SendFlightOf } from "./send-flight";
-import type { Attachment } from "@real-bot/protocol";
+import { NewDivider } from "./stage-parts";
+import { toolbarWanted } from "./transcript-parts";
 import type { PressedPicture } from "./image-origin";
 
 export type ProjectRow =
   | { id: "earlier"; kind: "earlier" }
-  | { id: string; kind: "line"; message: Message; date: string | null }
+  | { id: string; kind: "line"; message: Message; date: string | null; fresh?: boolean }
   /** Questions one call asked, the run waiting on none of them now: one card, a step at a time. */
-  | { id: string; kind: "asks"; messages: Message[]; date: string | null }
+  | { id: string; kind: "asks"; messages: Message[]; date: string | null; fresh?: boolean }
   /** A run that ended with nothing said: what it started has no line to hang under. */
   | { id: "tasks"; kind: "tasks" }
   | { id: "working"; kind: "working" };
@@ -79,7 +85,7 @@ function AppLine(props: { body: string }) {
   return (
     <View
       testID="project-line-app"
-      class={block() ? "w-full px-[14px] py-[10px] rounded-[12px] bg-chip gap-[6px]" : "self-center max-w-[90%] px-3 py-1 rounded-full bg-chip"}
+      class={block() ? "w-full px-[14px] py-[10px] rounded-(--radius-card-sm) bg-chip gap-[6px]" : "self-center max-w-[90%] px-3 py-1 rounded-full bg-chip"}
     >
       <Text class={`text-[12px] text-ink-muted ${block() ? "" : "text-center"}`}>{words()}</Text>
       <If when={quote()}>
@@ -100,10 +106,16 @@ export function EarlierLine(props: { loading: boolean }) {
 /** A project session has no Bot: its cards name only you as who handled one. */
 const NO_BOTS: ReadonlyMap<string, { name: string }> = new Map();
 
+const PILL_BUTTON = "min-w-[24px] h-[24px] px-[5px] rounded-(--radius-control-sm) flex-row items-center justify-center gap-[4px] hover:bg-row-hover active:scale-[0.92]";
+
 export function ProjectLine(props: {
   message: Message;
   date: string | null;
+  fresh?: boolean;
   state: ProjectState;
+  copiedId?: string | null;
+  onCopy?: (message: Message) => void;
+  onContextMenu?: (message: Message, at: Point) => void;
   onOpenArtifact: (relpath: string, att?: Attachment, messageId?: string) => void;
   onOpenImage: (att: Attachment, from?: PressedPicture) => void;
 }) {
@@ -111,34 +123,82 @@ export function ProjectLine(props: {
   const s = () => props.state;
   const msg = () => props.message;
   const who = () => lineOf(msg());
+  const hover = messageHover();
+  const anchor = signal<ViewRef | null>(null);
+  const copied = () => props.copiedId === msg().id;
   /** The line you just sent flies in from the box (`send-flight`). */
   const flight = SendFlightOf();
   const flies = flight?.claim(msg().id, msg().body, who() === "you" && msg().attachments.length === 0) ?? false;
   let bubble: ViewRef | null = null;
   /** The bubble as it flies in: the words as the box showed them, or the bubble itself. */
   const ghost = (words: boolean) => (
-    <View class={`w-full h-full px-[14px] py-[10px] rounded-[16px] gap-2 ${words ? "" : "bg-you"}`}>
+    <View class={`w-full h-full px-[14px] py-[10px] rounded-(--radius-bubble) gap-2 ${words ? "" : "bg-you"}`}>
       <Text class={`text-[14px] ${words ? "text-ink" : "text-you-foreground"}`}>{msg().body}</Text>
     </View>
   );
   const hosted = () => s().placed().byLine.get(msg().id) ?? [];
   const kept = () => (focusMode.on ? [] : s().keptRows(hosted()));
   const time = () => <LineTime at={msg().created_at} />;
+  const pill = () => (
+    <If when={hover.shown() && toolbarWanted() && anchor() !== null && Boolean(msg().body.trim())}>
+      <MessagePill anchor={anchor()!} hover={hover}>
+        <View class="flex-row items-center gap-[1px] p-[2px] bg-pane border border-line rounded-(--radius-md)" style={{ boxShadow: shadow("md") }}>
+          <View
+            role="button"
+            testID="act-copy"
+            accessibilityLabel={t().chat.copyMessage}
+            tooltip={tip(t().chat.copyMessage)}
+            onPress={() => props.onCopy?.(msg())}
+            class={`cursor-pointer select-none group ${PILL_BUTTON}`}
+          >
+            <If when={copied()} else={<Icon name="copy" size={12} class="tint-ink-muted group-hover:tint-ink" />}>
+              <Text class="text-[11px] font-semibold text-ok">{`✓ ${t().chat.copied}`}</Text>
+            </If>
+          </View>
+          <If when={props.onContextMenu}>
+            <View
+              role="button"
+              testID="act-more"
+              accessibilityLabel={t().chat.moreActions}
+              tooltip={tip(t().chat.moreActions)}
+              onPress={(e) => props.onContextMenu?.(msg(), e.pagePosition)}
+              class={`cursor-pointer select-none group ${PILL_BUTTON}`}
+            >
+              <Icon name="more" size={12} class="tint-ink-muted group-hover:tint-ink" />
+            </View>
+          </If>
+        </View>
+      </MessagePill>
+    </If>
+  );
   return (
     <View testID={`project-line-${msg().id}`} class="w-full gap-[14px]">
       <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
+      <If when={props.fresh}>
+        <NewDivider />
+      </If>
       <If when={who() === "app"}>
         <AppLine body={msg().body} />
       </If>
       <If when={who() === "you"}>
-        <View testID="project-line-you" class="items-end w-full" style={flies ? flight?.hides(msg().id) : undefined}>
+        <View
+          testID="project-line-you"
+          {...hover.message}
+          onContextMenu={props.onContextMenu ? (e) => props.onContextMenu!(msg(), e.pagePosition) : undefined}
+          class="items-end w-full"
+          style={flies ? flight?.hides(msg().id) : undefined}
+        >
           <View
-            ref={(node: ViewRef) => (bubble = node)}
+            ref={(node: ViewRef) => {
+              bubble = node;
+              anchor.set(node);
+            }}
             onLayout={() => {
               if (flies && bubble) flight?.placed(msg().id, bubble, ghost);
             }}
-            class="max-w-[88%] px-[14px] py-[10px] rounded-[16px] bg-you gap-2"
+            class="max-w-[88%] px-[14px] py-[10px] rounded-(--radius-bubble) bg-you gap-2"
           >
+            {pill()}
             <If when={msg().body}>
               {/* In the transcript's selection, as no area of its own: an area here would take the right click (`pane-menu.ts`). */}
               <View>
@@ -170,7 +230,14 @@ export function ProjectLine(props: {
         </View>
       </If>
       <If when={who() === "agent"}>
-        <View testID="project-line-agent" class="items-start w-full">
+        <View
+          testID="project-line-agent"
+          ref={(node: ViewRef) => anchor.set(node)}
+          {...hover.message}
+          onContextMenu={props.onContextMenu ? (e) => props.onContextMenu!(msg(), e.pagePosition) : undefined}
+          class="items-start w-full"
+        >
+          {pill()}
           {/* The whole line wide, as a wrapping paragraph is in the messenger. Left to fit its text, NSH
               narrowed it to its widest line yet kept the heights measured at the full width: a paragraph
               that wrapped once more than measured ran under what followed it, and its last line was cut. */}
@@ -213,12 +280,15 @@ export function ProjectLine(props: {
 }
 
 /** Questions the agent asked together, answered or no longer waited on: one card, a step at a time, as they were asked. */
-export function ProjectAskGroup(props: { messages: Message[]; date: string | null; state: ProjectState }) {
+export function ProjectAskGroup(props: { messages: Message[]; date: string | null; fresh?: boolean; state: ProjectState }) {
   const s = () => props.state;
   const first = () => props.messages[0]!;
   return (
     <View testID={`project-asks-${first().id}`} class="w-full gap-[14px]">
       <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
+      <If when={props.fresh}>
+        <NewDivider />
+      </If>
       <View class="items-start w-full">
         <ProjectAsks asks={props.messages} state={s()} />
         <View testID="project-line-foot" class="self-stretch flex-row justify-end mt-[3px]">

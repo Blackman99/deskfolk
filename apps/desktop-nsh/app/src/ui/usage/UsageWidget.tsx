@@ -16,7 +16,7 @@ import type { UsageAgent } from "@real-bot/protocol";
 import { copy } from "../../runtime";
 import { usageCheckedTime, usageLatestCheck, usageLevel, usageTightest, usageUsed, usageUsedText } from "../../m/usage/usage.ts";
 import { usageDrop, usageWidget } from "../../m/usage/usage-widget.svelte.ts";
-import { shadow } from "../styles";
+import { MENU_SURFACE, shadow } from "../styles";
 import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 import { UsageAgentSection } from "./UsageAgentSection";
@@ -224,7 +224,7 @@ export function UsageWidget() {
           >
             <View
               testID="usage-shell"
-              class={`border rounded-[24px] bg-pane overflow-hidden items-center ${BORDER[level()]} ${tucked() ? TUCKED[level()] : ""}`}
+              class={`border rounded-(--radius-ball) bg-pane overflow-hidden items-center ${BORDER[level()]} ${tucked() ? TUCKED[level()] : ""}`}
               style={{
                 width: SLOT,
                 height: boxH(),
@@ -332,7 +332,7 @@ export function UsageWidget() {
                     testID={`usage-card-${key(agent())}`}
                     role="region"
                     accessibilityLabel={agent().runner === "claude_code" ? "Claude" : agent().label}
-                    class="bg-pane border border-line rounded-[12px] overflow-hidden"
+                    class="bg-pane border border-line rounded-(--radius-card-sm) overflow-hidden"
                     style={{ width: CARD_W, boxShadow: shadow("lg") }}
                     onLayout={(e) => cardH.set(e.bounds.size.height)}
                     onMouseEnter={enter}
@@ -345,10 +345,19 @@ export function UsageWidget() {
                       <If when={agent().accounts.length === 0}>
                         <Text testID="usage-card-note" class="text-[12px] leading-[18px] text-ink-muted">{copy().usage.todayOnlyHint}</Text>
                       </If>
-                      <View class="flex-row items-center gap-[8px] pt-[10px] border-t border-line">
+                      <View class="flex-row items-center gap-[6px] pt-[10px] border-t border-line">
                         <Text testID="usage-card-checked" class="flex-1 min-w-0 text-[11px] text-ink-muted line-clamp-1">
                           {checked() ? (feed.failed ? copy().usage.stale(checked()!) : copy().usage.checkedAt(checked()!)) : ""}
                         </Text>
+                        <View
+                          testID="usage-card-hide"
+                          role="button"
+                          accessibilityLabel={copy().usage.hide}
+                          onPress={hide}
+                          class="cursor-pointer select-none shrink-0 px-[8px] py-[3px] border border-line rounded-(--radius-md) hover:bg-row-hover"
+                        >
+                          <Text class="text-[11px] text-ink-muted">{copy().usage.hide}</Text>
+                        </View>
                         <View
                           testID="usage-card-refresh"
                           role="button"
@@ -357,7 +366,7 @@ export function UsageWidget() {
                             const api = client();
                             if (api) void feed.load(api, true);
                           }}
-                          class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[8px] py-[3px] border border-line rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.6]"
+                          class="cursor-pointer select-none disabled:cursor-default shrink-0 px-[8px] py-[3px] border border-line rounded-(--radius-md) hover:bg-row-hover disabled:opacity-[0.45]"
                         >
                           <Text class="text-[11px] text-ink">{feed.busy ? copy().usage.refreshing : copy().usage.refresh}</Text>
                         </View>
@@ -377,7 +386,7 @@ export function UsageWidget() {
                   onPressOutside={() => menuAt.set(null)}
                   onCancel={() => menuAt.set(null)}
                 >
-                  <View role="menu" testID="usage-menu" class="p-[5px] bg-pane border border-line rounded-(--radius-md)" style={{ boxShadow: shadow("menu") }}>
+                  <View role="menu" testID="usage-menu" class={MENU_SURFACE} style={{ boxShadow: shadow("menu") }}>
                     <View
                       role="menuitem"
                       testID="usage-menu-hide"
@@ -399,7 +408,7 @@ export function UsageWidget() {
             testID="usage-card-empty"
             role="region"
             accessibilityLabel={copy().usage.title}
-            class="p-[14px] bg-pane border border-line rounded-[12px]"
+            class="p-[14px] bg-pane border border-line rounded-(--radius-card-sm)"
             style={{ width: CARD_W, boxShadow: shadow("lg") }}
           >
             <Text testID="usage-empty" class="text-[12px] leading-[18px] text-ink-muted">{copy().usage.empty}</Text>

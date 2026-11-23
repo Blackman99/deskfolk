@@ -389,7 +389,7 @@ export function Composer(props: {
             onFileDragEnter={() => fileOver.set(true)}
             onFileDragLeave={() => fileOver.set(false)}
             onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
-            class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-[18px] border-line" : "rounded-[18px] border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
+            class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-(--radius-xl) border-line" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
             style={docked() ? undefined : { boxShadow: shadow("raised") }}
           >
             <If when={quoteTarget()}>{(message) => <ComposerQuote message={message()} botsById={botsById()} onCancel={() => { const current = view(); if (current) current.replyingToId = null; }} />}</If>
@@ -516,7 +516,7 @@ export function Composer(props: {
           <ScrollBottomButton shown={props.showScrollBottom === true} onScrollToBottom={props.onScrollToBottom} />
         </View>
         <If when={!d().locked}>
-          <View accessible={false} class="w-[1px] h-[1px] overflow-hidden">
+          <View class="w-[1px] h-[1px] overflow-hidden">
             <Text role="text" testID="composer-hint" class="text-[1px] opacity-0">{hint()}</Text>
           </View>
         </If>

@@ -314,7 +314,7 @@ export function LeafStrip(props: StripProps) {
               }}
               {...ownTouch}
               class={`cursor-pointer select-none w-[18px] h-[18px] shrink-0 rounded-full items-center justify-center hover:bg-row-hover ${open() ? "bg-row-hover" : ""}`}
-              style={{ opacity: shown() || open() ? 1 : 0 }}
+              style={{ opacity: hovered() === tabId || open() ? 1 : 0 }}
             >
               <Icon name="more" size={12} class="tint-ink-muted" />
             </View>

@@ -59,3 +59,12 @@ export function EmptyState(props: {
     </View>
   );
 }
+
+/** A compact single-line empty hint inside a card, column or list. */
+export function EmptyInline(props: { text: string; testID?: string; class?: string }) {
+  return (
+    <Text testID={props.testID} class={`text-[12px] text-center text-ink-muted ${props.class ?? ""}`}>
+      {props.text}
+    </Text>
+  );
+}

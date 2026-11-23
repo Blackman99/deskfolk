@@ -30,3 +30,10 @@ export const DURATION = { fast: 120, base: 180, slow: 260 } as const;
 
 /** The type scale (`--text-*`), in points: class `text-[13px]` is `small`. */
 export const TEXT = { display: 28, title: 20, heading: 16, body: 14, small: 13, caption: 12, micro: 11 } as const;
+
+/** Shared desktop popup menu container appearance (does not prescribe close or keyboard behaviour). */
+export const MENU_SURFACE = "p-[5px] bg-pane border border-line rounded-(--radius-md)";
+
+/** Shared desktop popup menu item layout, hover, focus and disabled appearance (callers keep `cursor-pointer select-none` inline for `press-cursor.test.ts`). */
+export const MENU_ITEM =
+  "flex-row items-center gap-2 w-full px-[10px] py-[6px] rounded-(--radius-sm) hover:bg-line-subtle focus:bg-line-subtle focus-visible:bg-line-subtle disabled:opacity-[0.45]";

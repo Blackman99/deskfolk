@@ -13,7 +13,7 @@
  * Code blocks take the messenger's Shiki colours (`code-colors.tsx`): a `CodeColors` around the
  * view colours them natively, in GitHub's light and dark or the code theme your interface chose,
  * which also brings its surface. On the web they are plain until the colours are read, and in NSH's
- * own colours if they never are. Your own bubble keeps its code white on its wash, as before.
+ * own colours if they never are. Your own bubble draws code in `you-text` over a `you-text` wash.
  */
 import { cleanup, computed, effect, Image, openUrl, signal, Text, View, type JSX, type Point, type ViewRef } from "nsh";
 import { TextView } from "nsh/base";
@@ -149,7 +149,7 @@ export function MarkdownBody(props: {
         )
       }
       classes={{
-        root: `text-[14px] leading-[1.55] ${inv() ? "text-white" : "text-ink"}`,
+        root: `text-[14px] leading-[1.55] ${inv() ? "text-you-text" : "text-ink"}`,
         heading: "font-bold leading-[1.3] mt-[9px] mb-[4px]",
         heading1: "text-[17px]",
         heading2: "text-[15px]",
@@ -157,15 +157,15 @@ export function MarkdownBody(props: {
         heading4: "text-[14px]",
         heading5: "text-[14px]",
         heading6: "text-[14px]",
-        blockquote: `border-l-[3px] pl-[11px] ${inv() ? "border-white/45 text-white/85" : "border-line text-ink-muted"}`,
-        rule: `border-t my-[9px] ${inv() ? "border-white/35" : "border-line"}`,
-        link: inv() ? "text-white underline" : "text-brand underline hover:text-accent-hover",
-        code: `font-mono text-[12px] rounded-(--radius-xs) px-[4px] ${inv() ? "bg-white/12" : "bg-inline-code-bg border border-inline-code-border"}`,
-        codeBlock: `rounded-(--radius-sm) border ${inv() ? "bg-[rgba(18,28,32,0.28)] border-white/20" : "bg-chip border-line"}`,
-        codeBlockCode: `font-mono text-[12px] leading-[1.45] ${inv() ? "text-white" : "text-ink"}`,
+        blockquote: `border-l-[3px] pl-[11px] ${inv() ? "border-you-text/45 text-you-text/85" : "border-line text-ink-muted"}`,
+        rule: `border-t my-[9px] ${inv() ? "border-you-text/35" : "border-line"}`,
+        link: inv() ? "text-you-text underline" : "text-brand underline hover:text-accent-hover",
+        code: `font-mono text-[12px] rounded-(--radius-xs) px-[4px] ${inv() ? "bg-you-text/12" : "bg-inline-code-bg border border-inline-code-border"}`,
+        codeBlock: `rounded-(--radius-sm) border ${inv() ? "bg-you-text/12 border-you-text/20" : "bg-chip border-line"}`,
+        codeBlockCode: `font-mono text-[12px] leading-[1.45] ${inv() ? "text-you-text" : "text-ink"}`,
         table: "text-[13px]",
-        tableCell: `border px-[10px] py-[6px] leading-[1.45] ${inv() ? "border-white/35" : "border-line"}`,
-        tableHeaderCell: `font-semibold ${inv() ? "bg-white/12" : "bg-line-subtle"}`,
+        tableCell: `border px-[10px] py-[6px] leading-[1.45] ${inv() ? "border-you-text/35" : "border-line"}`,
+        tableHeaderCell: `font-semibold ${inv() ? "bg-you-text/12" : "bg-line-subtle"}`,
       }}
       styles={surface() ? { codeBlock: { backgroundColor: surface()!.bg }, codeBlockCode: { color: surface()!.fg } } : undefined}
     />
@@ -242,10 +242,10 @@ function ArtifactChip(props: {
           onPress={() => props.onPress(props.path)}
           onContextMenu={onContextMenu}
           style={{ verticalAlign: "middle" }}
-          class={`cursor-pointer flex-row items-center gap-1 px-[7px] py-[2px] mx-[1px] rounded-(--radius-sm) border ${props.inverted ? "bg-white/18 border-white/35 hover:bg-white/28" : "bg-brand/7 border-brand/17 hover:bg-accent-tint hover:border-accent-border"}`}
+          class={`cursor-pointer flex-row items-center gap-1 px-[7px] py-[2px] mx-[1px] rounded-(--radius-sm) border ${props.inverted ? "bg-you-text/18 border-you-text/35 hover:bg-you-text/28" : "bg-brand/7 border-brand/17 hover:bg-accent-tint hover:border-accent-border"}`}
         >
           <FileIcon icon={fileIconFor(props.path)} size={12} />
-          <Text onContextMenu={onContextMenu} class={`cursor-pointer text-[13px] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{name()}</Text>
+          <Text onContextMenu={onContextMenu} class={`cursor-pointer text-[13px] ${props.inverted ? "text-you-text" : "text-accent-hover"}`}>{name()}</Text>
         </View>
       }
     >
@@ -257,12 +257,12 @@ function ArtifactChip(props: {
         onPress={() => props.onPress(props.path, pressed())}
         onContextMenu={onContextMenu}
         style={{ verticalAlign: "middle" }}
-        class={`cursor-zoom-in flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-white/14 border-white/30 hover:border-white/70" : "bg-pane border-line hover:border-brand"}`}
+        class={`cursor-zoom-in flex-row items-center gap-2 max-w-[240px] p-[5px] my-[2px] rounded-(--radius-md) border ${props.inverted ? "bg-you-text/14 border-you-text/30 hover:border-you-text/70" : "bg-pane border-line hover:border-brand"}`}
       >
-        <If when={thumb()} else={<View ref={(n: ViewRef) => (picView = n)} class="w-[72px] h-[54px] rounded-[6px] bg-line-subtle shrink-0" />}>
-          {(url: () => string | null | false) => <Image ref={(n: ViewRef) => (picView = n)} src={url() as string} class="w-[72px] h-[54px] rounded-[6px] shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
+        <If when={thumb()} else={<View ref={(n: ViewRef) => (picView = n)} class="w-[72px] h-[54px] rounded-(--radius-sm) bg-line-subtle shrink-0" />}>
+          {(url: () => string | null | false) => <Image ref={(n: ViewRef) => (picView = n)} src={url() as string} class="w-[72px] h-[54px] rounded-(--radius-sm) shrink-0" style={{ objectFit: "cover" }} accessibilityLabel={name()} />}
         </If>
-        <Text onContextMenu={onContextMenu} class={`cursor-zoom-in min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-white" : "text-ink-secondary"}`}>{name()}</Text>
+        <Text onContextMenu={onContextMenu} class={`cursor-zoom-in min-w-0 shrink text-[13px] line-clamp-1 ${props.inverted ? "text-you-text" : "text-ink-secondary"}`}>{name()}</Text>
       </View>
     </If>
   );
@@ -290,7 +290,7 @@ function MentionChip(props: { id: string; label: string; inverted: boolean; unre
         accessibilityLabel={`@${name()}`}
         onPress={everyone() ? undefined : () => props.onPress(props.id)}
         style={{ verticalAlign: "middle" }}
-        class={`${everyone() ? "" : "cursor-pointer "}flex-row items-center gap-1 pl-[3px] pr-[7px] py-[1px] mx-[1px] rounded-full border ${props.inverted ? "bg-white/12 border-white/35 hover:bg-white/20" : "bg-accent-tint border-accent-border hover:bg-accent-border"}`}
+        class={`${everyone() ? "" : "cursor-pointer "}flex-row items-center gap-1 pl-[3px] pr-[7px] py-[1px] mx-[1px] rounded-full border ${props.inverted ? "bg-you-text/12 border-you-text/35 hover:bg-you-text/20" : "bg-accent-tint border-accent-border hover:bg-accent-border"}`}
       >
         <If
           when={!everyone()}
@@ -305,7 +305,7 @@ function MentionChip(props: { id: string; label: string; inverted: boolean; unre
             </Text>
           </View>
         </If>
-        <Text class={`${everyone() ? "" : "cursor-pointer "}text-[13px] font-semibold leading-[1.2] ${props.inverted ? "text-white" : "text-accent-hover"}`}>{`@${name()}`}</Text>
+        <Text class={`${everyone() ? "" : "cursor-pointer "}text-[13px] font-semibold leading-[1.2] ${props.inverted ? "text-you-text" : "text-accent-hover"}`}>{`@${name()}`}</Text>
       </View>
     </If>
   );

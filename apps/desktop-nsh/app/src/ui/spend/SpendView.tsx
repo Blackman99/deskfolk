@@ -14,6 +14,7 @@ import { spendCopyFor } from "../../m/spend/spend-copy.ts";
 import { SpendLedger } from "../../m/spend/spend-ledger.svelte.ts";
 import { spendSource } from "../../m/spend/spend-source.ts";
 import { Button } from "../Button";
+import { EmptyState } from "../EmptyState";
 import { narrowWindow } from "../Modal";
 import { QualityReport } from "./QualityReport";
 import { SpendCap } from "./SpendCap";
@@ -146,14 +147,12 @@ export function SpendView(props: {
             <If
               when={ledger.summary!.totals.calls > 0}
               else={
-                <View testID="spend-empty" class="items-center gap-[14px] px-5 py-12">
-                  <View class="w-[48px] h-[48px] rounded-(--radius-md) items-center justify-center bg-line-subtle">
-                    <SpendIcon name="filter" size={20} />
-                  </View>
-                  <Text role="header" class="text-[15px] font-semibold text-ink">
-                    {copy().empty}
-                  </Text>
-                  <Text class="max-w-[280px] text-[13px] leading-[19px] text-ink-muted text-center">{copy().emptyHint}</Text>
+                <EmptyState
+                  testID="spend-empty"
+                  title={copy().empty}
+                  hint={copy().emptyHint}
+                  badge={<SpendIcon name="filter" size={12} />}
+                >
                   <If when={ledger.chips.length > 0}>
                     <Button
                       testID="spend-empty-clear"
@@ -165,7 +164,7 @@ export function SpendView(props: {
                       {copy().clearAll}
                     </Button>
                   </If>
-                </View>
+                </EmptyState>
               }
             >
               <If

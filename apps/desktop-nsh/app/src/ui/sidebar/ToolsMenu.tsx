@@ -20,7 +20,7 @@ import { spendCopyFor } from "../../m/spend/spend-copy";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
 import { Icon, type IconName } from "../Icon";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { MENU_SURFACE, shadow } from "../styles";
 import { rovingMenu } from "./menu-roving";
 import { ToolsTerminalMenu, type TerminalToReattach } from "./ToolsTerminalMenu";
 
@@ -249,8 +249,8 @@ export function ToolsMenu(props: {
               role="menu"
               testID="sidebar-tools-menu"
               accessibilityLabel={copy().sidebar.tools}
-              class="w-[208px] max-w-[96%] p-[5px] bg-pane border border-line rounded-(--radius-md)"
-              style={{ boxShadow: shadow("lg") }}
+              class={`w-[208px] max-w-[96%] ${MENU_SURFACE}`}
+              style={{ boxShadow: shadow("menu") }}
             >
               {entries()}
               <If when={sub() !== null && cascade() ? terminalRow() : null}>

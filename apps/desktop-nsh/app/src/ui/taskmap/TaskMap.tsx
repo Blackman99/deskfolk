@@ -25,7 +25,7 @@ import { axes, proj, unproj } from "../../m/taskmap/scene/geometry";
 import { buildTimeline } from "../../m/taskmap/timeline";
 import { copy, runtime } from "../../runtime";
 import { TraceJobSwitcher } from "../overlays/TraceJobSwitcher";
-import { cssColor } from "../styles";
+import { cssColor, shadow } from "../styles";
 import { MapHud } from "./MapHud";
 import { MapScene } from "./MapScene";
 import { MapSide } from "./MapSide";
@@ -660,9 +660,13 @@ export function TaskMap(props: {
           onJump={seek}
         />
         <If when={data()!.calls.length === 0}>
-          <Text testID="taskmap-empty" class="absolute left-0 top-0 right-0 bottom-0 p-6 text-center text-[13px]" style={{ color: "#37444a", pointerEvents: "none", zIndex: 650 }}>
-            {emptyText()}
-          </Text>
+          <View class="absolute left-0 top-0 right-0 bottom-0 items-center justify-center p-6" style={{ pointerEvents: "none", zIndex: 650 }}>
+            <View class="px-4 py-2 rounded-(--radius-lg) bg-pane/90 border border-line" style={{ boxShadow: shadow("sm") }}>
+              <Text testID="taskmap-empty" class="text-center text-[13px] text-ink-secondary">
+                {emptyText()}
+              </Text>
+            </View>
+          </View>
         </If>
       </If>
     </View>

@@ -8,6 +8,7 @@
 import { platform, signal, Text, View } from "nsh";
 import { Select as BaseSelect } from "nsh/base";
 import { normalizeOptions, type SelectOption } from "../m/select-options.ts";
+import { copy } from "../runtime";
 import { Icon } from "./Icon";
 import { shadow } from "./styles";
 
@@ -69,12 +70,12 @@ export function Select(props: {
       placement={props.placement === "top" ? "top" : "bottom"}
       offset={4}
       popupClass={`bg-pane border border-line rounded-(--radius-md) p-1 max-w-[420px] ${phone() ? "rounded-b-none" : "max-h-[230px]"}`}
-      popupStyle={{ boxShadow: shadow("lg") }}
+      popupStyle={{ boxShadow: shadow("menu") }}
       backdropClass="bg-modal-backdrop"
       groupClass={`px-[10px] pt-2 pb-[3px] text-ink-muted ${phone() ? "text-[12px]" : "text-[11px]"}`}
       itemClass={`cursor-pointer select-none disabled:cursor-default group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle selected:bg-accent-tint disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-[10px]" : sm() ? "px-2 py-[5px]" : "px-[10px] py-[7px]"}`}
       empty={
-        <Text class="py-5 px-6 text-[13px] text-ink-muted text-center">{props.noOptionsLabel ?? "暂无选项"}</Text>
+        <Text class="py-5 px-6 text-[13px] text-ink-muted text-center">{props.noOptionsLabel ?? copy().common.noOptions}</Text>
       }
       renderItem={(item) => (
         <View class="flex-row items-center justify-between gap-2 flex-1 min-w-0">
@@ -90,7 +91,7 @@ export function Select(props: {
       trigger={
         <View
           testID={props.testID}
-          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-between gap-2 w-full bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle focus-visible:border-field-focus-border disabled:opacity-[0.55] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : props.error ? "border-danger-line" : "border-line"} ${sm() ? "px-[10px] py-[6px]" : "px-3 py-2"}`}
+          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center justify-between gap-2 w-full bg-input-bg border rounded-(--radius-md) hover:border-line-hover hover:bg-line-subtle focus-visible:border-field-focus-border disabled:opacity-[0.45] disabled:bg-line-subtle ${open() ? "border-field-focus-border" : props.error ? "border-danger-line" : "border-line"} ${sm() ? "px-[10px] py-[6px]" : "px-3 py-2"}`}
           style={{ boxShadow: props.disabled ? undefined : shadow("xs") }}
         >
           <Text class={`flex-1 line-clamp-1 ${sm() ? "text-[13px]" : "text-[14px]"} ${isPlaceholder() ? "text-ink-muted font-normal" : "text-ink font-medium"}`}>

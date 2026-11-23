@@ -300,7 +300,7 @@ export function ProviderModelList(props: {
               accessibilityState={{ disabled: props.fetching || !canProbe() }}
               disabled={props.fetching || !canProbe()}
               onPress={() => props.onFetch()}
-              class={`cursor-pointer select-none disabled:cursor-default shrink-0 border border-accent-border bg-accent-tint rounded-full hover:bg-brand disabled:opacity-[0.6] ${narrowWindow() ? "min-h-11 px-3 justify-center rounded-(--radius-md) bg-pane border-line" : "px-2 py-[2px]"}`}
+              class={`cursor-pointer select-none disabled:cursor-default shrink-0 border border-accent-border bg-accent-tint rounded-full hover:bg-brand disabled:opacity-[0.45] ${narrowWindow() ? "min-h-11 px-3 justify-center rounded-(--radius-md) bg-pane border-line" : "px-2 py-[2px]"}`}
             >
               <Text class={`${narrowWindow() ? "text-[13px]" : "text-[11px]"} font-semibold text-brand`}>
                 {props.fetching ? t().modelsFetching : `↻ ${props.draft.availableModels.length > 0 ? t().modelsRefetch : t().modelsFetch}`}

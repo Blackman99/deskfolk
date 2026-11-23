@@ -95,7 +95,7 @@ export function ChatWelcome(props: {
                           testID={`starter-${starter().id}`}
                           disabled={props.lockedComposer}
                           onPress={() => props.pickStarterPrompt(starter().prompt)}
-                          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[12px] pl-[10px] pr-[14px] py-[10px] rounded-(--radius-lg) bg-pane border hover:border-accent-border active:scale-[0.99] disabled:opacity-[0.5] ${
+                          class={`cursor-pointer select-none disabled:cursor-default flex-row items-center gap-[12px] pl-[10px] pr-[14px] py-[10px] rounded-(--radius-lg) bg-pane border hover:border-accent-border active:scale-[0.99] disabled:opacity-[0.45] ${
                             starter().id === "hand-off" ? "border-accent-border" : "border-line"
                           }`}
                           style={{ boxShadow: shadow("xs") }}
@@ -120,7 +120,9 @@ export function ChatWelcome(props: {
         <Text role="header" class="mb-[6px] text-[20px] font-bold text-ink text-center">{t().sidebar.fileDrop}</Text>
         <Text class="text-ink-muted text-center">{t().sidebar.fileDropEmpty}</Text>
       </If>
-      <Text class="text-ink-muted text-center">{t().stream.empty}</Text>
+      <If when={!props.fileDrop}>
+        <Text class="text-ink-muted text-center">{t().stream.empty}</Text>
+      </If>
     </View>
   );
 }

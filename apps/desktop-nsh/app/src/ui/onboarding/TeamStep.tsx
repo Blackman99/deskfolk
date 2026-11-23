@@ -237,7 +237,7 @@ export function TeamStep(props: {
                       accessibilityState={{ expanded: editing() === pick().id, disabled: locked() }}
                       disabled={locked()}
                       onPress={() => editing.set(editing() === pick().id ? null : pick().id)}
-                      class="cursor-pointer select-none disabled:cursor-default shrink-0 h-[28px] px-[10px] rounded-[7px] justify-center hover:bg-accent-tint disabled:opacity-[0.5]"
+                      class="cursor-pointer select-none disabled:cursor-default shrink-0 h-[28px] px-[10px] rounded-(--radius-control-sm) justify-center hover:bg-accent-tint disabled:opacity-[0.45]"
                     >
                       <Text class="text-[12px] font-semibold text-brand">{editing() === pick().id ? c().done : c().edit}</Text>
                     </View>

@@ -112,3 +112,21 @@ test("the phone's tools menu is a sheet and Usage is a page in place of the list
   await app.press("id:usage-page-back");
   await app.waitFor("id:search-trigger");
 });
+
+test("phone filter toggles show dismissible active chips under the search bar", async () => {
+  const app = await open();
+  expect(app.shows("id:working-filter-chip")).toBe(false);
+  expect(app.shows("id:focus-mode-chip")).toBe(false);
+
+  await app.press("id:working-filter");
+  await app.waitFor("id:working-filter-chip");
+  await app.press("id:focus-toggle");
+  await app.waitFor("id:focus-mode-chip");
+
+  await app.press("id:working-filter-chip");
+  await app.waitFor("id:working-filter-chip", { state: "gone" });
+  expect(app.shows("id:focus-mode-chip")).toBe(true);
+
+  await app.press("id:focus-mode-chip");
+  await app.waitFor("id:focus-mode-chip", { state: "gone" });
+});

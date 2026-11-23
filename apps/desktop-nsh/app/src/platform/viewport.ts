@@ -52,7 +52,7 @@ export function viewportSize(): Size {
   return { width: width(), height: height() };
 }
 
-/** Every width the app asks about (`<=`), in points: the phone layout (680), the settings' and the menus' (720), and the forms'. */
+/** Every width the app asks about (`<=`), in points: the shared phone/settings/menus breakpoint (680) and form column widths. */
 const BREAKPOINTS = [360, 520, 540, 600, 680, 720, 760] as const;
 
 const atMost = new Map<number, Accessor<boolean>>(BREAKPOINTS.map((w) => [w, computed(() => width() <= w)]));

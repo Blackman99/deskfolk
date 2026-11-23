@@ -242,7 +242,7 @@ export function TunePicker(props: {
                 marginBottom: side() === "top" ? shift() : 0,
                 marginTop: side() === "bottom" ? shift() : 0,
                 opacity: measured() ? 1 : 0,
-                boxShadow: shadow("lg"),
+                boxShadow: shadow("menu"),
               }}
             >
               <Text class="px-2 pt-[6px] pb-1 text-[11px] text-ink-muted">{level().heading}</Text>

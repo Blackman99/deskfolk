@@ -17,15 +17,23 @@
  * Differences from the Svelte one are `ChatStage`'s: the composer sits under the list, the active
  * tick is read from the rows viewable.
  */
-import { cleanup, computed, effect, List, signal, Text, View, type ViewRef } from "nsh";
-import type { Attachment, SessionSummary } from "@real-bot/protocol";
+import { cleanup, Clipboard, computed, effect, List, Overlay, signal, Text, View, type Point, type ViewRef } from "nsh";
+import type { Attachment, Message, SessionSummary } from "@real-bot/protocol";
 import { focusMode } from "../../m/chat/focus-mode.svelte.ts";
 import { INDEX_MIN_MARKS, messageIndexMarks, type IndexMark } from "../../m/chat/message-index.ts";
+import { ReadMark } from "../../m/chat/read-mark.ts";
+import { showToast } from "../../m/toast.svelte.ts";
 import { USER_MEMBER } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { stepIn } from "../../platform/page-route";
+import { BottomSheet, SheetItem } from "../BottomSheet";
+import { EmptyState } from "../EmptyState";
+import { Icon } from "../Icon";
 import { narrowWindow } from "../Modal";
+import { rovingMenu } from "../sidebar/menu-roving";
+import { MENU_ITEM, MENU_SURFACE, shadow } from "../styles";
 import { imageOrigin, type PressedPicture } from "./image-origin";
+import { TranscriptClip } from "./message-pill";
 import { MessageImageLightbox, type ImageOrigin } from "./MessageImageLightbox";
 import { MessageIndex } from "./MessageIndex";
 import { ProjectSubagentDialog } from "./ProjectSubagentDialog";
@@ -36,9 +44,11 @@ import type { ReadUris } from "./composer-drop";
 import { createProjectState } from "./project-chat-state";
 import { createProjectRowKeeper, lineRows, sameRows } from "./project-rows";
 import { ProjectWorking } from "./project-chat-working";
+import { HistoryLoading } from "./stage-parts";
 import { trackReading } from "./stage-reading";
 import { createStageScroll } from "./stage-scroll";
 import { createSendFlight, SendFlightLayer, SendFlightOf } from "./send-flight";
+import type { HiddenWaiting } from "./waiting-jump";
 import { settled } from "../workbench/drag-settle";
 import { PaneMenu } from "../workbench/pane-menu";
 import { onGlassCard } from "../glass";
@@ -53,7 +63,7 @@ export function ProjectChat(props: {
   const t = () => copy();
   /** On a glass card (`glass.ts`) this leaves its ground to the card, as `content-glass.css` does. */
   const glassCard = onGlassCard();
-  /** In a pane, a right click on the transcript opens the pane's menu (`pane-menu.ts`); elsewhere NSH's Copy menu. */
+  /** In a pane, right-clicking blank transcript space opens the pane's menu (`pane-menu.ts`); lines open `project-line-menu`. */
   const paneMenu = PaneMenu();
   const selected = () => props.selected;
   const state = createProjectState(selected, (...args) => props.onOpenArtifact(...args));
@@ -72,9 +82,39 @@ export function ProjectChat(props: {
     }),
   );
   const image = signal<{ sessionId: string; attachment: Attachment; origin: ImageOrigin | null; placeholder: string | null } | null>(null);
+  const copiedId = signal<string | null>(null);
+  const lineMenu = signal<{ message: Message; at: Point; selected: string } | null>(null);
+  /** Most recent text selected inside the transcript's single selection container (used by Copy in `project-line-menu`). */
+  let selectedText = "";
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
+  cleanup(() => clearTimeout(copyTimer));
+
+  function copyLine(message: Message, text = message.body): void {
+    void Clipboard.writeText(text).catch(() => {});
+    copiedId.set(message.id);
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      if (copiedId() === message.id) copiedId.set(null);
+    }, 1800);
+  }
+  function copyLineId(message: Message): void {
+    void Clipboard.writeText(message.id).catch(() => {});
+    showToast(t().chat.copied, { tone: "info" });
+  }
+  function openLineMenu(message: Message, at: Point): void {
+    lineMenu.set({ message, at, selected: selectedText });
+  }
 
   const hasOlder = () => Boolean(view().hasOlderMessages);
   const lines = state.lines;
+  const readMark = new ReadMark();
+  const newMarkId = computed(() =>
+    readMark.observe(
+      selected().id,
+      selected().last_read_at,
+      lines().map((message) => ({ type: "message" as const, message })),
+    ),
+  );
   /**
    * Oldest first: the earlier line, each line with its day line (questions asked together are one),
    * what a run started with no line to hang under, the run going on with the questions it waits on.
@@ -82,7 +122,7 @@ export function ProjectChat(props: {
   const rows = (): ProjectRow[] => {
     const out: ProjectRow[] = [];
     if (hasOlder()) out.push({ id: "earlier", kind: "earlier" });
-    out.push(...lineRows(state.shownLines()));
+    out.push(...lineRows(state.shownLines(), newMarkId()));
     if (state.placed().end.length > 0 && !focusMode.on) out.push({ id: "tasks", kind: "tasks" });
     if (state.run() && state.live()) out.push({ id: "working", kind: "working" });
     return out;
@@ -96,7 +136,7 @@ export function ProjectChat(props: {
   const showMessageIndex = () => indexMarks().length >= INDEX_MIN_MARKS || hasOlder();
   const indexSender = (mark: IndexMark) => {
     if (mark.author === USER_MEMBER) return t().common.you;
-    if (mark.kind === "system" || mark.author === "app") return state.locale() === "zh" ? "系统" : "System";
+    if (mark.kind === "system" || mark.author === "app") return t().common.system;
     return state.agentName();
   };
   const lastLineId = () => lines().at(-1)?.id ?? null;
@@ -134,7 +174,19 @@ export function ProjectChat(props: {
   effect(() => flight.switched(state.sessionId()));
   cleanup(() => flight.dispose());
 
+  const loadingHistory = () => lines().length === 0 && !state.live() && Boolean(view().historyLoading);
   const empty = () => lines().length === 0 && !state.live() && !view().historyLoading;
+  const hiddenWaiting = (): HiddenWaiting => {
+    const workingIdx = inverted().findIndex((row) => row.kind === "working");
+    if (workingIdx < 0) return { items: [], above: false };
+    const items: HiddenWaiting["items"] = [];
+    if (state.waiting()) items.push({ id: "working", kind: "approval" });
+    for (const ask of state.openAsks()) items.push({ id: ask.id, kind: "ask" });
+    if (items.length === 0) return { items: [], above: false };
+    const viewable = scroll.viewable();
+    if (viewable.length === 0 || viewable.includes(workingIdx)) return { items: [], above: false };
+    return { items, above: false };
+  };
   const phone = settled(() => width() > 0 && width() <= 680);
   const sideRoom = () => (showMessageIndex() && !narrowWindow() ? 40 : phone() ? 12 : 24);
 
@@ -167,58 +219,76 @@ export function ProjectChat(props: {
           next (each Markdown body alone stopped it at its end). On this view: a List takes no
           `selectable` of its own. A selection area stops a right click before the pane hears it, so
           this view opens the pane's menu itself, and the lines in it are no areas of their own. */}
-      <View class="flex-1 min-h-0" selectable onContextMenu={paneMenu ? (e) => paneMenu(e.pagePosition) : undefined}>
-        <If when={empty()}>
-          <Text testID="project-empty" class="my-10 text-center text-[13px] text-ink-muted">
-            {t().project.empty(state.agentName())}
-          </Text>
+      <View
+        class="flex-1 min-h-0"
+        selectable
+        onSelectionChange={(e) => (selectedText = e.text)}
+        onContextMenu={paneMenu ? (e) => paneMenu(e.pagePosition) : undefined}
+      >
+        <If when={loadingHistory()}>
+          <HistoryLoading />
         </If>
-        <If when={!empty()}>
+        <If when={empty()}>
+          <EmptyState testID="project-empty" title={t().project.empty(state.agentName())} />
+        </If>
+        <If when={!empty() && !loadingHistory()}>
           {/* Another conversation is another list: it opens at its newest line. All its padding and the
               gap between lines are in `contentStyle`: a List that has one drops `contentClass`'s whole,
               and the lines touched. Inverted, `paddingTop` is the end by the composer. */}
           <Each of={[state.sessionId()]} key={(id: string) => id}>
             {() => (
-              <SendFlightOf.Provider value={flight}>
-                <List
-                  testID="project-transcript"
-                  ref={(node) => {
-                    transcriptNode = node;
-                    scroll.ref(node);
-                  }}
-                  each={inverted()}
-                  inverted
-                  keyExtractor={(row) => row.id}
-                  class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
-                  contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 14 }}
-                  estimatedItemSize={80}
-                  onScroll={scroll.onScroll}
-                  onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
-                  onLoadMore={scroll.onLoadMore}
-                >
-                  {(row) => (
-                    <View class="w-full max-w-[800px] self-center">
-                      <If when={row().kind === "earlier"}>
-                        <EarlierLine loading={Boolean(view().olderLoading)} />
-                      </If>
-                      <If when={row().kind === "line" ? (row() as Extract<ProjectRow, { kind: "line" }>) : null}>
-                        {(line: () => Extract<ProjectRow, { kind: "line" }>) => (
-                          <ProjectLine message={line().message} date={line().date} state={state} onOpenArtifact={props.onOpenArtifact} onOpenImage={openImage} />
-                        )}
-                      </If>
-                      <If when={row().kind === "asks" ? (row() as Extract<ProjectRow, { kind: "asks" }>) : null}>
-                        {(group: () => Extract<ProjectRow, { kind: "asks" }>) => <ProjectAskGroup messages={group().messages} date={group().date} state={state} />}
-                      </If>
-                      <If when={row().kind === "tasks"}>
-                        <ProjectTasksEnd state={state} />
-                      </If>
-                      <If when={row().kind === "working"}>
-                        <ProjectWorking state={state} />
-                      </If>
-                    </View>
-                  )}
-                </List>
-              </SendFlightOf.Provider>
+              <TranscriptClip.Provider value={() => transcriptNode}>
+                <SendFlightOf.Provider value={flight}>
+                  <List
+                    testID="project-transcript"
+                    ref={(node) => {
+                      transcriptNode = node;
+                      scroll.ref(node);
+                    }}
+                    each={inverted()}
+                    inverted
+                    keyExtractor={(row) => row.id}
+                    class={`flex-1 ${glassCard() ? "" : "bg-pane"}`}
+                    contentStyle={{ paddingLeft: sideRoom(), paddingRight: sideRoom(), paddingTop: phone() ? 14 : 20, paddingBottom: phone() ? 14 : 20, gap: 14 }}
+                    estimatedItemSize={80}
+                    onScroll={scroll.onScroll}
+                    onViewableItemsChange={(info) => scroll.onViewable(info.viewableItems.map((token) => token.index))}
+                    onLoadMore={scroll.onLoadMore}
+                  >
+                    {(row) => (
+                      <View class="w-full max-w-[800px] self-center">
+                        <If when={row().kind === "earlier"}>
+                          <EarlierLine loading={Boolean(view().olderLoading)} />
+                        </If>
+                        <If when={row().kind === "line" ? (row() as Extract<ProjectRow, { kind: "line" }>) : null}>
+                          {(line: () => Extract<ProjectRow, { kind: "line" }>) => (
+                            <ProjectLine
+                              message={line().message}
+                              date={line().date}
+                              fresh={line().fresh}
+                              state={state}
+                              copiedId={copiedId()}
+                              onCopy={(message) => copyLine(message)}
+                              onContextMenu={openLineMenu}
+                              onOpenArtifact={props.onOpenArtifact}
+                              onOpenImage={openImage}
+                            />
+                          )}
+                        </If>
+                        <If when={row().kind === "asks" ? (row() as Extract<ProjectRow, { kind: "asks" }>) : null}>
+                          {(group: () => Extract<ProjectRow, { kind: "asks" }>) => <ProjectAskGroup messages={group().messages} date={group().date} fresh={group().fresh} state={state} />}
+                        </If>
+                        <If when={row().kind === "tasks"}>
+                          <ProjectTasksEnd state={state} />
+                        </If>
+                        <If when={row().kind === "working"}>
+                          <ProjectWorking state={state} />
+                        </If>
+                      </View>
+                    )}
+                  </List>
+                </SendFlightOf.Provider>
+              </TranscriptClip.Provider>
             )}
           </Each>
         </If>
@@ -247,6 +317,10 @@ export function ProjectChat(props: {
         <ProjectComposer
           selected={selected()}
           state={state}
+          showScrollBottom={scroll.showBottom()}
+          onScrollToBottom={() => scroll.scrollToBottom(true)}
+          hiddenWaiting={hiddenWaiting()}
+          onJumpWaiting={() => scroll.scrollToBottom(true)}
           onSent={() => scroll.scrollToBottom(false)}
           fileDragOver={fileOver()}
           readFiles={props.readFiles}
@@ -255,6 +329,87 @@ export function ProjectChat(props: {
         />
       </View>
       <SendFlightLayer flight={flight} />
+      <If when={lineMenu()}>
+        {(open: () => NonNullable<ReturnType<typeof lineMenu>>) => {
+          const close = () => lineMenu.set(null);
+          const copyText = () => open().selected || open().message.body;
+          const roving = rovingMenu({
+            open: () => !narrowWindow(),
+            keys: () => (copyText().trim() ? ["copy", "copy-id"] : ["copy-id"]),
+            onTab: close,
+          });
+          return (
+            <If
+              when={narrowWindow()}
+              else={
+                <Overlay anchor={{ x: open().at.x, y: open().at.y }} placement="bottom" align="start" margin={8} onPressOutside={close} onCancel={close}>
+                  <View role="menu" testID="project-line-menu" accessibilityLabel={t().chat.copyMessage} class={`min-w-[168px] gap-[2px] ${MENU_SURFACE}`} style={{ boxShadow: shadow("menu") }}>
+                    <View
+                      role="menuitem"
+                      testID="project-menu-copy"
+                      ref={roving.ref("copy")}
+                      accessibilityLabel={t().chat.copyMessage}
+                      disabled={!copyText().trim()}
+                      onFocus={() => roving.focused("copy")}
+                      onBlur={() => roving.blurred("copy")}
+                      onPress={() => {
+                        copyLine(open().message, copyText());
+                        close();
+                      }}
+                      class={`cursor-pointer select-none disabled:cursor-default ${MENU_ITEM} group`}
+                    >
+                      <Icon name="copy" size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100 group-focus:tint-brand group-focus:opacity-100" />
+                      <Text class="text-[13px] font-medium text-ink group-hover:text-brand group-focus:text-brand">{t().chat.copyMessage}</Text>
+                    </View>
+                    <View
+                      role="menuitem"
+                      testID="project-menu-copy-id"
+                      ref={roving.ref("copy-id")}
+                      accessibilityLabel={t().chat.copyMessageId}
+                      onFocus={() => roving.focused("copy-id")}
+                      onBlur={() => roving.blurred("copy-id")}
+                      onPress={() => {
+                        copyLineId(open().message);
+                        close();
+                      }}
+                      class={`cursor-pointer select-none ${MENU_ITEM} group`}
+                    >
+                      <Icon name="hash" size={16} class="tint-ink opacity-75 group-hover:tint-brand group-hover:opacity-100 group-focus:tint-brand group-focus:opacity-100" />
+                      <Text class="text-[13px] font-medium text-ink group-hover:text-brand group-focus:text-brand">{t().chat.copyMessageId}</Text>
+                    </View>
+                  </View>
+                </Overlay>
+              }
+            >
+              <BottomSheet label={t().chat.copyMessage} closeLabel={t().common.close} onClose={close}>
+                <View role="menu" testID="project-line-menu" accessibilityLabel={t().chat.copyMessage} class="gap-1 px-1">
+                  <SheetItem
+                    role="menuitem"
+                    testID="project-menu-copy"
+                    icon="copy"
+                    label={t().chat.copyMessage}
+                    disabled={!copyText().trim()}
+                    onPress={() => {
+                      copyLine(open().message, copyText());
+                      close();
+                    }}
+                  />
+                  <SheetItem
+                    role="menuitem"
+                    testID="project-menu-copy-id"
+                    icon="hash"
+                    label={t().chat.copyMessageId}
+                    onPress={() => {
+                      copyLineId(open().message);
+                      close();
+                    }}
+                  />
+                </View>
+              </BottomSheet>
+            </If>
+          );
+        }}
+      </If>
       <If when={state.subagentShown()}>
         {(task: () => NonNullable<ReturnType<typeof state.subagentShown>>) => (
           <ProjectSubagentDialog

@@ -166,9 +166,16 @@
   /* Radius & Elevation */
   --radius-xs: 4px;
   --radius-sm: 6px;
+  --radius-control-xs: 6px;
+  --radius-control-sm: 7px;
+  --radius-control: 8px;
+  --radius-pill-group: 9px;
   --radius-md: 10px;
+  --radius-card-sm: 12px;
   --radius-lg: 14px;
+  --radius-bubble: 16px;
   --radius-xl: 18px;
+  --radius-ball: 24px;
   --radius-full: 999px;
   /* A Bot's picture: a rounded square at any size. You, and a group's stacked members, stay round. */
   --radius-bot: 30%;
@@ -210,6 +217,10 @@
   --shadow-sheet-end: -16px 0 36px -6px rgba(18, 28, 32, 0.18);
   /* Context menus and popovers. */
   --shadow-menu: 0 12px 30px -4px rgba(18, 28, 32, 0.16), 0 4px 12px -2px rgba(18, 28, 32, 0.08);
+  /* Modals, settings dialogs and pairing cards. */
+  --shadow-dialog: 0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  /* Dragging previews over the workbench. */
+  --shadow-drag: 0 4px 12px rgba(18, 28, 32, 0.2);
   /*
    * The content card on the window's ground (`Shell.svelte`): a hairline edge, a contact shadow
    * and a long soft one, so the pane reads as a sheet laid on the sidebar's colour.
@@ -377,6 +388,8 @@ body.dark,
   --shadow-sheet: 16px 0 40px -6px rgba(0, 0, 0, 0.75);
   --shadow-sheet-end: -16px 0 40px -6px rgba(0, 0, 0, 0.75);
   --shadow-menu: 0 12px 30px -4px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.45);
+  --shadow-dialog: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 24px 56px -12px rgba(0, 0, 0, 0.72);
+  --shadow-drag: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 4px 14px rgba(0, 0, 0, 0.55);
   --shadow-card: 0 0 0 0.5px rgba(255, 255, 255, 0.09), 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.55);
   --shadow-pane: 0 0 0 0.5px rgba(255, 255, 255, 0.11), 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-pane-flat: 0 0 0 0.5px rgba(255, 255, 255, 0.11);

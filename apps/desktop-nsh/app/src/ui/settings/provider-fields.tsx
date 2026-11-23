@@ -12,7 +12,7 @@ import { HelpTip } from "./HelpTip";
 /** The class of a text field in a settings editor: 14px on a desktop, 48px tall and 16px on a phone. */
 export function fieldClass(mono = false, compact = false): string {
   const size = narrowWindow() ? "min-h-12 px-3 text-[16px]" : compact ? "px-2 py-1 text-[12px]" : "px-3 py-2 text-[14px]";
-  return `w-full text-ink bg-input-bg border border-line rounded-(--radius-md) focus:border-field-focus-border ${size} ${mono ? "font-mono" : ""}`;
+  return `w-full text-ink bg-input-bg border border-line rounded-(--radius-md) focus:border-field-focus-border disabled:opacity-[0.45] ${size} ${mono ? "font-mono" : ""}`;
 }
 
 /**
@@ -83,7 +83,7 @@ export function TextField(props: {
 
 export function FieldError(props: { testID?: string; children: string }) {
   return (
-    <Text testID={props.testID} role="alert" class="mt-[5px] text-[12px] font-medium leading-[1.4] text-warn-text">
+    <Text testID={props.testID} role="alert" class="mt-[5px] text-[12px] font-medium leading-[1.4] text-danger-text">
       {props.children}
     </Text>
   );
@@ -141,7 +141,7 @@ export function XsButton(props: { label: string; disabled?: boolean; testID?: st
       accessibilityState={{ disabled: props.disabled === true }}
       disabled={props.disabled}
       onPress={() => props.onPress()}
-      class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border rounded-(--radius-sm) disabled:opacity-[0.4] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"} ${
+      class={`cursor-pointer select-none disabled:cursor-default items-center justify-center border rounded-(--radius-sm) disabled:opacity-[0.45] ${narrowWindow() ? "min-h-11 px-3" : "px-2 py-[3px]"} ${
         props.primary ? "bg-brand border-brand" : "bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"
       }`}
     >

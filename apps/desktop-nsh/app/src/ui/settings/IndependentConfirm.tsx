@@ -51,14 +51,14 @@ export function IndependentConfirm(props: {
               </>
             }
           >
+            <ModalAction testID="independent-cancel" onPress={() => void props.cancelIndependent()}>
+              {s().independentRuntimeCancel}
+            </ModalAction>
             <ModalAction testID="independent-wait" onPress={() => void props.waitIndependent()}>
               {s().independentRuntimeWaiting}
             </ModalAction>
             <ModalAction kind="deny" testID="independent-force" onPress={() => void props.forceIndependent()}>
               {s().independentRuntimeForce}
-            </ModalAction>
-            <ModalAction testID="independent-cancel" onPress={() => void props.cancelIndependent()}>
-              {s().independentRuntimeCancel}
             </ModalAction>
           </If>
         }

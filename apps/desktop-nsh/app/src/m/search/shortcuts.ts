@@ -18,3 +18,11 @@ export function searchShortcutLabel(global = false): string {
   // `formatShortcut` existed.
   return global ? formatShortcut(["mod", "shift", "K"]) : formatShortcut(["mod", "K"]);
 }
+
+/**
+ * Off macOS, Ctrl+Shift+K is the terminal's own clear (`windowsTerminalShortcut` / `matchesSearchShortcut`),
+ * so search yields when a terminal is in front of the focused pane.
+ */
+export function shouldSearchOnShiftK(os: string, terminalInFront: boolean): boolean {
+  return !((os === "windows" || os === "linux") && terminalInFront);
+}

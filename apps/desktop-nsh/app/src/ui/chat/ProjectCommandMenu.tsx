@@ -9,13 +9,13 @@
  * The list comes from the session's store, a deep proxy: `Each` draws nothing from one, so it gets a
  * plain copy (PORTING.md). A bare `/` hands the store's own array through, and the list was empty.
  */
-import { Scroll, Text, View, effect, platform, type ScrollRef, type ViewRef } from "nsh";
+import { Scroll, signal, Text, View, effect, platform, type ScrollRef, type ViewRef } from "nsh";
 import type { ClaudeCodeCommand } from "@real-bot/protocol";
 import type { ProjectCommandsState } from "../../m/chat/project-commands.svelte";
 import { frameOf, keepFocusIn } from "../../platform/press";
 import { copy } from "../../runtime";
 import { shadow } from "../styles";
-import { tip } from "../tip";
+import { Tip } from "../tip";
 import { KeyHints } from "./KeyHints";
 
 const LIST_MAX = 260;
@@ -33,7 +33,11 @@ export function ProjectCommandMenu(props: {
   const scroller: { ref: ScrollRef | null } = { ref: null };
   const bounds = new Map<number, { y: number; height: number }>();
   const viewport = { y: 0, height: 0 };
+  // Controlled row tooltip: one at a time, dismissed on scroll, pick, or keyboard move elsewhere.
+  const openTip = signal<string | null>(null);
   effect(() => {
+    const active = props.matches[props.active]?.name ?? null;
+    if (openTip() !== null && openTip() !== active) openTip.set(null);
     const at = bounds.get(props.active);
     if (!at || !scroller.ref || viewport.height === 0) return;
     if (at.y < viewport.y) scroller.ref.scrollTo({ y: at.y });
@@ -60,7 +64,10 @@ export function ProjectCommandMenu(props: {
           style={{ maxHeight: LIST_MAX }}
           ref={(node: ScrollRef | null) => (scroller.ref = node)}
           onLayout={(e) => (viewport.height = e.bounds.size.height)}
-          onScroll={(e) => (viewport.y = e.offset.y)}
+          onScroll={(e) => {
+            viewport.y = e.offset.y;
+            openTip.set(null);
+          }}
         >
           <View class="gap-[2px]">
             <Each of={props.matches.slice()} key={(command) => command.name}>
@@ -68,11 +75,28 @@ export function ProjectCommandMenu(props: {
                 <View
                   role="button"
                   testID={`command-${command().name}`}
-                  tooltip={tip(command().description)}
+                  tooltip={
+                    <Tip
+                      testID={`command-tip-${command().name}`}
+                      label={command().description}
+                      open={openTip() === command().name}
+                      onOpenChange={(e) => {
+                        const name = command().name;
+                        if (e.open) openTip.set(name);
+                        else if (openTip() === name) openTip.set(null);
+                      }}
+                      align="start"
+                      maxWidth={360}
+                      maxLines={6}
+                    />
+                  }
                   accessibilityLabel={`/${command().name}`}
                   accessibilityState={{ selected: index() === props.active }}
                   onMouseEnter={() => props.onHover(index())}
-                  onPress={() => props.onPick(command())}
+                  onPress={() => {
+                    openTip.set(null);
+                    props.onPick(command());
+                  }}
                   onLayout={(e) => bounds.set(index(), { y: e.bounds.origin.y, height: e.bounds.size.height })}
                   class={`cursor-pointer select-none flex-row ${platform.desktop ? "items-baseline" : "flex-wrap"} gap-2 w-full min-w-0 px-[10px] ${platform.desktop ? "py-[7px]" : "py-[9px]"} rounded-(--radius-md) ${index() === props.active ? "bg-accent-tint" : ""}`}
                 >

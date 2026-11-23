@@ -46,7 +46,7 @@ export function TranscriptAsk(props: {
         const selected = () => props.stage.selectedMessageId === msg().id;
         const avatar = (child: () => ReturnType<typeof Text>) => (
           <View
-            class="w-[32px] h-[32px] rounded-[10px] items-center justify-center overflow-hidden border"
+            class="w-[32px] h-[32px] rounded-(--radius-md) items-center justify-center overflow-hidden border"
             style={{ backgroundColor: cssColor(pal().bg), borderColor: cssColor(pal().border), boxShadow: shadow("xs") }}
           >
             {child()}
@@ -67,7 +67,7 @@ export function TranscriptAsk(props: {
                   ))}
                 >
                   {(b: () => NonNullable<ReturnType<typeof bot>>) => (
-                    <View role="button" testID="ask-avatar" tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(b().id)} class="cursor-pointer select-none hover:scale-[1.06]">
+                    <View role="button" testID="ask-avatar" accessibilityLabel={`${b().name} · ${t().top.botSettings}`} tooltip={tip(t().top.botSettings)} onPress={() => props.stage.onOpenProfile(b().id)} class="cursor-pointer select-none hover:scale-[1.06]">
                       {avatar(() => (
                         <If when={avatarSrc(b().avatar)} else={<Text class="text-[13px] font-bold" style={{ color: cssColor(pal().text) }}>{rosterLetter(b().name)}</Text>}>
                           <AvatarPicture avatar={b().avatar} alt={b().name} />

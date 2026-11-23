@@ -544,6 +544,13 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
   );
 
   const headerShown = () => narrowWindow() || props.sheet === true;
+  /** On a phone header with no hint/notice, fold the action pills into the header so we avoid an empty second bar. */
+  const annotInline = () =>
+    headerShown() &&
+    annotHint() === null &&
+    fileNotice() === null &&
+    !(hasResolved() && mode() !== "workspace") &&
+    (showAnnotToggle() || showAnnotMode() || showSourceToggle());
   const menu = () => treeSrc.treeMenu;
 
   return (
@@ -577,6 +584,30 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
               </Text>
             </If>
           </View>
+          <If when={annotInline()}>
+            <ArtifactAnnotBar
+              inline
+              api={api()}
+              mode={mode()}
+              relpath={relpath()}
+              attachment={attachment()}
+              byteSource={byteSource()}
+              titleName={titleName()}
+              downloadKey={downloadKey()}
+              canDownload={canDownload()}
+              showAnnotToggle={showAnnotToggle()}
+              showAnnotMode={showAnnotMode()}
+              annotHint={annotHint()}
+              fileNotice={fileNotice()}
+              showSourceToggle={showSourceToggle()}
+              hasResolved={hasResolved()}
+              showSource={showSource()}
+              toggleSource={toggleSource}
+              annot={annot}
+              loader={loader}
+              hideDownload
+            />
+          </If>
           <If when={canDownload()}>
             <Each of={[downloadKey()]} key={(k) => k}>
               {() => (
@@ -610,27 +641,29 @@ export function ArtifactPreview(hosted: ArtifactPreviewComponentProps) {
           {loader.downloadNote === "tap" ? t().stream.imageSaveTapAgain : t().stream.artifactDownloadFailed}
         </Text>
       </If>
-      <ArtifactAnnotBar
-        api={api()}
-        mode={mode()}
-        relpath={relpath()}
-        attachment={attachment()}
-        byteSource={byteSource()}
-        titleName={titleName()}
-        downloadKey={downloadKey()}
-        canDownload={canDownload()}
-        showAnnotToggle={showAnnotToggle()}
-        showAnnotMode={showAnnotMode()}
-        annotHint={annotHint()}
-        fileNotice={fileNotice()}
-        showSourceToggle={showSourceToggle()}
-        hasResolved={hasResolved()}
-        showSource={showSource()}
-        toggleSource={toggleSource}
-        annot={annot}
-        loader={loader}
-        hideDownload={headerShown()}
-      />
+      <If when={!annotInline()}>
+        <ArtifactAnnotBar
+          api={api()}
+          mode={mode()}
+          relpath={relpath()}
+          attachment={attachment()}
+          byteSource={byteSource()}
+          titleName={titleName()}
+          downloadKey={downloadKey()}
+          canDownload={canDownload()}
+          showAnnotToggle={showAnnotToggle()}
+          showAnnotMode={showAnnotMode()}
+          annotHint={annotHint()}
+          fileNotice={fileNotice()}
+          showSourceToggle={showSourceToggle()}
+          hasResolved={hasResolved()}
+          showSource={showSource()}
+          toggleSource={toggleSource}
+          annot={annot}
+          loader={loader}
+          hideDownload={headerShown()}
+        />
+      </If>
       <If when={showTree() && stacked()}>
         <View class="px-3 py-2 border-b border-line">
           <View

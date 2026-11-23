@@ -56,7 +56,7 @@ export function DropVeil(props: { shown: boolean; testID: string }) {
       <View
         testID={props.testID}
         accessible={false}
-        class="absolute left-0 top-0 right-0 bottom-0 flex-row items-center justify-center gap-2 rounded-[18px] border-2 border-dashed border-brand bg-input-bg"
+        class="absolute left-0 top-0 right-0 bottom-0 flex-row items-center justify-center gap-2 rounded-(--radius-xl) border-2 border-dashed border-brand bg-input-bg"
         style={{ pointerEvents: "none" }}
       >
         <Icon name="paperclip" size={16} class="tint-brand" />

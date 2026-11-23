@@ -35,7 +35,7 @@ function ProgressField(props: { panel: PlanSpecPanelProps; state: PlanSpecState;
   const head = () => (
     <>
       <View class={`items-center justify-center w-[14px] h-[14px] rounded-full ${DOT[field].box} ${bare() ? "opacity-[0.7]" : ""}`}>
-        <Text class={`text-[9px] font-bold ${DOT[field].box.split(" ")[1]}`}>{DOT[field].mark}</Text>
+        <Text class={`text-[10px] font-bold ${DOT[field].box.split(" ")[1]}`}>{DOT[field].mark}</Text>
       </View>
       <Text class={`shrink-0 text-[12px] font-semibold text-ink-muted ${bare() ? "opacity-[0.7]" : ""}`}>{fieldLabel(copy(), field)}</Text>
       <If when={lines().length > 0}>

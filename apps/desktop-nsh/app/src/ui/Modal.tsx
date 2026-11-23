@@ -111,7 +111,7 @@ export function Modal(props: {
         width: cardWidth(),
         maxHeight: cardMaxHeight(),
         height: cardHeight(),
-        boxShadow: page() ? undefined : "0 24px 56px -12px rgba(18, 28, 32, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)",
+        boxShadow: page() ? undefined : shadow("dialog"),
       }}
     >
       <InModal.Provider value={true}>

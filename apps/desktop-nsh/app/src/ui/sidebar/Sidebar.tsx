@@ -18,6 +18,7 @@
 import { cleanup, computed, effect, safeArea, signal, Text, View, type ViewRef } from "nsh";
 import type { Hold, SessionSummary } from "@real-bot/protocol";
 import { formatShortcut } from "../../m/keymap";
+import { focusMode } from "../../m/chat/focus-mode.svelte";
 import { searchShortcutLabel } from "../../m/search/shortcuts";
 import { usageWidget } from "../../m/usage/usage-widget.svelte";
 import { directElsewhere } from "../../m/sidebar/bot-elsewhere";
@@ -505,6 +506,36 @@ export function Sidebar(props: {
                               <FocusToggle />
                             </If>
                           </View>
+                          <If when={phone() && !viewingArchived() && (workingOnly() || focusMode.on)}>
+                            <View testID="mobile-filter-chips" class="flex-row flex-wrap items-center gap-[6px] px-4 pb-2 shrink-0">
+                              <If when={workingOnly()}>
+                                <View
+                                  role="button"
+                                  testID="working-filter-chip"
+                                  accessibilityLabel={t().sidebar.workingOnlyOff}
+                                  onPress={toggleWorkingOnly}
+                                  class="cursor-pointer select-none flex-row items-center gap-[5px] px-[9px] py-[3px] rounded-full bg-accent-tint border border-accent-border active:scale-[0.97]"
+                                >
+                                  <Icon name="activity" size={12} class="tint-brand" />
+                                  <Text class="text-[12px] font-medium text-brand">{t().sidebar.workingOnly}</Text>
+                                  <Icon name="x" size={12} class="tint-brand" />
+                                </View>
+                              </If>
+                              <If when={focusMode.on}>
+                                <View
+                                  role="button"
+                                  testID="focus-mode-chip"
+                                  accessibilityLabel={t().sidebar.focusModeOff}
+                                  onPress={() => focusMode.toggle()}
+                                  class="cursor-pointer select-none flex-row items-center gap-[5px] px-[9px] py-[3px] rounded-full bg-accent-tint border border-accent-border active:scale-[0.97]"
+                                >
+                                  <Icon name="target" size={12} class="tint-brand" />
+                                  <Text class="text-[12px] font-medium text-brand">{t().settings.focusMode}</Text>
+                                  <Icon name="x" size={12} class="tint-brand" />
+                                </View>
+                              </If>
+                            </View>
+                          </If>
                           <HoldsBar holds={myHolds()} label={labelOf} disabled={runtime.connection !== "connected"} onLift={(hold) => runtime.liftHold(hold.id)} />
                         </>
                       }

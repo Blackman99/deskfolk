@@ -33,10 +33,10 @@ import type { PickerData, PickerRow, PickerSource } from "../../m/model-picker.t
 import { agentPickerSources, claudePickerSource, endpointPickerSources } from "../../m/model-picker-sources.ts";
 import { agentSource } from "../../m/model-source.ts";
 import { agentAccountOptions, agentAccountsOf, agentLabelOf, agentModelsOf, agentStatusOf } from "../../m/runner-choice.ts";
+import { narrowWindow } from "../Modal";
 import { ModelPicker } from "../ModelPicker";
 import { Select } from "../Select";
 import { shadow } from "../styles";
-import { widthAtMost } from "../../platform/viewport";
 
 const FOLLOW = "";
 const key = (row: ReaderModel) =>
@@ -69,7 +69,7 @@ export function SideModelCard(props: {
   /** The account a Claude model is picked on: the one already chosen, else the computer's default (''). */
   const pickedAccount = signal("");
   const framed = () => props.framed !== false;
-  const phone = () => widthAtMost(720);
+  const phone = () => narrowWindow();
 
   void props.claude?.status?.().then(
     (status) => claudeStatus.set(status),

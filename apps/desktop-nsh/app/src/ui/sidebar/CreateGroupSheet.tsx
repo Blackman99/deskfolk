@@ -93,11 +93,11 @@ export function CreateGroupSheet(props: { bots: Bot[]; onClose: () => void }) {
       bodyClass={narrowWindow() ? "px-4 py-[18px] gap-4" : "px-6 py-5 gap-4"}
       foot={
         <>
-          <ModalAction kind="primary" testID="group-save" onPress={() => void save()}>
-            {t().sidebar.create}
-          </ModalAction>
           <ModalAction testID="group-cancel" onPress={props.onClose}>
             {t().common.close}
+          </ModalAction>
+          <ModalAction kind="primary" testID="group-save" onPress={() => void save()}>
+            {t().sidebar.create}
           </ModalAction>
         </>
       }

@@ -22,6 +22,7 @@ import { runtime } from "../src/runtime";
 import { BotDmDialog } from "../src/ui/chat/BotDmDialog";
 import { ChatStage } from "../src/ui/chat/ChatStage";
 import { ProjectChat } from "../src/ui/chat/ProjectChat";
+import { PaneMenu } from "../src/ui/workbench/pane-menu";
 import { fakeReadFiles } from "./fake-files";
 
 type Which = "direct" | "group" | "empty" | "bulk" | "project" | "none";
@@ -56,6 +57,7 @@ const projectContext = signal<ProjectContextUsage | null>(null);
 /** The project session's agent: Claude Code, or another whose composer the caps shape (`story-agent-*`). */
 const projectAgent = signal<"claude_code" | "codex" | "grok">("claude_code");
 const projectLines = signal<Message[]>([]);
+const projectEmpty = signal(false);
 /** The batch of annotations in the project session (ADR 0095 decision 28), and each card's status. */
 const annotated = signal(false);
 const annotationStatus = signal<Record<string, "open" | "resolved">>({ "pa-1": "open", "pa-2": "open" });
@@ -175,6 +177,7 @@ const STOPPED_AT = [
 ].join("\n");
 
 function projectBase(): Message[] {
+  if (projectEmpty()) return [];
   return [
     line({ id: "pj-1", session_id: PROJECT_ID, body: "把 README 的安装一节改短", created_at: D1 }),
     line({ id: "pj-2", session_id: PROJECT_ID, kind: "bot", author: "claude-code", body: "好的，我看了 README：\n\n- 安装一节有 **三段**\n- 可以合成一段\n\n改好后告诉你。", created_at: "2026-10-19T09:31:00.000Z" }),
@@ -495,7 +498,14 @@ export default function ChatStageStory() {
             {button("show-empty", "empty", () => void open("empty", 0))}
             {button("story-bulk", "bulk", () => void open("bulk", 130))}
             {button("show-none", "none", () => which.set("none"))}
-            {button("show-project", "project", () => which.set("project"))}
+            {button("show-project", "project", () => {
+              projectEmpty.set(false);
+              which.set("project");
+            })}
+            {button("story-project-empty", "project empty", () => {
+              projectEmpty.set(true);
+              which.set("project");
+            })}
             {button("story-run", "run", () => runOn.set("running"))}
             {button("story-agent-grok", "grok", () => projectAgent.set("grok"))}
             {button("story-agent-codex", "codex", () => projectAgent.set("codex"))}
@@ -557,7 +567,11 @@ export default function ChatStageStory() {
           readFiles={fakeReadFiles}
         />
       }>
-        {(session: () => SessionSummary) => <ProjectChat selected={session()} onOpenArtifact={(path) => said.set(`artifact:${path}`)} readFiles={fakeReadFiles} />}
+        {(session: () => SessionSummary) => (
+          <PaneMenu.Provider value={() => said.set("pane-menu")}>
+            <ProjectChat selected={session()} onOpenArtifact={(path) => said.set(`artifact:${path}`)} readFiles={fakeReadFiles} />
+          </PaneMenu.Provider>
+        )}
       </If>
       <If when={popup() ? (runtime.snapshot.sessions as SessionSummary[]).find((s) => s.id === BOTDM_ID) : null}>
         {(session: () => SessionSummary) => (
