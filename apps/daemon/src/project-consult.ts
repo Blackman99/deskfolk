@@ -34,6 +34,7 @@ import { agentMcpShim } from "./agent-mcp/launch";
 import type { AgentTool, AgentToolBridge } from "./engine/agent-runner";
 import { isoNow } from "./ids";
 import type { ProjectRunner } from "./project-runner";
+import { AGENT_NAMES } from "./store/project-sessions";
 import type { Store } from "./store";
 
 /** The tool's name; the server it comes on is the app's own (`deskfolk`), as a Bot's tools are. */
@@ -56,7 +57,6 @@ export const CONSULT_WAIT_MS: Record<ProjectAgent, number> = {
 export const CONSULT_CODEX_TIMEOUT_S = 24 * 60 * 60;
 
 const POLL_MS = 400;
-const AGENT_NAMES: Record<ProjectAgent, string> = { claude_code: "Claude Code", codex: "Codex", antigravity: "Antigravity", grok: "Grok" };
 const SUMMARY_MAX = 300;
 
 /** The tool as every asking agent is offered it. */
