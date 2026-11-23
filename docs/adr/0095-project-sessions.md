@@ -182,3 +182,9 @@ Decision (the windows only; the daemon and the protocol are unchanged):
 Not done: having the daemon write what the step has said as a line before it asks. The four agents end a turn differently (Claude Code keeps the last paragraph, Grok the whole turn's words), so a line written first would double some words and drop others, and the commands would still be in the bubble; moving the questions under the bubble needs none of that.
 
 Implementation: NSH `project-rows.ts` (`splitAsks`, `lineRows`), `project-chat-state.ts` (`openAsks`, `answerAsk`), `project-chat-asks.tsx` (`ProjectAsks`), `project-chat-working.tsx` (under the bubble), `project-chat-lines.tsx` (`ProjectAskGroup`), `AskCard.tsx` (`submitLabel`). Tests: `project-rows.test.ts`, `.ui/chat-stage-project.test.tsx` with the `chat-stage` story's `story-ask-many` and `story-ask-refuse`.
+
+## 补记 2026-11-23：参谋 / Addendum 2026-11-23: consultants
+
+决定 4「设置里的 MCP 工具和应用没列的工具照旧被拒」有了一个例外：应用自己的 `consult` 工具，Agent 在你开口时用它请另一个 Agent 或模型来讨论方案（[ADR 0116](0116-consultants-in-project-sessions.md)）。钩子在其他规则之前放行它，计划模式和只读下也放；Claude Code 的子代理不能用。你自己设置里的 MCP 工具仍然被拒。
+
+Decision 4's "MCP tools from settings and tools the app does not list are still refused" has one exception now: the app's own `consult` tool, with which the agent brings in another agent or model to talk a plan over when you ask ([ADR 0116](0116-consultants-in-project-sessions.md)). The hook lets it through before any other rule, in plan mode and read-only too; a Claude Code subagent may not use it. MCP tools from your own settings are still refused.

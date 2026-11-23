@@ -33,15 +33,19 @@ _Avoid_: 统计第一名自动任命, Bot 自封负责人, 负责人替你解除
 _Avoid_: 把几件不相干的事混成一条协作私聊, 用户是 Bot↔Bot 私聊发言者, 所有私聊发言必叫醒对方
 
 **项目会话（Project session）**：
-你和本机的一个 Agent（Claude Code、Codex、Antigravity 或 Grok）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，还能接着你在终端里开过的 Claude Code、Codex、Antigravity 或 Grok 会话（Claude Code、Codex 和 Grok 从原会话开分支，原会话不变；Antigravity 不能开分支，在同一个会话里接着）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill，Antigravity 和 Grok 的是它们自己给的），Claude Code、Codex 和 Grok 的还有账号；计划模式和放到后台的命令、监视与子代理（Claude Code、Codex、Grok 有，Antigravity 有计划模式和后台命令）（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。项目目录里的文件可以批注，一批发出是你的一句话。侧栏「项目」一段按目录分组。额度用完时，Claude Code、Codex 和 Grok 的会话自己换到你另一个同类账号接着做，都用完就到重置时间（Grok 是账期结束）自己接着做（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) [ADR 0099](docs/adr/0099-codex-in-project-sessions.md)、[ADR 0111](docs/adr/0111-antigravity-in-project-sessions.md) 和 [ADR 0115](docs/adr/0115-grok-in-project-sessions.md)。
+你和本机的一个 Agent（Claude Code、Codex、Antigravity 或 Grok）在一个项目目录里的对话，和 Agent 自己的桌面端一样；没有 Bot。可以选目录新开，还能接着你在终端里开过的 Claude Code、Codex、Antigravity 或 Grok 会话（Claude Code、Codex 和 Grok 从原会话开分支，原会话不变；Antigravity 不能开分支，在同一个会话里接着）。应用只管权限模式、模型、思考等级、Stop 和打 `/` 列出的命令（Codex 的是应用替它执行的几条和它的 skill，Antigravity 和 Grok 的是它们自己给的），Claude Code、Codex 和 Grok 的还有账号；计划模式和放到后台的命令、监视与子代理（Claude Code、Codex、Grok 有，Antigravity 有计划模式和后台命令）（在对话里看得到、打得开，和 Bot 私聊里的工作一样）：没有工作、流程图、整理、交付审查和叫停；Agent 自己记着历史，应用每轮只发你的新话。项目目录里的文件可以批注，一批发出是你的一句话。侧栏「项目」一段按目录分组。额度用完时，Claude Code、Codex 和 Grok 的会话自己换到你另一个同类账号接着做，都用完就到重置时间（Grok 是账期结束）自己接着做（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。你开口要时，它还能请另一个 Agent 或另一个模型来一起讨论方案（参谋，[ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)）。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0095](docs/adr/0095-project-sessions.md)、[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md) [ADR 0099](docs/adr/0099-codex-in-project-sessions.md)、[ADR 0111](docs/adr/0111-antigravity-in-project-sessions.md) 和 [ADR 0115](docs/adr/0115-grok-in-project-sessions.md)。
 _Avoid_: 把项目会话叫成 Bot, 给项目会话开工作或流程图, 打「停下」当 Stop, 改写终端里的原会话
+
+**参谋（Consultant）**：
+项目会话的 Agent 在你开口要时请来一起讨论方案的另一个 Agent（Claude Code、Codex、Antigravity 或 Grok）或另一个模型。它在同一个目录里，只看不改（各家用各自的办法：Codex 在它自己的只读沙盒里跑命令，Antigravity 动了手就停下），只听得到请它的 Agent 交代的话；它的回答交回那个 Agent，它反问时也是问那个 Agent，答不了才问你。每次请教是那一轮回复下面的一行，带那家的 logo 和模型，点开看它答了什么；参谋不进侧栏、搜索和导入列表，请它的那一轮结束就一起停下。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)和 [ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)。
+_Avoid_: 把参谋叫成子代理或 Bot, 让参谋改文件, 应用替 Agent 决定请谁, 参谋自己再请参谋
 
 **任务地图（Task map）**：
 把干活的过程（一个项目会话的，或 Bot 的一件事的）画成目录的小镇：调用多的目录各是一栋楼，另有根（项目根，Bot 的地图上是工作区）、测试场、版本库、外部服务、Claude 会话库和项目外。项目会话里 Agent 是主角，它派出的子代理是小一号的角色；从 Bot 的对话打开时按「这件事」画（和流程一个口径），跨群、私聊和 Bot 之间的私聊，每个 Bot 都是主角。名牌上是模型来源的 logo 和这一步的模型。能回放也跟着实时走，只描述发生了什么，不评判。工作台里的一种窗格，除了文件投送每段对话都有；Bot 的调用从应用记下地点那一版起才画得出来。细节见[行为说明·项目会话](docs/behavior.md#project-sessions)、[ADR 0096](docs/adr/0096-task-map.md) 和 [ADR 0097](docs/adr/0097-bot-task-maps.md)。
 _Avoid_: 把任务地图叫成流程图, 让实时调用重排已经排好的楼, 在地图的记录里存调用参数, 管这件事叫「事件」
 
 **会话（Session）**：
-私聊、群或项目会话的对话容器。消息、轮次、判断和花费都挂在它上面；Bot↔Bot 私聊也是会话，你不是参与者，能在弹窗里看但发不了言；它不在侧栏里列。
+私聊、群或项目会话的对话容器。消息、轮次、判断和花费都挂在它上面；Bot↔Bot 私聊也是会话，你不是参与者，能在弹窗里看但发不了言；它不在侧栏里列。参谋也是一个会话，同样不列出来。
 _Avoid_: 频道, 房间, conversation（对外不说）, 把线程当会话
 
 **来源（Origin）**：
