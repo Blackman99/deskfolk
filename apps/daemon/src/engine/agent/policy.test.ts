@@ -60,6 +60,7 @@ posixTest("a command may name an open folder only where it cannot leave it", () 
     "cat `echo ~/.codex/memories`/sneaky.md",
     // Built on where it is named, quoted or not.
     "cat \"$HOME/.codex/memories\"/$NAME",
+    "cat \"$HOME/.codex/memories/my notes $NAME\"",
     "cat ~/.codex/memories/\"$(cat /tmp/p)\"",
     "cat ~/.codex/memories/$'sneaky.md'",
     // A cd into it, however late in the list.
@@ -89,7 +90,13 @@ out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(script)
 '`,
   ].join(" && ");
-  for (const command of [script, `cd /tmp && V=$(date) && cp notes.md ${brain}/scratch/`, `cat > ${brain}/scratch/run.sh <<'EOF'\necho "$HOME $PATH"\nEOF`]) {
+  // And the steps after it: a variable beside the folder's path, not in it.
+  const next = [
+    `ssh deploy@test-host "COMMIT=$COMMIT bash -s" < ${brain}/scratch/deploy-remote.sh`,
+    `cp "/tmp/webapp-test-\${COMMIT}.tar.gz" "${brain}/scratch/"`,
+    `bash ${brain}/scratch/deploy-remote.sh "$COMMIT"`,
+  ];
+  for (const command of [script, ...next, `cd /tmp && V=$(date) && cp notes.md ${brain}/scratch/`, `cat > ${brain}/scratch/run.sh <<'EOF'\necho "$HOME $PATH"\nEOF`]) {
     expect([command, decideAction(shell(command), base)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
   }
 });
@@ -101,4 +108,10 @@ test("withoutOpenDirs takes out only what stays in", () => {
   expect(withoutOpenDirs("cat ~/.codex/memories/link", ["/h/.codex/memories"], "/h", "darwin", stays)).toBeNull();
   expect(withoutOpenDirs("cat ~/.codex/memories/../auth.json", ["/h/.codex/memories"], "/h", "darwin", stays)).toBeNull();
   expect(withoutOpenDirs("anything", [], "/h", "darwin", stays)).toBe("anything");
+  // Windows: a cd or a $(…) elsewhere leaves it open; a cd into it or a variable holding it does not.
+  const win = (command: string) => withoutOpenDirs(command, ["C:\\Users\\h\\.codex\\memories"], "C:\\Users\\h", "win32", stays);
+  expect(win("cd C:\\repo; $v = $(git rev-parse HEAD); Copy-Item notes.md C:\\Users\\h\\.codex\\memories\\notes.md")).toBe("cd C:\\repo; $v = $(git rev-parse HEAD); Copy-Item notes.md OPEN_DIR");
+  expect(win("cd C:\\Users\\h\\.codex\\memories && type sneaky.md")).toBeNull();
+  expect(win("set D=C:\\Users\\h\\.codex\\memories&& type %D%\\sneaky.md")).toBeNull();
+  expect(win("type \"C:\\Users\\h\\.codex\\memories\\$name\"")).toBeNull();
 });

@@ -133,9 +133,9 @@ export function namesDir(command: string, dir: string, home: string, platform: N
 /**
  * The command with every path it names inside one of `openDirs` taken out: an agent's own memory,
  * skills or plans, open to it as a folder outside the workspace is (ADR 0111). Null when the
- * command could leave such a folder by itself: it climbs with `..` anywhere, or the part of it that
- * names the folder ({@link leavesFrom}) changes directory, builds a path the rules cannot read, or
- * hands the folder on to be built on; or a path it names there leads out through a link (`stays`
+ * command could leave such a folder by itself: it climbs with `..` anywhere, or where it names the
+ * folder ({@link leavesFrom}) it changes directory, builds a path the rules cannot read, or hands
+ * the folder on to be built on; or a path it names there leads out through a link (`stays`
  * says no). What is left is checked as any command is, so naming anything else of an agent's still
  * shuts it out.
  */
@@ -157,7 +157,7 @@ export function withoutOpenDirs(command: string, openDirs: string[], home: strin
       out = out.replace(found, (match: string, rest: string, at: number, whole: string) => {
         const inner = rest.replace(/^[\\/]+/, "");
         const abs = inner ? (win ? `${dir.replace(/[\\/]+$/, "")}\\${inner}` : posix.join(dir, inner)) : dir;
-        if (!stays(abs) || leavesFrom(whole, at, at + match.length)) leaves = true;
+        if (!stays(abs) || leavesFrom(whole, at, at + match.length, win)) leaves = true;
         return "OPEN_DIR";
       });
       if (leaves) return null;
@@ -171,23 +171,55 @@ const BETWEEN_COMMANDS = /&&|\|\||[;|&\r\n]/g;
 
 /**
  * Whether the command around a mention of an open folder (`start`…`end`) could take a path out of
- * it. Only the command of the list that names the folder counts — a `cd` into the project or a
- * `$(git rev-parse HEAD)` further along builds nothing on it — and it may not change directory or
- * build a path with `$…` (but `$HOME`) or backquotes. Nor may the folder be handed on to be built
- * on: as a variable's value (`D=<folder>`), a loop's list (`for d in <folder>`), or inside `$(…)`
- * or backquotes, whose output another command could add to.
+ * it. A `cd` into the project or a `$(git rev-parse HEAD)` elsewhere builds nothing on the folder:
+ * the command of the list that names it (between `&&`, `;`, `|`, new lines) may not change
+ * directory, and the shell word that names it may not build on it with `$…` (but `$HOME`) or
+ * backquotes — `"<folder>/$X"` and `<folder>/"$(…)"` do, `ssh host "V=$V bash -s" < <folder>/x`
+ * does not. Nor may the folder be handed on to be built on: as a variable's value (`D=<folder>`),
+ * a loop's list (`for d in <folder>`), or inside `$(…)` or backquotes, whose output another
+ * command could add to.
  */
-function leavesFrom(command: string, start: number, end: number): boolean {
+function leavesFrom(command: string, start: number, end: number, win: boolean): boolean {
   let from = 0;
-  for (const match of command.slice(0, start).matchAll(BETWEEN_COMMANDS)) from = match.index + match[0].length;
+  for (const match of command.slice(0, start).matchAll(BETWEEN_COMMANDS)) from = (match.index ?? 0) + match[0].length;
   const after = command.slice(end).search(BETWEEN_COMMANDS);
-  const own = command.slice(from, after < 0 ? command.length : end + after);
+  const to = after < 0 ? command.length : end + after;
+  const own = command.slice(from, to);
   if (/(?:^|[\s(])(?:cd|pushd|popd|chdir)(?=\s|$)/.test(own)) return true;
-  if (/`|\$(?!\{?HOME\b)[\w{('"@*#?!$-]/.test(own)) return true;
   if (/(?:^|[\s(])for\s+\w+\s+in\s/.test(own)) return true;
+  const [wordFrom, wordTo] = wordAround(command, start, end, win);
+  if (/`|\$(?!\{?HOME\b)[\w{('"@*#?!$-]/.test(command.slice(Math.max(from, wordFrom), Math.min(to, wordTo)))) return true;
   const before = command.slice(0, start);
   if (/(?:^|[\s;&|(`'"])[A-Za-z_]\w*\+?=\(?["']?$/.test(before)) return true;
   return inSubstitution(before);
+}
+
+/**
+ * The shell word holding `start`…`end`, as the shell splits it: up to a blank or `;|&<>` outside
+ * quotes, so `"<folder>/my notes $X"` is one word. A backslash escapes outside single quotes, but
+ * not on Windows, where it separates folders.
+ */
+function wordAround(command: string, start: number, end: number, win: boolean): [number, number] {
+  let quote: string | null = null;
+  let from = 0;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i]!;
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === "\\" && quote === '"' && !win) i += 1;
+      continue;
+    }
+    if (ch === "\\" && !win) {
+      i += 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"') quote = ch;
+    else if (/[\s;|&<>]/.test(ch)) {
+      if (i >= end) return [from, i];
+      if (i < start) from = i + 1;
+    }
+  }
+  return [from, command.length];
 }
 
 /** Whether text ending here is inside a `$(…)` or backquotes still open. */
