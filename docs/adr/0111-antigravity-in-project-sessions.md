@@ -118,6 +118,6 @@ Decision 3 says a command may name an open folder only with no `cd`, no `..`, no
 
 ## 补记 2026-11-23：会话记录 / Addendum 2026-11-23: session records
 
-决定 3 说凭据仍然碰不到、唯一的例外是 agy 自己的 brain 文件夹。现在还多了一处只读的：本机 Agent 的会话记录（Claude Code 的 `projects/`、Grok 的 `sessions/`），起因是 agy 读 Claude Code 的会话文件查上下文用量被停下了一轮。细节见 [ADR 0095 的 2026-11-23 补记](0095-project-sessions.md)。
+决定 3 说凭据仍然碰不到、唯一的例外是 agy 自己的 brain 文件夹。现在还多了一处只读的：本机 Agent 的会话记录（Claude Code 的 `projects/`、Grok 的 `sessions/`），起因是 agy 读 Claude Code 的会话文件查上下文用量被停下了一轮。同一天晚上它的脚本把 `~/.claude` 交给 Python 自己拼路径，又被停下；之后规则判断不了位置的路径（交给程序自己展开的 Agent 文件夹、在记录上拼出来的路径）也按权限模式走，只要命令没写出登录或设置文件。细节见 [ADR 0095 的 2026-11-23 补记](0095-project-sessions.md)。
 
-Decision 3 keeps credentials off limits with agy's own brain folder as the one exception. Your agents' session records (Claude Code's `projects/`, Grok's `sessions/`) are now open too, for reading only, after agy reading Claude Code's session files to check context usage had a turn stopped. Details in [ADR 0095's 2026-11-23 addendum](0095-project-sessions.md).
+Decision 3 keeps credentials off limits with agy's own brain folder as the one exception. Your agents' session records (Claude Code's `projects/`, Grok's `sessions/`) are now open too, for reading only, after agy reading Claude Code's session files to check context usage had a turn stopped. That evening its script handed `~/.claude` to Python to build the paths on, and was stopped again; since then a path the rules cannot place (an agent's folder handed to a program that expands it, a path built on the records) goes by the permission mode too, unless the command names a sign-in or settings file. Details in [ADR 0095's 2026-11-23 addendum](0095-project-sessions.md).

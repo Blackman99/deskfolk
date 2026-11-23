@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentRecordDirs, withoutHomeGlobs, withoutOpenDirs } from "./credentials";
+import { agentRecordDirs, namesAgentSettingsFile, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
 import { decideAction, type ActionContext, type AppAction } from "./policy";
 
 // A fake home on this machine's disk, so links can be followed: an agent's own folder in it, with
@@ -190,7 +190,10 @@ posixTest("a glob over every account's folder at once reads each one it matches;
   for (const command of ["ls -t ~/.claude*/projects | head", "cat $HOME/.claude*/projects/-p/a.jsonl", `wc -l ${home}/.claude?b/projects/-p/*.jsonl`]) {
     expect([command, decideAction(shell(command), accounts).kind]).toEqual([command, "allow"]);
   }
-  // A Bot, as before; a glob reaching settings or sign-in, the folders themselves, a climb, a cd, a path built on it.
+  // A path built on it goes by the mode too, and stays shut for a Bot.
+  expect(decideAction(shell("cat ~/.claude*/projects/$NAME"), accounts).kind).toBe("allow");
+  expect(decideAction(shell("cat ~/.claude*/projects/$NAME"), { ...base, configDirs: [join(home, ".claude-b")] }).kind).toBe("deny");
+  // A Bot, as before; a glob reaching settings or sign-in, the folders themselves, a climb, a cd and a climb.
   expect(decideAction(shell(everyAccount), { ...base, configDirs: [join(home, ".claude-b")] }).kind).toBe("deny");
   for (const command of [
     "cat ~/.claude*/settings.json",
@@ -199,7 +202,7 @@ posixTest("a glob over every account's folder at once reads each one it matches;
     "ls ~/.claude*/",
     "cat ~/.claude*/projects/../settings.json",
     "cd ~/.claude*/projects && cat ../settings.json",
-    "cat ~/.claude*/projects/$NAME",
+    "cat ~/.claude*/projects/$NAME ~/.claude*/projects/$OTHER/../x",
     "cat ~/.claude*/projects/-p/a.jsonl ~/.claude.json",
   ]) {
     expect([command, decideAction(shell(command), accounts).kind]).toEqual([command, "deny"]);
@@ -232,4 +235,137 @@ test("withoutOpenDirs takes out only what stays in", () => {
   expect(win("cd C:\\Users\\h\\.codex\\memories && type sneaky.md")).toBeNull();
   expect(win("set D=C:\\Users\\h\\.codex\\memories&& type %D%\\sneaky.md")).toBeNull();
   expect(win("type \"C:\\Users\\h\\.codex\\memories\\$name\"")).toBeNull();
+});
+
+// As agy ran it on 2026-11-23 at 23:13 (UTC), asked why the composer's usage showed a number and no ring: each
+// session's record found by joining its account folder (from Deskfolk's own database, ~/.claude when
+// none) with projects/*/<session>.jsonl, the folder handed to Python as a string it expands itself.
+const joined = String.raw`python3 -c '
+import glob, json, os, sqlite3
+con = sqlite3.connect(os.path.expanduser("~/Library/Application Support/real-bot/state.sqlite"))
+for sid in ("01M83K5FMASN9S188KRE5ECDZR", "01M83W1CHVXCHB1YCZ3R3992EE", "01M84BJ8THPDE0JHG144ZN8TF2"):
+    row = con.execute("SELECT id, project_config_dir, project_agent_session, project_context FROM sessions WHERE id = ?", (sid,)).fetchone()
+    runs = con.execute("SELECT id, status, created_at, updated_at FROM agent_runs WHERE session_id = ? ORDER BY created_at DESC LIMIT 3", (sid,)).fetchall()
+    print("=== SESSION:", row)
+    print("  runs:", runs)
+    agent_sid = row[2]
+    config_dir = row[1] or os.path.expanduser("~/.claude")
+    matches = glob.glob(os.path.join(os.path.expanduser(config_dir), "projects", "*", f"{agent_sid}.jsonl"))
+    print("  files:", matches)
+    for f in matches:
+        size = os.path.getsize(f)
+        print("  size:", size)
+        types = {}
+        cost_states = []
+        last_assistants = []
+        with open(f, "r", encoding="utf-8", errors="ignore") as fp:
+            for idx, line in enumerate(fp):
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                t = d.get("type")
+                types[t] = types.get(t, 0) + 1
+                if t == "cost-state":
+                    cost_states.append((idx, d))
+                elif t == "assistant" and not d.get("isSidechain"):
+                    m = d.get("message") or {}
+                    if m.get("usage"):
+                        last_assistants.append((idx, m.get("model"), m.get("usage"), d.get("context_usage")))
+        print("  types:", types)
+        print("  cost_states count:", len(cost_states), "last:", cost_states[-1] if cost_states else None)
+        print("  last assistant:", last_assistants[-1] if last_assistants else None)
+'`;
+
+posixTest("a program handed an agent's folder as a string of its own builds its paths on it; the command goes by the mode", () => {
+  expect(decideAction(shell(joined), session)).toMatchObject({ kind: "allow" });
+  expect(decideAction(shell(joined), { ...session, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(shell(joined), { ...session, permission: "read_only" })).toEqual({ kind: "deny", reason: expect.not.stringContaining("credentials") });
+  // Elsewhere, and for a Bot, it names an agent's own folder still.
+  expect(decideAction(shell(joined), base)).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+  for (const command of [
+    `python3 -c "import os; print(os.listdir(os.path.join(os.path.expanduser('~/.claude'), 'projects')))"`,
+    String.raw`python3 -c "import os; print(os.path.expanduser(\"~/.claude/\"))"`,
+    `python3 - <<'EOF'\nimport os\nbase = os.path.expanduser("~/.claude")\nprint(os.listdir(os.path.join(base, "projects")))\nEOF`,
+    `cd /tmp && python3 <<-PY\n\tfrom pathlib import Path\n\tprint(sorted((Path("~/.claude").expanduser() / "projects").glob("*/*.jsonl"))[-1])\n\tPY`,
+    `node -e 'console.log(require("os").homedir(), "~/.codex")'`,
+  ]) {
+    expect([command, decideAction(shell(command), session).kind]).toEqual([command, "allow"]);
+  }
+  // An account folder you listed, as the default one.
+  expect(decideAction(shell(joined.replace(`"~/.claude"`, `"~/.claude-b"`)), accounts).kind).toBe("allow");
+});
+
+posixTest("a path built on the records goes by the mode in a project session: a loop, a variable, a cd into them", () => {
+  for (const command of [
+    "for f in ~/.claude/projects/*/*.jsonl; do wc -l \"$f\"; done",
+    "F=$(ls -t ~/.claude/projects/-Users-someone-proj/*.jsonl | head -1); tail -c 2000 \"$F\"",
+    "SID=47ce0671; tail -5 ~/.claude/projects/-Users-someone-proj/$SID.jsonl",
+    "cd ~/.claude/projects && ls -t | head",
+    `python3 -c '\nimport glob, os\nfor f in glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")):\n    print(f)\n'`,
+  ]) {
+    expect([command, decideAction(shell(command), session).kind]).toEqual([command, "allow"]);
+    expect([command, decideAction(shell(command), base).kind]).toEqual([command, "deny"]);
+  }
+});
+
+posixTest("the folder itself as the shell reads it, a climb, a sign-in or settings file named beside it: shut still", () => {
+  const py = (body: string) => `python3 -c '\n${body}\n'`;
+  for (const command of [
+    // The shell reads the folder: as a path, through a variable, handed to another shell.
+    "ls ~/.claude", "ls \"$HOME/.claude\"", "grep -r token ~/.claude", "cp -R ~/.claude /tmp/x", "find ~/.claude -name '*.json'",
+    "cd ~/.claude && cat .cred*", "D=~/.claude; cat $D/x", "bash -c 'ls ~/.claude'", "bash -c \"ls ~/.claude\"",
+    // Quotes the shell reads as quotes, not as a string's own: the ~ is bare where it lands.
+    "bash -c \"ls \"~/.claude\"\"", "zsh -c 'ls \"\"~/.claude\"\"'", "eval ls \"~/.claude\"", "ls \\\"~/.claude\\\"",
+    // A string naming more than the folder, or a glob over it.
+    py(`import os\nprint(open(os.path.expanduser("~/.claude/settings.json")).read())`),
+    py(`import glob, os\nprint(glob.glob(os.path.expanduser("~/.claude*")))`),
+    // Built on, and naming a sign-in or settings file too.
+    py(`import os\nprint(open(os.path.join(os.path.expanduser("~/.claude"), ".credentials.json")).read())`),
+    py(`import os\nprint(open(os.path.expanduser("~/.claude") + "/settings.local.json").read())`),
+    py(`import os\nprint(open(os.path.expanduser("~/.codex") + "/auth.json").read())`),
+    py(`import os\nprint(open(os.path.join(os.path.expanduser("~/.gemini"), "oauth_creds.json")).read())`),
+    "cat \"$(dirname ~/.claude/projects)/settings.json\"",
+    "D=~/.claude/projects; cat ${D%/*}/.credentials.json",
+    // A climb, however it is written.
+    py(`import os\nprint(os.listdir(os.path.join(os.path.expanduser("~/.claude/projects"), "..")))`),
+    py(`import os\nprint(os.listdir(os.path.join(os.path.expanduser("~/.claude"), "..", ".codex")))`),
+    "cd ~/.claude/projects; cd ..; cat x",
+    "(cd ~/.claude/projects && cd ..&& cat x)",
+    "cat ~/.claude/projects/-Users-someone-proj/sneaky.jsonl",
+  ]) {
+    expect([command, decideAction(shell(command), { ...session, permission: "allow_all" }).kind]).toEqual([command, "deny"]);
+  }
+});
+
+test("withoutQuotedHomes takes out only an agent's folder in quotes no shell reads", () => {
+  let told = 0;
+  const unplaced = () => { told += 1; };
+  const take = (command: string, configDirs: string[] = []) => withoutQuotedHomes(command, "/h", "darwin", configDirs, unplaced);
+  expect(take(`python3 -c 'p = "~/.claude"'`)).toBe(`python3 -c 'p = "OPEN_DIR"'`);
+  expect(take(`python3 -c "p = '~/.gemini/'"`)).toBe(`python3 -c "p = 'OPEN_DIR'"`);
+  expect(take(`python3 -c "p = \\"~/.codex\\""`)).toBe(`python3 -c "p = \\"OPEN_DIR\\""`);
+  expect(take(`python3 <<'EOF'\np = "~/.claude"\nEOF`)).toBe(`python3 <<'EOF'\np = "OPEN_DIR"\nEOF`);
+  expect(take(`python3 -c 'p = "~/.claude-b"'`, ["/h/.claude-b"])).toBe(`python3 -c 'p = "OPEN_DIR"'`);
+  expect(told).toBe(5);
+  // The shell's own quotes, an empty string before it, more after it, a heredoc that has ended, Windows.
+  for (const command of [`ls "~/.claude"`, `bash -c "ls "~/.claude""`, `zsh -c 'ls ""~/.claude""'`, `python3 -c 'p = "~/.claude/x"'`,
+    `python3 -c 'p = "~/.claude-b"'`, `python3 -c 'p = "~/.claude*"'`, `cat <<EOF\nx\nEOF\nls "~/.claude"`, `echo $((1 << 2))\nls "~/.claude"`]) {
+    expect([command, take(command)]).toEqual([command, command]);
+  }
+  expect(withoutQuotedHomes(`python3 -c 'p = "~/.claude"'`, "C:\\Users\\h", "win32", [], unplaced)).toBe(`python3 -c 'p = "~/.claude"'`);
+  expect(take(`python3 -c 'p = os.path.join("~/.claude", "..")'`)).toBeNull();
+  expect(told).toBe(5);
+});
+
+test("namesAgentSettingsFile knows your agents' sign-in and settings files by name, and nothing a usage script reads", () => {
+  for (const name of [".credentials.json", "settings.json", "settings.local.json", "auth.json", "config.toml", "work.config.toml", "oauth_creds.json",
+    "google_accounts.json", ".env", "user-settings.json", "mcp-oauth-tokens.json", ".claude.json", ".cred*"]) {
+    expect([name, namesAgentSettingsFile(`cat "/x/${name}"`)]).toEqual([name, true]);
+  }
+  expect(namesAgentSettingsFile(joined)).toBe(false);
+  expect(namesAgentSettingsFile(transcripts)).toBe(false);
+  for (const text of ["process.env.HOME", "tsconfig.json", "input_tokens", "x.jsonl", ".envrc", "credit.txt"]) {
+    expect([text, namesAgentSettingsFile(`cat ${text}`)]).toEqual([text, false]);
+  }
 });

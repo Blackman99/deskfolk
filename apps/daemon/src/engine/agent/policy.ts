@@ -13,7 +13,7 @@ import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../
 import type { PermissionMode } from "@real-bot/protocol";
 import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs } from "./credentials";
+import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, namesAgentSettingsFile, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -51,8 +51,10 @@ export type ActionContext = {
   /**
    * Folders this session may read, and only read, wherever they are: your agents' conversation
    * records (`agentRecordDirs`, ADR 0095 addendum 2026-11-23). A file tool's read there runs, a
-   * write is refused as the rest of an agent's folder is. A command may name them where it cannot
-   * leave them, as an open folder, and then goes by the permission mode as any command does.
+   * write is refused as the rest of an agent's folder is. A command may name them, and goes by the
+   * permission mode as any command does; their being here also marks a project session, where a
+   * command building paths the rules cannot place may name no sign-in or settings file instead
+   * (`namesOnlyWhatOpens`).
    */
   readableDirs?: string[];
   /** The folders in a folder, links to folders too; this machine's disk when absent. */
@@ -76,6 +78,28 @@ function foldersIn(dir: string): string[] {
   }
 }
 
+/**
+ * Whether a command that names your agents' own folders names only what this session may use: its
+ * open folders and the records it reads, by path or by a glob over every account's folder. In a
+ * project session (it has `readableDirs`) the rules also let through what they cannot place: a path
+ * built on one of those folders, and an agent's folder handed as a quoted string to a program that
+ * builds its own paths on it (`withoutQuotedHomes`). Such a command goes by the permission mode as
+ * any command does, unless it also names a sign-in or settings file (ADR 0095 addendum 2026-11-23).
+ */
+function namesOnlyWhatOpens(command: string, ctx: ActionContext, host: PathHost, home: string, configDirs: string[]): boolean {
+  const platform = host.platform;
+  const open = [...(ctx.openDirs ?? []), ...(ctx.readableDirs ?? [])];
+  let built = false;
+  const unplaced = (ctx.readableDirs ?? []).length > 0 ? () => { built = true; } : undefined;
+  const named = withoutOpenDirs(command, open, home, platform, (abs) => inMemoryDir(abs, open, host), unplaced);
+  // Every account's folder at once (`~/.claude*/projects`): each folder the glob matches is read as if named.
+  const globbed = named === null || open.length === 0 ? named
+    : withoutHomeGlobs(named, home, platform, ctx.foldersIn ?? foldersIn, (abs) => inMemoryDir(abs, open, host) || !isAgentCredentialPath(abs, home, platform, configDirs), unplaced);
+  const rest = globbed === null || !unplaced ? globbed : withoutQuotedHomes(globbed, home, platform, configDirs, unplaced);
+  if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) return false;
+  return !(built && namesAgentSettingsFile(command));
+}
+
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
 export function decideAction(action: AppAction, ctx: ActionContext): AgentDecision {
   const host = ctx.host ?? nodePathHost;
@@ -89,15 +113,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   if (action.background) return { kind: "deny", reason: "background tasks are not available here: run it in the foreground and wait for it" };
   if (appName === "shell") {
     const command = action.command ?? "";
-    if (touchesAgentCredentials(command, home, platform, configDirs)) {
-      const open = [...(ctx.openDirs ?? []), ...(ctx.readableDirs ?? [])];
-      const named = withoutOpenDirs(command, open, home, platform, (abs) => inMemoryDir(abs, open, host));
-      // Every account's folder at once (`~/.claude*/projects`): each folder the glob matches is read as if named.
-      const rest = named === null || open.length === 0 ? named
-        : withoutHomeGlobs(named, home, platform, ctx.foldersIn ?? foldersIn, (abs) => inMemoryDir(abs, open, host) || !isAgentCredentialPath(abs, home, platform, configDirs));
-      if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) {
-        return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
-      }
+    if (touchesAgentCredentials(command, home, platform, configDirs) && !namesOnlyWhatOpens(command, ctx, host, home, configDirs)) {
+      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     }
     const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };

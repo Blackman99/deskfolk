@@ -16,6 +16,7 @@
 - 在 Antigravity 项目会话里问「Claude 为什么是 200k 总上下文」，agy 写了一段只读的脚本去看 `~/.claude/projects` 里最近几个 Claude Code 会话文件，这一轮却被停下，说本机 Agent 自己的设置和凭据碰不得。应用把每个 Agent 的整个家目录都当成它的设置和登录信息，里面存的对话记录也算了进去；项目会话里的 Claude Code 读这些文件也被拒。
 - 现在每个项目会话的 Agent（Claude Code、Codex、Antigravity、Grok）都能读本机 Agent 的会话记录：Claude Code 的 `projects/` 和 Grok 的 `sessions/`，默认目录和设置里列的每个账号目录下的都算。Claude Code 用 Read、Glob、Grep 读；别的 Agent 的命令也可以点名它们，也能用 `~/.claude*/projects` 这样的通配符一次点名所有账号的，和别的命令一样按权限模式走。
 - 只放开读：文件写进去什么模式下都照旧被拒；旁边的设置和登录信息（`settings.json`、`.credentials.json`、`~/.claude.json`、Grok 的 `auth.json`）、指向外面的链接、用 `..` 爬出去的，照旧碰不到。Bot 不变。
+- 同一天晚上 Antigravity 又被停了一轮。它的脚本从 Deskfolk 的库里取出会话的账号目录，没有就用 `os.path.expanduser("~/.claude")`，再拼上 `projects/*/<会话>.jsonl`，规则只看得到它写了 `~/.claude`。现在项目会话里，规则判断不了位置的路径也按权限模式走：当字符串交给脚本自己展开的 Agent 文件夹，以及在记录上用变量、循环、`$(…)`、`cd` 拼出来的路径。前提是整条命令没写出登录或设置文件（`settings.json`、`.credentials.json`、`auth.json` 这类），也没有 `..`。shell 自己读到的 Agent 文件夹（比如 `ls ~/.claude`）照旧碰不到。
 
 ### 桌面与手机界面细节优化
 

@@ -149,18 +149,22 @@ export function namesDir(command: string, dir: string, home: string, platform: N
   return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])${own}`, win ? "i" : "").test(command);
 }
 
+/** A `..` as a path's own part: `../x`, `cd ..`, `cd ..;`, `(cd ..)`, `"..")`; not `...`, nor `1..9`. */
+const CLIMBS = /(?:^|[\\/\s'"=(])\.\.(?:[\\/\s'"`;|&)]|$)/;
+
 /**
  * The command with every path it names inside one of `openDirs` taken out: an agent's own memory,
  * skills or plans, open to it as a folder outside the workspace is (ADR 0111). Null when the
- * command could leave such a folder by itself: it climbs with `..` anywhere, or where it names the
- * folder ({@link leavesFrom}) it changes directory, builds a path the rules cannot read, or hands
- * the folder on to be built on; or a path it names there leads out through a link (`stays`
- * says no). What is left is checked as any command is, so naming anything else of an agent's still
- * shuts it out.
+ * command could leave such a folder by itself: it climbs with `..` anywhere, or a path it names
+ * there leads out through a link (`stays` says no), or where it names the folder
+ * ({@link leavesFrom}) it changes directory, builds a path the rules cannot read, or hands the
+ * folder on to be built on. A project session passes `unplaced`: such a mention is then taken out
+ * too and `unplaced` is told, so the caller can look at what else the command names. What is left
+ * is checked as any command is, so naming anything else of an agent's still shuts it out.
  */
-export function withoutOpenDirs(command: string, openDirs: string[], home: string, platform: NodeJS.Platform, stays: (abs: string) => boolean): string | null {
+export function withoutOpenDirs(command: string, openDirs: string[], home: string, platform: NodeJS.Platform, stays: (abs: string) => boolean, unplaced?: () => void): string | null {
   if (openDirs.length === 0) return command;
-  if (/(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
+  if (CLIMBS.test(command)) return null;
   const win = platform === "win32";
   const sep = win ? "[\\\\/]+" : "/+";
   const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
@@ -176,7 +180,11 @@ export function withoutOpenDirs(command: string, openDirs: string[], home: strin
       out = out.replace(found, (match: string, rest: string, at: number, whole: string) => {
         const inner = rest.replace(/^[\\/]+/, "");
         const abs = inner ? (win ? `${dir.replace(/[\\/]+$/, "")}\\${inner}` : posix.join(dir, inner)) : dir;
-        if (!stays(abs) || leavesFrom(whole, at, at + match.length, win)) leaves = true;
+        if (!stays(abs)) leaves = true;
+        else if (leavesFrom(whole, at, at + match.length, win)) {
+          if (unplaced) unplaced();
+          else leaves = true;
+        }
         return "OPEN_DIR";
       });
       if (leaves) return null;
@@ -192,23 +200,141 @@ const PATH_REST = String.raw`(/+[^\s'"\x60;|&<>()]*[^\s'"\x60;|&<>()/])`;
  * The command with each path that globs the folder right under your home (`.claude*` there, then
  * `projects/…`: every account's records at once) taken out where each folder there the glob matches (`foldersIn`),
  * with the rest of the path, is `fine`; a glob matching nothing names nothing. Null when such a path
- * could leave: a `..` anywhere, or as {@link leavesFrom} has it. A glob that is the whole path
- * (`~/.claude*`) stays in, as does any path with no glob there: the rules read those as written.
- * POSIX shells only.
+ * could leave: a `..` anywhere, or as {@link leavesFrom} has it unless `unplaced` is given, as in
+ * {@link withoutOpenDirs}. A glob that is the whole path (`~/.claude*`) stays in, as does any path
+ * with no glob there: the rules read those as written. POSIX shells only.
  */
-export function withoutHomeGlobs(command: string, home: string, platform: NodeJS.Platform, foldersIn: (dir: string) => string[], fine: (abs: string) => boolean): string | null {
+export function withoutHomeGlobs(command: string, home: string, platform: NodeJS.Platform, foldersIn: (dir: string) => string[], fine: (abs: string) => boolean, unplaced?: () => void): string | null {
   if (platform === "win32") return command;
   const found = new RegExp(String.raw`(?:~|\$HOME|\$\{HOME\}|${escapeRegExp(home)})/+([^\s'"\x60;|&<>()/]*[*?[][^\s'"\x60;|&<>()/]*)${PATH_REST}`, "g");
   if (!new RegExp(found.source).test(command)) return command;
-  if (/(?:^|[\\/\s'"=])\.\.(?:[\\/\s'"]|$)/.test(command)) return null;
+  if (CLIMBS.test(command)) return null;
   let leaves = false;
   const out = command.replace(found, (match: string, glob: string, rest: string, at: number, whole: string) => {
     const pattern = globPattern(glob);
     if (!foldersIn(home).filter((name) => pattern.test(name)).every((name) => fine(posix.join(home, name, rest)))) return match;
-    if (leavesFrom(whole, at, at + match.length, false)) leaves = true;
+    if (leavesFrom(whole, at, at + match.length, false)) {
+      if (unplaced) unplaced();
+      else leaves = true;
+    }
     return "OPEN_DIR";
   });
   return leaves ? null : out;
+}
+
+/** Your agents' own folders under your home, as written there: the folders of {@link AGENT_HOME_ENTRIES}. */
+const AGENT_HOME_FOLDERS = AGENT_HOME_ENTRIES.filter((entry) => !entry.endsWith(".json"));
+
+/**
+ * The command with each of your agents' own folders taken out where a program of its own is handed
+ * the folder as a string to expand and build on itself — `os.path.expanduser("~/.claude")` in a
+ * `python3 -c '…'` or a heredoc — so the rules cannot read what it reaches, as they never read
+ * `Path.home() / ".claude"` either; `unplaced` is told. Only the folder itself (an account folder you
+ * listed under your home too), spelled with `~`, between two quotes that the shell passes on as they
+ * are (inside other quotes, or a heredoc), so no shell expands that `~`: neither this one, nor one
+ * the string is handed to (`bash -c '… "~/.claude" …'`). Not after a quote of its own (`""~`), which
+ * zsh does expand. Null when the command climbs with `..` anywhere. POSIX shells only.
+ */
+export function withoutQuotedHomes(command: string, home: string, platform: NodeJS.Platform, configDirs: string[], unplaced: () => void): string | null {
+  if (platform === "win32") return command;
+  const accounts = configDirs.filter((dir) => dir.length > home.length && isWithinPath(home, dir, platform)).map((dir) => dir.slice(home.length));
+  const folders = [...AGENT_HOME_FOLDERS, ...accounts].map((path) => path.split(/\/+/).filter(Boolean).map(escapeRegExp).join("/+"));
+  const found = new RegExp(String.raw`~/+(?:${folders.join("|")})/*(?=\\?["'])`, "g");
+  if (!new RegExp(found.source).test(command)) return command;
+  const quoting = shellQuoting(command);
+  let took = false;
+  const out = command.replace(found, (match: string, at: number) => {
+    const open = at - 1;
+    const close = command[at + match.length] === "\\" ? at + match.length + 1 : at + match.length;
+    const quote = command[open];
+    if ((quote !== '"' && quote !== "'") || command[close] !== quote) return match;
+    if (!quoting.inside[at] || !quoting.literal(open) || !quoting.literal(close)) return match;
+    // What the program reads just before the string's own quote: a quote there (`""~`) leaves the ~ bare.
+    const before = command[quoting.escaped[open] ? open - 2 : open - 1];
+    if (before === '"' || before === "'") return match;
+    took = true;
+    return "OPEN_DIR";
+  });
+  if (!took) return command;
+  if (CLIMBS.test(command)) return null;
+  unplaced();
+  return out;
+}
+
+/**
+ * How the shell quotes each character of a command: `inside` quotes or a heredoc's body, where no
+ * `~` is expanded; `escaped` by a backslash; and `literal(i)`, a quote mark the shell passes on as a
+ * character (in other quotes, escaped, or in a heredoc) rather than reading it as a quote. A
+ * substitution's own quotes are not followed: a quote in `"$(…)"` reads as closing the outer one,
+ * which only ever keeps a folder in.
+ */
+function shellQuoting(command: string): { inside: boolean[]; escaped: boolean[]; literal: (i: number) => boolean } {
+  const n = command.length;
+  const inside: boolean[] = new Array(n).fill(false);
+  const escaped: boolean[] = new Array(n).fill(false);
+  const marks: boolean[] = new Array(n).fill(false);
+  let quote: "'" | '"' | null = null;
+  const pending: Array<{ word: string; tabs: boolean }> = [];
+  for (let i = 0; i < n; i += 1) {
+    const ch = command[i]!;
+    if (quote === "'") {
+      if (ch === "'") { marks[i] = true; quote = null; } else inside[i] = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === "\\" && i + 1 < n) {
+        inside[i] = inside[i + 1] = true;
+        if (/[$`"\\\n]/.test(command[i + 1]!)) escaped[i + 1] = true;
+        i += 1;
+      } else if (ch === '"') { marks[i] = true; quote = null; } else inside[i] = true;
+      continue;
+    }
+    if (ch === "\\") {
+      if (i + 1 < n) escaped[i + 1] = true;
+      i += 1;
+    } else if (ch === "'" || ch === '"') {
+      marks[i] = true;
+      quote = ch;
+    } else if (ch === "<" && command[i + 1] === "<" && command[i + 2] !== "<" && (i === 0 || /[\s;&|(]/.test(command[i - 1]!))) {
+      // A heredoc: `<<EOF`, `<<-'EOF'`, `<< "EOF"`; its body starts on the next line. Not a shift (`$((1 << 2))`).
+      const word = /^<<(-?)[ \t]*([A-Za-z_'"](?:[^\s;|&<>()]|'[^']*'|"[^"]*")*)/.exec(command.slice(i));
+      if (!word) continue;
+      pending.push({ word: word[2]!.replace(/['"\\]/g, ""), tabs: word[1] === "-" });
+      for (let j = i; j < i + word[0].length; j += 1) if (command[j] === "'" || command[j] === '"') marks[j] = true;
+      i += word[0].length - 1;
+    } else if (ch === "\n" && pending.length > 0) {
+      let at = i + 1;
+      for (const { word, tabs } of pending.splice(0)) {
+        while (at < n) {
+          const lineEnd = command.indexOf("\n", at) < 0 ? n : command.indexOf("\n", at);
+          const line = command.slice(at, lineEnd);
+          if ((tabs ? line.replace(/^\t+/, "") : line) === word) {
+            at = lineEnd;
+            break;
+          }
+          for (let j = at; j <= lineEnd && j < n; j += 1) inside[j] = true;
+          at = lineEnd + 1;
+        }
+      }
+      i = at - 1;
+    }
+  }
+  return { inside, escaped, literal: (i) => !marks[i] && (inside[i] || escaped[i]) };
+}
+
+/**
+ * Where your agents keep their sign-in and settings, by file name, wherever a command names one: what
+ * a command that builds its own paths on an agent's folder may not also name. Claude Code's
+ * `.credentials.json` and `settings*.json`, `~/.claude.json`; Codex's `auth.json` and `config.toml`
+ * (a profile's `<name>.config.toml` too); Gemini's `oauth_creds.json`, `google_accounts.json`,
+ * `.env` and `settings.json`; Grok's `auth.json` and `user-settings.json`; any `*token*.json`; a name
+ * starting `.cred`, as a glob for the credentials file would.
+ */
+const SETTINGS_FILE = new RegExp(String.raw`(?:^|[\s/\\'"\x60=(,:])(?:\.cred[\w*?[\]-]*(?:\.json)?|credentials\.json|auth\.json|oauth_creds\.json|google_accounts\.json|(?:user-)?settings(?:\.[\w-]+)?\.json|(?:[\w-]+\.)?config\.(?:toml|json)|\.claude\.json|[\w.-]*tokens?[\w.-]*\.json|\.env)(?![\w.-])`);
+
+/** Whether a command names one of your agents' sign-in or settings files by its name ({@link SETTINGS_FILE}). */
+export function namesAgentSettingsFile(command: string): boolean {
+  return SETTINGS_FILE.test(command);
 }
 
 /** One folder name's shell glob as a regular expression: a leading dot is matched only by a glob that starts with one. */
