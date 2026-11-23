@@ -9,6 +9,9 @@ import { posix } from "node:path";
 import { asksKeychainForSecret, isKeychainPath } from "../../keychains";
 import { isAbsoluteHostPath, isWithinPath, workspaceRelative } from "../../workspace-paths";
 
+/** What an agent hears when a call reaches one of your agents' own settings or credentials. */
+export const AGENT_CREDENTIALS_REFUSAL = "your local agents' own settings and credentials are off limits";
+
 /**
  * Each agent's own directories and files under your home folder, as POSIX-style relative paths.
  * `.claude.json` also covers its backups (`.claude.json.backup`); a directory covers everything in it.

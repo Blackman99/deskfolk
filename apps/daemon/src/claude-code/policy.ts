@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import { posix, win32 } from "node:path";
 import { PLAN_APPROVAL_KIND, type PermissionMode } from "@real-bot/protocol";
 import { FILE_WRITE_KIND, READ_ONLY_REFUSAL, SHELL_KIND, changeVerdict } from "../permission-gate";
-import { isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
+import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, touchesAgentCredentials } from "../engine/agent/credentials";
 import { asksKeychainForSecret, isKeychainPath } from "../keychains";
 import { recursiveSearchGuard, searchGuardMessage } from "../search-guard";
 import { classifyPath, classifyShell, isAbsoluteHostPath, isWithinPath, nodePathHost, workspaceRelative, type PathHost } from "../workspace-paths";
@@ -150,7 +150,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     }
     // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
     if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
-      return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     }
     const hit = recursiveSearchGuard(call.workspace, command, call.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
@@ -177,7 +177,7 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     return { kind: "deny", reason: offLimits(call) };
   }
   if (!open && named.some((path) => isAgentCredentialPath(path, home, platform, call.configDirs))) {
-    return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+    return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
   }
   // On Windows a path with no drive ("/work/a.md", "/c/Users/…") opens on whichever drive the
   // process is on, or as Git Bash would read it: which one is not ours to guess, nor yours to approve.

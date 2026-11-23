@@ -19,7 +19,9 @@ import { agyServesAcp, agyTooOld } from "./agents/agy-version";
 import { estimateAgentCost } from "./agents/agent-prices";
 import { initializeAgy } from "./agents/agy-acp";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
-import { inMemoryDir } from "./claude-code/policy";
+import { inMemoryDir, type AgentDecision } from "./claude-code/policy";
+import { AGENT_CREDENTIALS_REFUSAL } from "./engine/agent/credentials";
+import { READ_ONLY_REFUSAL } from "./permission-gate";
 import { placeOfCall } from "./claude-code/tool-place";
 import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } from "./engine/agent/drivers/acp";
 import { agyFailure, agyVersionText } from "./engine/agent/drivers/agy";
@@ -112,6 +114,33 @@ const REQUEST_TIMEOUT_MS = 60_000;
 /** The words a plan's approval goes on with (ADR 0111): `agy` takes the next step in its default mode. */
 const PLAN_GO = { en: "The plan is approved. Carry it out now.", zh: "计划已批准，现在按计划去做。" };
 
+
+/** A step longer than this, or of several lines, goes under the line's words, whole: it is the only record of what ran. */
+const STEP_IN_LINE_MAX = 120;
+
+/**
+ * The line a turn stopped at a call it made without asking ends with: what it did, why that needed
+ * asking, and that it may have run. A short step is quoted in the sentence; a long command follows it
+ * on lines of its own, so the reason is not lost at the end of a screenful of shell.
+ */
+export function overstepLine(what: string, why: string, en: boolean): string {
+  if (what.includes("\n") || what.length > STEP_IN_LINE_MAX) {
+    return en
+      ? `Antigravity went ahead with the step below without asking (${why}); the turn was stopped there, and that step may have run already:\n${what}`
+      : `Antigravity 没先问就做了下面这一步（${why}），这一轮停在这里；那一步可能已经执行了：\n${what}`;
+  }
+  return en
+    ? `Antigravity went ahead with ${what} without asking (${why}); the turn was stopped there, and that step may have run already`
+    : `Antigravity 没先问就做了「${what}」（${why}），这一轮停在这里；那一步可能已经执行了`;
+}
+
+/** Why a call needed asking, in your words: the rules' own reasons are written for the agent. */
+function stopReason(decision: AgentDecision, en: boolean): string {
+  if (decision.kind !== "deny") return en ? "the permission mode asks first" : "权限模式要求先问你";
+  if (decision.reason === AGENT_CREDENTIALS_REFUSAL) return en ? "your agents' own settings and credentials are off limits" : "本机 Agent 自己的设置和凭据碰不得";
+  if (decision.reason === READ_ONLY_REFUSAL) return en ? "the permission mode is read-only" : "权限模式是只读";
+  return decision.reason;
+}
 
 /** The `agy` a project session starts, found as a Bot's is: the path you set in Settings, or the one on this computer. */
 export function projectAgyOf(store: Store): () => Promise<ResolvedAgent> {
@@ -474,10 +503,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         // Outside a prompt too: after a background command ended, agy may go on by itself.
         if (decision.kind !== "allow" && !overstep) {
           const what = action.appName === "shell" ? (action.command ?? tool.title) : `${tool.title || action.vendorTool}`;
-          const why = decision.kind === "deny" ? decision.reason : (en ? "the permission mode asks first" : "权限模式要求先问你");
-          overstep = en
-            ? `Antigravity went ahead with ${what} without asking (${why}); the turn was stopped there, and that step may have run already`
-            : `Antigravity 没先问就做了「${what}」（${why}），这一轮停在这里；那一步可能已经执行了`;
+          overstep = overstepLine(what, stopReason(decision, en), en);
           live.rpc?.notify("session/cancel", { sessionId: live.acpSession });
           // Between prompts nothing else will end the run: it ends here, with that line.
           if (!live.prompting) {

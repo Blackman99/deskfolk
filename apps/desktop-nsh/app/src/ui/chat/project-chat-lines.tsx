@@ -1,5 +1,6 @@
 /**
- * The lines of a project session's transcript (`ProjectChat.svelte`): the app's, centred in a chip;
+ * The lines of a project session's transcript (`ProjectChat.svelte`): the app's, centred in a chip
+ * (a long one, and the command it quotes, in a block across the column);
  * yours on the right in a bubble with its files; the agent's on the left as Markdown with the
  * commands it ran folded under it (and a way into its subagents). A day line above the first line
  * of each day, and the line that says an earlier page is on its way. Questions the agent asked
@@ -62,6 +63,32 @@ function LineTime(props: { at: string }) {
   );
 }
 
+/** An app line longer than this is a block, not a chip: centred and round, it wraps into an oval. */
+const CHIP_MAX = 160;
+
+/**
+ * The app's line. A short one is a chip in the middle. A long one is a block across the column, its
+ * words on the left; the lines under its first are what it quotes (the command a stopped turn ran,
+ * whole: nothing else records it), set as code under the words.
+ */
+function AppLine(props: { body: string }) {
+  const cut = () => props.body.indexOf("\n");
+  const words = () => (cut() < 0 ? props.body : props.body.slice(0, cut()));
+  const quote = () => (cut() < 0 ? "" : props.body.slice(cut() + 1).trim());
+  const block = () => quote() !== "" || props.body.length > CHIP_MAX;
+  return (
+    <View
+      testID="project-line-app"
+      class={block() ? "w-full px-[14px] py-[10px] rounded-[12px] bg-chip gap-[6px]" : "self-center max-w-[90%] px-3 py-1 rounded-full bg-chip"}
+    >
+      <Text class={`text-[12px] text-ink-muted ${block() ? "" : "text-center"}`}>{words()}</Text>
+      <If when={quote()}>
+        <Text testID="project-line-app-quote" class="text-[11.5px] leading-[1.6] font-mono text-ink">{quote()}</Text>
+      </If>
+    </View>
+  );
+}
+
 export function EarlierLine(props: { loading: boolean }) {
   return (
     <View role="text" testID="project-earlier" class="items-center w-full">
@@ -101,9 +128,7 @@ export function ProjectLine(props: {
     <View testID={`project-line-${msg().id}`} class="w-full gap-[14px]">
       <If when={props.date}>{(at: () => string) => <DayLine at={at()} locale={s().locale()} />}</If>
       <If when={who() === "app"}>
-        <View testID="project-line-app" class="self-center max-w-[90%] px-3 py-1 rounded-full bg-chip">
-          <Text class="text-[12px] text-ink-muted text-center">{msg().body}</Text>
-        </View>
+        <AppLine body={msg().body} />
       </If>
       <If when={who() === "you"}>
         <View testID="project-line-you" class="items-end w-full" style={flies ? flight?.hides(msg().id) : undefined}>

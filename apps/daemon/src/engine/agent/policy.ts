@@ -13,7 +13,7 @@ import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../
 import type { PermissionMode } from "@real-bot/protocol";
 import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { isAgentCredentialPath, touchesAgentCredentials, withoutOpenDirs } from "./credentials";
+import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, touchesAgentCredentials, withoutOpenDirs } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -66,7 +66,7 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     if (touchesAgentCredentials(command, home, platform, configDirs)) {
       const rest = withoutOpenDirs(command, ctx.openDirs ?? [], home, platform, (abs) => inMemoryDir(abs, ctx.openDirs ?? [], host));
       if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) {
-        return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+        return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
       }
     }
     const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
@@ -85,7 +85,7 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     const spellings = [abs, ...(platform === "win32" ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
     const open = spellings.every((path) => inMemoryDir(path, ctx.openDirs ?? [], host));
     if (!open && spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs))) {
-      return { kind: "deny", reason: "your local agents' own settings and credentials are off limits" };
+      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     }
     if (platform === "win32" && /^[\\/](?![\\/])/.test(raw)) {
       return { kind: "deny", reason: `${raw} is not a Windows path: name files with their drive (C:\\…). The workspace root is ${ctx.workspace} and this call's directory is ${action.cwd}.` };

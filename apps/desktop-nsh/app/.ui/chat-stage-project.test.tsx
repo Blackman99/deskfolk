@@ -19,6 +19,10 @@ test("a project session shows its lines, the day, and a Bot's reply drawn as Mar
   await app.waitFor("text:把 README 的安装一节改短", { timeout: 10_000 });
   expect(app.texts()).toContain("再看一下测试");
   expect(app.texts()).toContain("已切到新的一天");
+  // A long app line: its words, then the command it quotes as code of its own.
+  expect(app.texts()).toContain("Antigravity 没先问就做了下面这一步（权限模式要求先问你），这一轮停在这里；那一步可能已经执行了：");
+  expect(app.shows("id:project-line-app-quote")).toBe(true);
+  expect(app.texts().some((text: string) => text.startsWith("cd /Users/dev/my-projects/real-bot/.wt/web-test && ") && text.endsWith("out.write_text(\"echo deploy\")\n'"))).toBe(true);
   expect(app.texts()).toContain("安装一节有 三段");
   expect(app.shows("id:project-input")).toBe(true);
   expect(app.shows("id:project-working")).toBe(false);

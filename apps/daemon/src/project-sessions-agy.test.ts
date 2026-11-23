@@ -11,7 +11,7 @@ import { PLAN_APPROVAL_KIND, type AgentRun, type AgentSessionList, type ClaudeCo
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { mountedAgentMcp } from "./agent-mcp/bridge";
-import { agyBrainDir } from "./project-runner-agy";
+import { agyBrainDir, overstepLine } from "./project-runner-agy";
 import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -222,8 +222,15 @@ test("a call agy makes by itself after a background command ended is checked too
   await h.say(id, "start it");
   await h.settled(id);
   expect((await h.run(id))?.status).toBe("failed");
-  expect(h.lines(id).at(-1)?.body).toStartWith("Antigravity 没先问就做了「settings」");
+  // Why, in your words: the rules' own reason is written for the agent.
+  expect(h.lines(id).at(-1)?.body).toBe("Antigravity 没先问就做了「settings」（本机 Agent 自己的设置和凭据碰不得），这一轮停在这里；那一步可能已经执行了");
   expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(true);
+});
+
+test("a long step a stopped turn names goes under the line's words, whole", () => {
+  const command = `cd /work && pnpm run build && python3 -c '\nprint("${"x".repeat(150)}")\n'`;
+  expect(overstepLine(command, "权限模式要求先问你", false)).toBe(`Antigravity 没先问就做了下面这一步（权限模式要求先问你），这一轮停在这里；那一步可能已经执行了：\n${command}`);
+  expect(overstepLine("npm test", "the permission mode asks first", true)).toBe("Antigravity went ahead with npm test without asking (the permission mode asks first); the turn was stopped there, and that step may have run already");
 });
 
 test("a terminal agy session is listed without the app's own, carried on in that same session, and only once", async () => {

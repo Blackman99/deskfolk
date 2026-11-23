@@ -22,6 +22,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 ### A project session's agent can keep files in its own folder from a longer command
 
 - Antigravity stopped a turn with "your local agents' own settings and credentials are off limits" when one command changed into the project's worktree, built with `$(git rev-parse …)`, and then wrote a script into its own folder for the session (`~/.gemini/antigravity-cli/brain/<session>`). A `cd` or a `$(…)` elsewhere in a command no longer counts against the part that names that folder; only that part may not change directory, build a path, or hand the folder on. The same holds for Codex's memories and Grok's session folder. Credentials named in a command are still refused.
+- When Antigravity is stopped at a step it took without asking, the line says why in your words (it was a credential, or the permission mode asks first) instead of the rule's English, and a long command follows it on lines of its own, whole, in a block across the conversation; it used to be one centred oval of shell with the reason at its very end.
 
 ## 0.6.0 — 2026-11-22
 

@@ -164,11 +164,22 @@ function askLine(id: string, body: string, at: string, ask: Message["ask"] = REA
   }));
 }
 
+const STOPPED_AT = [
+  "Antigravity 没先问就做了下面这一步（权限模式要求先问你），这一轮停在这里；那一步可能已经执行了：",
+  "cd /Users/dev/my-projects/real-bot/.wt/web-test && git cherry-pick b2db52f && pnpm exec tsc --noEmit && rm -rf .next && COMMIT=$(git rev-parse --short=7 HEAD) && tar --exclude='node_modules' -czf \"/tmp/web-test-${COMMIT}.tar.gz\" .next package.json && python3 -c '",
+  "import pathlib",
+  "out = pathlib.Path(\"/Users/dev/.gemini/antigravity-cli/brain/session-1/scratch/deploy-remote.sh\")",
+  "out.write_text(\"echo deploy\")",
+  "'",
+].join("\n");
+
 function projectBase(): Message[] {
   return [
     line({ id: "pj-1", session_id: PROJECT_ID, body: "把 README 的安装一节改短", created_at: D1 }),
     line({ id: "pj-2", session_id: PROJECT_ID, kind: "bot", author: "claude-code", body: "好的，我看了 README：\n\n- 安装一节有 **三段**\n- 可以合成一段\n\n改好后告诉你。", created_at: "2026-10-19T09:31:00.000Z" }),
     line({ id: "pj-3", session_id: PROJECT_ID, kind: "system", author: "app", body: "已切到新的一天", created_at: D2 }),
+    // A turn stopped at a long command it ran without asking: the words, then the command whole.
+    line({ id: "pj-3-stop", session_id: PROJECT_ID, kind: "system", author: "app", body: STOPPED_AT, created_at: D2 }),
     line({ id: "pj-4", session_id: PROJECT_ID, body: "再看一下测试", created_at: "2026-10-20T09:31:00.000Z" }),
     ...(annotated() ? [line({ id: "pj-5", session_id: PROJECT_ID, body: "按这两条改", created_at: "2026-10-20T09:33:00.000Z" })] : []),
     ...(asked()
