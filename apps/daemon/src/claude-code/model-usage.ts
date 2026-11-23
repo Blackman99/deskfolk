@@ -1,6 +1,8 @@
 /** What a Claude Code session reports it has used, per model, as the spend ledger bills it. */
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { ProjectContextUsage } from "@real-bot/protocol";
+import { agentContextWindow, claudeAssistantPromptTokens } from "../agents/agent-context";
 
 export type ModelTotals = { input: number; output: number; cached: number; cost: number };
 
@@ -33,7 +35,8 @@ const CHUNK = 256 * 1024;
  * Read from the end of the file back, since the last entry is near it. Null when there is none (a
  * Claude Code that writes none starts from zero) or the file cannot be read.
  */
-export function carriedTotals(file: string): Map<string, ModelTotals> | null {
+/** Scans a JSONL file from the end back in 256 KiB chunks, returning the first non-null pick. */
+function scanJsonlBack<T>(file: string, pick: (line: string) => T | null): T | null {
   let fd: number;
   try {
     fd = openSync(file, "r");
@@ -56,8 +59,8 @@ export function carriedTotals(file: string): Map<string, ModelTotals> | null {
       }
       const lines = bytes.toString("utf8").split("\n");
       for (let i = lines.length - 1; i >= 0; i--) {
-        const totals = lines[i]!.includes('"cost-state"') ? costStateTotals(lines[i]!) : null;
-        if (totals) return totals;
+        const found = pick(lines[i]!);
+        if (found !== null) return found;
       }
       end = start;
     }
@@ -67,6 +70,30 @@ export function carriedTotals(file: string): Map<string, ModelTotals> | null {
   } finally {
     closeSync(fd);
   }
+}
+
+export function carriedTotals(file: string): Map<string, ModelTotals> | null {
+  return scanJsonlBack(file, (line) => (line.includes('"cost-state"') ? costStateTotals(line) : null));
+}
+
+/**
+ * The latest main-thread assistant message's prompt occupancy from a Claude Code session JSONL file,
+ * so existing or imported sessions show context usage immediately before their next run.
+ */
+export function lastContextUsage(file: string): ProjectContextUsage | null {
+  return scanJsonlBack(file, (line) => {
+    if (!line.includes('"assistant"') || !line.includes('"usage"')) return null;
+    try {
+      const entry = JSON.parse(line) as { type?: unknown; isSidechain?: unknown; message?: { model?: unknown; usage?: unknown } };
+      if (entry.type !== "assistant" || entry.isSidechain === true || !entry.message) return null;
+      const used = claudeAssistantPromptTokens(entry.message);
+      if (used === null) return null;
+      const model = typeof entry.message.model === "string" && entry.message.model.trim() ? entry.message.model.trim() : null;
+      return { used, limit: agentContextWindow(model), ...(model ? { model } : {}) };
+    } catch {
+      return null;
+    }
+  });
 }
 
 function costStateTotals(line: string): Map<string, ModelTotals> | null {

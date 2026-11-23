@@ -16,6 +16,7 @@ import { grokCommandList, grokUpdates, projectGrokOf, withGrokAcp } from "../../
 import { readGrokReplay, grokSubagentTrail } from "../../agents/grok-replay";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile } from "../../claude-code/sessions";
+import { lastContextUsage } from "../../claude-code/model-usage";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { sessionUpsertFields } from "../../session-events";
@@ -102,7 +103,16 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   // The session's newest run, live or over; null before its first.
   params = matchPath(path, "/v1/project-sessions/:id/run");
   if (params && method === "GET") {
-    if (!store.projectOf(params.id!)) throw new HttpError(404, "not_found", "not a project session");
+    const project = store.projectOf(params.id!);
+    if (!project) throw new HttpError(404, "not_found", "not a project session");
+    // Backfill context usage once from Claude Code's session file for existing/imported sessions.
+    if (project.agent === "claude_code" && !project.context && (project.agentSession || project.source)) {
+      const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
+      const root = roots.find((entry) => entry.configDir === project.configDir) ?? roots[0]!;
+      const file = findClaudeSessionFile(root, (project.agentSession ?? project.source)!);
+      const usage = file ? lastContextUsage(file) : null;
+      if (usage) store.recordProjectContext(params.id!, usage);
+    }
     return jsonResponse({ run: store.latestAgentRun(params.id!) }, 200, null);
   }
 

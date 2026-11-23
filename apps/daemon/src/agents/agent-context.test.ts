@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseProjectContext } from "@real-bot/protocol";
+import { lastContextUsage } from "../claude-code/model-usage";
 import { acpContextUsage, agentContextWindow, claudeAssistantPromptTokens, claudeResultContextWindow } from "./agent-context";
 import { memoryKeyStore } from "../secrets";
 import { Store } from "../store";
@@ -98,6 +102,23 @@ describe("Store.recordProjectContext", () => {
       expect(store.getSession(created.id).project_context).toBeNull();
     } finally {
       store.close();
+    }
+  });
+});
+
+describe("lastContextUsage", () => {
+  test("reads latest non-sidechain assistant prompt usage from Claude Code JSONL", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ctx-jsonl-"));
+    try {
+      const file = join(dir, "session.jsonl");
+      writeFileSync(file, [
+        JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-6", usage: { input_tokens: 1000, cache_read_input_tokens: 19_000 } } }),
+        JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-6", usage: { input_tokens: 2000, cache_read_input_tokens: 48_000, cache_creation_input_tokens: 5_000 } } }),
+        JSON.stringify({ type: "assistant", isSidechain: true, message: { model: "claude-haiku-4-5", usage: { input_tokens: 500 } } }),
+      ].join("\n"));
+      expect(lastContextUsage(file)).toEqual({ used: 55_000, limit: 200_000, model: "claude-opus-4-6" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
