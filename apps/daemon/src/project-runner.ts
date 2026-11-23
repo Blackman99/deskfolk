@@ -35,6 +35,7 @@ import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from 
 import { consultBrief } from "./project-consult-brief";
 import { outNote, pickClaudeAccount, seatOf, soonestBack } from "./claude-code/account-pick";
 import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
+import { agentRecordDirs } from "./engine/agent/credentials";
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
 import { continueNote, EXIT_WAIT_MS, moveProjectAccount, outOfUsageLine, switchedLine } from "./project-limits";
 import { recordLiveProc } from "./live-procs";
@@ -477,6 +478,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const memoryDirs = claudeMemoryDirs(project.dir, accountDir);
     const planDirs = claudePlanDirs(accountDir);
     const home = homedir();
+    /** Your agents' conversation records: its file tools read them, never write them (ADR 0095 addendum 2026-11-23). */
+    const readableDirs = agentRecordDirs(home, (runner) => store.agentConfigDirs(runner));
     /** The calls under way, by id: when each started and where, for its exited frame. */
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string }>();
     /**
@@ -504,7 +507,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
         ? { kind: "allow" as const, effect: false, appName: raw.tool_name }
         : decideAgentCall({
           tool: raw.tool_name, input: toolInput, cwd: raw.cwd || project.dir, agentId: raw.agent_id ?? null,
-          mode: "work", workspace: project.dir, configDirs, memoryDirs, plan: { on: planning, dirs: planDirs }, background: !consultant, questions: true, permission,
+          mode: "work", workspace: project.dir, configDirs, memoryDirs, readableDirs, plan: { on: planning, dirs: planDirs }, background: !consultant, questions: true, permission,
         });
       if (decision.kind === "deny") return deny(decision.reason);
       if (TASK_TOOLS.has(raw.tool_name)) taskCalls.set(id, { tool: raw.tool_name, input: toolInput });

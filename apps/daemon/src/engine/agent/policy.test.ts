@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withoutOpenDirs } from "./credentials";
+import { agentRecordDirs, withoutOpenDirs } from "./credentials";
 import { decideAction, type ActionContext, type AppAction } from "./policy";
 
 // A fake home on this machine's disk, so links can be followed: an agent's own folder in it, with
@@ -98,6 +98,77 @@ out.write_text(script)
   ];
   for (const command of [script, ...next, `cd /tmp && V=$(date) && cp notes.md ${brain}/scratch/`, `cat > ${brain}/scratch/run.sh <<'EOF'\necho "$HOME $PATH"\nEOF`]) {
     expect([command, decideAction(shell(command), base)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
+  }
+});
+
+// Claude Code's records beside its settings and sign-in, and a link among the records leading out to the sign-in.
+const claudeRecords = join(home, ".claude", "projects");
+mkdirSync(join(claudeRecords, "-Users-someone-proj"), { recursive: true });
+writeFileSync(join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl"), "{}\n");
+writeFileSync(join(home, ".claude", "settings.json"), "{}");
+writeFileSync(join(home, ".claude", ".credentials.json"), "{}");
+symlinkSync(join(home, ".claude", ".credentials.json"), join(claudeRecords, "-Users-someone-proj", "sneaky.jsonl"));
+const records = agentRecordDirs(home, () => []);
+const session: ActionContext = { ...base, readableDirs: records };
+// As agy ran it on 2026-11-23, asked why Claude's context showed 200k: the newest five transcripts' last usage.
+const transcripts = String.raw`python3 -c '
+import glob, json, os
+files = sorted(glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")), key=os.path.getmtime, reverse=True)[:5]
+for f in files:
+    print("=== FILE:", os.path.basename(f))
+    with open(f, "rb") as fp:
+        fp.seek(max(0, os.path.getsize(f) - 200000))
+        lines = fp.read().decode("utf-8", "ignore").splitlines()
+    for line in reversed(lines):
+        if "\"cost-state\"" in line:
+            d = json.loads(line)
+            print("  cost-state:", json.dumps({k: {kk: vv for kk, vv in v.items() if kk in ("contextWindow", "maxOutputTokens")} for k, v in d.get("modelUsage", {}).items()}))
+            break
+    for line in reversed(lines):
+        if "\"assistant\"" in line and "\"usage\"" in line:
+            d = json.loads(line)
+            if d.get("type") == "assistant" and not d.get("isSidechain"):
+                m = d.get("message", {})
+                print("  last assistant:", m.get("model"), m.get("usage"))
+                break
+'`;
+
+test("your agents' conversation records are where each keeps them, in its own home and in each account you listed", () => {
+  expect(agentRecordDirs("/h", (runner) => (runner === "claude_code" ? ["/h/.claude-b"] : ["/h/grok-work"]), "darwin")).toEqual([
+    "/h/.claude/projects", "/h/.claude-b/projects", "/h/.grok/sessions", "/h/grok-work/sessions",
+  ]);
+  expect(agentRecordDirs("C:\\Users\\h", () => [], "win32")).toEqual(["C:\\Users\\h\\.claude\\projects", "C:\\Users\\h\\.grok\\sessions"]);
+});
+
+posixTest("a project session's agent reads your agents' conversation records, by file or by command, as any folder outside", () => {
+  expect(decideAction(shell(transcripts), session)).toMatchObject({ kind: "allow" });
+  expect(decideAction(shell(transcripts), { ...session, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(read(join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl")), session).kind).toBe("allow");
+  expect(decideAction({ appName: "list_dir", vendorTool: "find_by_name", paths: [claudeRecords], cwd: workspace }, session).kind).toBe("allow");
+  for (const command of ["ls -t ~/.claude/projects/-Users-someone-proj | head -5", `tail -c 200000 ${claudeRecords}/-Users-someone-proj/47ce0671.jsonl`, "rg -l contextWindow ~/.claude/projects"]) {
+    expect([command, decideAction(shell(command), session).kind]).toEqual([command, "allow"]);
+  }
+  // Elsewhere, and for a Bot, they are an agent's own folder still.
+  expect(decideAction(shell(transcripts), base)).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+  expect(decideAction(read(join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl")), base).kind).toBe("deny");
+});
+
+posixTest("the records are read, never written, and nothing beside them opens", () => {
+  expect(decideAction(write(join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl")), { ...session, permission: "allow_all" })).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+  for (const path of [join(home, ".claude", "settings.json"), join(home, ".claude", ".credentials.json"), join(home, ".claude.json"), join(home, ".claude"),
+    join(claudeRecords, "..", "settings.json"), join(claudeRecords, "-Users-someone-proj", "sneaky.jsonl"), `${claudeRecords}-old/a.jsonl`]) {
+    expect([path, decideAction(read(path), { ...session, permission: "allow_all" }).kind]).toEqual([path, "deny"]);
+  }
+  for (const command of [
+    "cat ~/.claude/settings.json",
+    "ls ~/.claude",
+    "cat ~/.claude/projects/-Users-someone-proj/47ce0671.jsonl ~/.claude.json",
+    "cat ~/.claude/projects/../.credentials.json",
+    "cd ~/.claude/projects && cat ../settings.json",
+    "cat ~/.claude/projects/-Users-someone-proj/sneaky.jsonl",
+    "D=~/.claude/projects; cat $D/../settings.json",
+  ]) {
+    expect([command, decideAction(shell(command), session).kind]).toEqual([command, "deny"]);
   }
 });
 

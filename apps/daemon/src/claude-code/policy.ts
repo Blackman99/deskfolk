@@ -5,8 +5,8 @@
  * refusal, nothing outside a short list of Claude Code's tools, nothing in the background (a
  * project session's may, as in the terminal: ADR 0095, 25), and
  * never Claude Code's own credentials — though a project session's file tools reach its memory of
- * that project and its saved plans, which live among them, and a Bot's read what it remembers of
- * any project (ADR 0102). A project session in plan mode (ADR
+ * that project and its saved plans, which live among them, and read your agents' session records
+ * (ADR 0095 addendum 2026-11-23), and a Bot's read what it remembers of any project (ADR 0102). A project session in plan mode (ADR
  * 0098) writes no file but its plan until you approve it; its commands go by the permission mode,
  * as at any other time. Pure: everything it needs is passed in,
  * so the rules are tested on their own — the Windows ones too, on a fake disk (`host`).
@@ -66,6 +66,12 @@ export type AgentCall = {
    * `projects/<any project>/memory`.
    */
   readableMemoryRoot?: string;
+  /**
+   * A project session's (ADR 0095 addendum 2026-11-23): your agents' conversation records
+   * (`agentRecordDirs`), which its file tools read, and only read, as any folder outside. A command
+   * naming them is refused as one naming its memory is, and told how to read them.
+   */
+  readableDirs?: string[];
   /**
    * A project session's plan mode (ADR 0098): whether it is on, and the folders Claude Code saves
    * its plans in (inside its config directory, open to its file tools as `memoryDirs` are). Absent
@@ -150,7 +156,8 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
     }
     // Every other local agent's too (ADR 0079): a Bot reads no agent's sign-in, its own or another's.
     if (touchesAgentCredentials(command, home, platform, call.configDirs)) {
-      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
+      const records = call.readableDirs?.some((dir) => namesDir(command, dir, home, platform));
+      return { kind: "deny", reason: records ? `${AGENT_CREDENTIALS_REFUSAL}. ${recordsHint(call.readableDirs!)}` : AGENT_CREDENTIALS_REFUSAL };
     }
     const hit = recursiveSearchGuard(call.workspace, command, call.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
@@ -170,9 +177,10 @@ export function decideAgentCall(call: AgentCall): AgentDecision {
   // path and where its links lead stay in it.
   const plans = named.every((path) => inMemoryDir(path, call.plan?.dirs ?? [], host)) && !globLeaves(call, platform);
   const memory = plans || (named.every((path) => inMemoryDir(path, call.memoryDirs ?? [], host)) && !globLeaves(call, platform));
-  // A Bot reads what Claude Code remembers of any project, and only reads it.
+  // A project session reads your agents' records; a Bot what Claude Code remembers of any project. Only reads.
+  const records = READS.has(call.tool) && !globLeaves(call, platform) && named.every((path) => inMemoryDir(path, call.readableDirs ?? [], host));
   const root = call.readableMemoryRoot;
-  const open = memory || (root !== undefined && READS.has(call.tool) && !globLeaves(call, platform) && named.every((path) => inProjectMemory(path, root, host)));
+  const open = memory || records || (root !== undefined && READS.has(call.tool) && !globLeaves(call, platform) && named.every((path) => inProjectMemory(path, root, host)));
   if (!open && named.some((path) => isClaudeCredentialPath(path, home, platform, call.configDirs))) {
     return { kind: "deny", reason: offLimits(call) };
   }
@@ -219,9 +227,15 @@ export function planApproval(input: Record<string, unknown>): { kind_key: string
 const MEMORY_BY_FILE_TOOLS = "Claude Code's memory files for this project open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
 const PLANS_BY_FILE_TOOLS = "Claude Code's saved plans open with Read, Write, Edit, Glob and Grep, not in a command; its other settings and credentials are off limits";
 
-/** The refusal at Claude Code's own config; a Bot also hears the one thing there it may read, and where. */
-function offLimits(call: Pick<AgentCall, "readableMemoryRoot">): string {
+/** Where a project session's records can be read, and how. */
+function recordsHint(dirs: string[]): string {
+  return `Your agents' session records can be read, with Read, Glob or Grep and not in a command (give Glob the folder as its path and a pattern inside it): ${dirs.join(", ")}`;
+}
+
+/** The refusal at Claude Code's own config; a project session also hears where its records can be read, a Bot where its memory can. */
+function offLimits(call: Pick<AgentCall, "readableMemoryRoot" | "readableDirs">): string {
   const refusal = "Claude Code's own settings and credentials are off limits";
+  if (call.readableDirs?.length) return `${refusal}. ${recordsHint(call.readableDirs)}`;
   if (call.readableMemoryRoot === undefined) return refusal;
   return `${refusal}. Only its memory of a project can be read, with Read, Glob or Grep and not in a command: ${call.readableMemoryRoot}/projects/<the project's path with every character but a letter or digit written ->/memory`;
 }

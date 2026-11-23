@@ -124,6 +124,39 @@ posixTest("a project session's file tools open its memory of the project, by the
   expect(decideAgentCall({ ...at, tool: "Bash", input: { command: "cat ~/.claude.json" } })).toEqual({ kind: "deny", reason: "Claude Code's own settings and credentials are off limits" });
 });
 
+posixTest("a project session's file tools read your agents' session records, and only read them; a command hears how to", () => {
+  const config = `${home}/.claude`;
+  const memory = `${config}/projects/-Users-someone-proj/memory`;
+  const transcript = `${config}/projects/-Users-someone-other/47ce0671.jsonl`;
+  const at = { ...base, exists: () => true, memoryDirs: [memory], readableDirs: [`${config}/projects`, `${home}/.grok/sessions`] };
+  for (const permission of ["read_only", "ask_first", "auto", "allow_all"] as const) {
+    expect(decideAgentCall({ ...at, permission, tool: "Read", input: { file_path: transcript } })).toEqual({ kind: "allow", effect: false, appName: "read_file", target: transcript });
+  }
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${memory}/../47ce0671.jsonl` } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Read", input: { file_path: `${home}/.grok/sessions/-ws/s1/plan.md` } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Grep", input: { pattern: "contextWindow", path: `${config}/projects` } }).kind).toBe("allow");
+  expect(decideAgentCall({ ...at, tool: "Glob", input: { pattern: "*/*.jsonl", path: "~/.claude/projects" } }).kind).toBe("allow");
+  // Its memory of the project is still its to write; the records never are.
+  expect(decideAgentCall({ ...at, tool: "Write", input: { file_path: `${memory}/new.md` } }).kind).toBe("allow");
+  for (const tool of ["Write", "Edit"]) {
+    expect([tool, decideAgentCall({ ...at, permission: "allow_all", tool, input: { file_path: transcript } }).kind]).toEqual([tool, "deny"]);
+  }
+  // Nothing beside them opens, nor a pattern that leaves them; the refusal says how the records do.
+  for (const file_path of [`${config}/settings.json`, `${config}/.credentials.json`, `${home}/.claude.json`, `${config}/projects/../settings.json`, `${config}/projects-old/a.jsonl`, `${home}/.grok/auth.json`]) {
+    expect([file_path, decideAgentCall({ ...at, permission: "allow_all", tool: "Read", input: { file_path } }).kind]).toEqual([file_path, "deny"]);
+  }
+  expect(decideAgentCall({ ...at, tool: "Glob", input: { pattern: "../*.json", path: `${config}/projects` } })).toEqual({ kind: "deny", reason: expect.stringContaining("give Glob the folder as its path") });
+  // A command does not get in, as with its memory: it is told where and how to read.
+  const script = `python3 -c '\nimport glob, os\nprint(sorted(glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")))[:5])\n'`;
+  for (const command of [script, "ls -t ~/.claude/projects/-Users-someone-proj | head", "cat ~/.grok/sessions/-ws/s1/plan.md"]) {
+    const call = decideAgentCall({ ...at, permission: "allow_all", tool: "Bash", input: { command } });
+    expect([command, call]).toEqual([command, { kind: "deny", reason: expect.stringContaining("with Read, Glob or Grep and not in a command") }]);
+    if (call.kind === "deny") expect(call.reason).toContain(`${config}/projects`);
+  }
+  // A Bot's records stay shut, as before.
+  expect(decideAgentCall({ ...base, exists: () => true, tool: "Read", input: { file_path: transcript } }).kind).toBe("deny");
+});
+
 posixTest("a session on a listed account opens its memory there, and nothing else of that account", () => {
   const configDirs = [`${home}/.claude-b`];
   const at = { ...base, exists: () => true, configDirs, memoryDirs: [`${home}/.claude-b/projects/-Users-someone-proj/memory`] };

@@ -34,6 +34,7 @@ import { withCodexAppServer } from "./agents/codex-app-server";
 import { historyOf, rebuildThread } from "./agents/codex-history";
 import { readThread } from "./agents/codex-sessions";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
+import { agentRecordDirs } from "./engine/agent/credentials";
 import { absoluteFrom, decideAction, unwrapShell, type AppAction } from "./engine/agent/policy";
 import { agentTrace } from "./engine/agent/trace";
 import { HttpError } from "./errors";
@@ -424,6 +425,8 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
      */
     const ownDirs = ["memories", "skills", "plugins"].map((name) => join(codexHome(project.configDir), name));
     const home = homedir();
+    /** Your agents' conversation records: read, never written, in every mode (ADR 0095 addendum 2026-11-23). */
+    const records = agentRecordDirs(home, (runner) => store.agentConfigDirs(runner));
     const items = new Map<string, Item>();
     /** The calls under way, by item id: when each started and what it was, for its exited frame. */
     const started = new Map<string, { at: number; name: string; info: AgentRunToolInfo; command?: string; target?: string; mcp?: { server: string; tool: string } }>();
@@ -473,7 +476,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
     /** The app's rules for one command or file change: allowed, refused, or a card that waits on you. */
     const gate = async (action: AppAction): Promise<boolean> => {
       if (live.stopped) return false;
-      const decision = decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: ownDirs });
+      const decision = decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: ownDirs, readableDirs: records });
       if (decision.kind === "deny") return false;
       if (decision.kind === "allow") return true;
       return askYou(decision.approval);

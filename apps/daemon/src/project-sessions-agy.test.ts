@@ -159,6 +159,25 @@ test("a command that cds and builds elsewhere in its list may still keep a scrip
   expect(h.lines(id).at(-1)?.body).toBe("Wrote it.");
 });
 
+test("agy reads Claude Code's session records as any folder outside; a write there still stops the turn", async () => {
+  // As agy ran it on 2026-11-23, asked why Claude's context showed 200k.
+  const command = `python3 -c '\nimport glob, os\nfiles = sorted(glob.glob(os.path.expanduser("~/.claude/projects/*/*.jsonl")), key=os.path.getmtime, reverse=True)[:5]\nfor f in files:\n    print(f)\n'`;
+  const h = start([
+    { prompts: [[{ tool: { kind: "execute", title: "transcripts", rawInput: { CommandLine: command } } }, { tool: { kind: "read", title: "a.jsonl", rawInput: { AbsolutePath: join(homedir(), ".claude", "projects", "-x", "a.jsonl") } } }, { say: "Read them." }]] },
+    { prompts: [[{ tool: { kind: "edit", title: "a.jsonl", rawInput: { Path: join(homedir(), ".claude", "projects", "-x", "a.jsonl"), Content: "{}" } } }, { say: "Changed it." }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "why 200k?");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(false);
+  expect(h.lines(id).at(-1)?.body).toBe("Read them.");
+  await h.say(id, "fix the file");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  expect(h.lines(id).at(-1)?.body).toBe("Antigravity 没先问就做了「a.jsonl」（本机 Agent 自己的设置和凭据碰不得），这一轮停在这里；那一步可能已经执行了");
+});
+
 test("what agy asks about is answered by the rules, on a card under ask first", async () => {
   const h = start([{ prompts: [[{ ask: { kind: "execute", title: "npm test", rawInput: { CommandLine: "npm test" } } }, { say: "Tested." }]] }]);
   h.store.patchSettings({ permission_mode: "ask_first" });

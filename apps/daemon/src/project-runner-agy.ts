@@ -21,7 +21,7 @@ import { acpContextUsage, agentContextWindow } from "./agents/agent-context";
 import { initializeAgy } from "./agents/agy-acp";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { inMemoryDir, type AgentDecision } from "./claude-code/policy";
-import { AGENT_CREDENTIALS_REFUSAL } from "./engine/agent/credentials";
+import { AGENT_CREDENTIALS_REFUSAL, agentRecordDirs } from "./engine/agent/credentials";
 import { READ_ONLY_REFUSAL } from "./permission-gate";
 import { placeOfCall } from "./claude-code/tool-place";
 import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } from "./engine/agent/drivers/acp";
@@ -395,6 +395,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     })();
     const configDirs = store.allAgentConfigDirs();
     const home = homedir();
+    /** Your agents' conversation records: read, never written, in every mode (ADR 0095 addendum 2026-11-23). */
+    const records = agentRecordDirs(home, (runner) => store.agentConfigDirs(runner));
     const tools = new Map<string, Tool>();
     let turnText = "";
     /** What it says after a background command ended, outside any prompt: posted once it goes quiet. */
@@ -429,7 +431,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (live.mode === "plan" && action.appName === "write_file") {
         return { action, decision: { kind: "deny" as const, reason: en ? "plan mode is on: nothing changes before the plan is approved" : "计划模式开着：计划批准前什么都不改" } };
       }
-      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own }) };
+      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own, readableDirs: records }) };
     };
 
     const ended = (tool: Tool, ok: boolean, exitCode?: number | null) => {

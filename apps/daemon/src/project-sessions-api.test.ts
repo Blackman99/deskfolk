@@ -262,7 +262,7 @@ test("read-only refuses a write with no card, and Claude Code's credentials are 
   expect(outcomes).toEqual([false, false]);
 });
 
-test("Claude Code's memory of the project opens with its file tools, by the mode; its transcripts and other projects' memory stay shut", async () => {
+test("Claude Code's memory of the project opens with its file tools, by the mode; its transcripts and other projects' memory are read, never written, and a command stays out", async () => {
   const outcomes: boolean[] = [];
   const projects = join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects");
   const h = start(async ({ useTool, options }) => {
@@ -272,13 +272,14 @@ test("Claude Code's memory of the project opens with its file tools, by the mode
     outcomes.push(await useTool("Read", { file_path: join(memory, "..", "own-1.jsonl") }));
     outcomes.push(await useTool("Read", { file_path: join(projects, "-somewhere-else", "memory", "MEMORY.md") }));
     outcomes.push(await useTool("Bash", { command: `cat ${join(memory, "MEMORY.md")}` }));
+    outcomes.push(await useTool("Read", { file_path: join(projects, "..", "settings.json") }));
     return "好";
   });
   h.store.patchSettings({ permission_mode: "read_only" });
   const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
   await h.say(id, "看看记忆");
   await h.until(async () => (await h.run(id))?.status === "completed");
-  expect(outcomes).toEqual([true, false, false, false, false]);
+  expect(outcomes).toEqual([true, false, true, true, false, false]);
 });
 
 test("Stop ends a run waiting on you; your next line starts a new one", async () => {

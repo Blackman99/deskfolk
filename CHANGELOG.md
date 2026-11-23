@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A project session's agent can read your agents' session records
+
+- Asked why a Claude session showed a 200k context, an Antigravity project session ran a read-only script over the newest Claude Code session files in `~/.claude/projects`, and the turn was stopped: your agents' own settings and credentials are off limits. The app counted each agent's whole home folder as its settings and sign-in, the conversation records kept there included; Claude Code in a project session was refused the same files.
+- Now every project session's agent (Claude Code, Codex, Antigravity, Grok) reads your agents' session records: Claude Code's `projects/` and Grok's `sessions/`, in the default folders and in each account folder listed in Settings. Claude Code reads them with Read, Glob and Grep; the other agents' commands may name them too and go by the permission mode as any command does.
+- They are opened for reading only: writing a file there is still refused in every mode, and the settings and sign-in beside them (`settings.json`, `.credentials.json`, `~/.claude.json`, Grok's `auth.json`), a link leading out, or a `..` climbing out stay off limits. Bots are unchanged.
+
 ### UI polish across desktop and mobile
 
 - **Visual clarity and dark mode**: dialogs and drag previews now use themed shadow tokens with a subtle rim in dark mode; waiting-for-you count badges use higher-contrast backgrounds (`bg-warn-text`) in light mode; code blocks and chips inside your own message bubbles now derive from `--you-text` so light custom bubble colours stay readable; the Task Map's empty state wears a themed pill over dark night skies; flow-board anomaly cards translate `call_failed` / `interrupted` into readable copy and clear wrapped bottom toolbars.

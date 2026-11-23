@@ -48,6 +48,13 @@ export type ActionContext = {
    * permission mode. A command may name them only where it cannot leave them (`withoutOpenDirs`).
    */
   openDirs?: string[];
+  /**
+   * Folders this session may read, and only read, wherever they are: your agents' conversation
+   * records (`agentRecordDirs`, ADR 0095 addendum 2026-11-23). A file tool's read there runs, a
+   * write is refused as the rest of an agent's folder is. A command may name them where it cannot
+   * leave them, as an open folder, and then goes by the permission mode as any command does.
+   */
+  readableDirs?: string[];
 };
 
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
@@ -64,7 +71,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   if (appName === "shell") {
     const command = action.command ?? "";
     if (touchesAgentCredentials(command, home, platform, configDirs)) {
-      const rest = withoutOpenDirs(command, ctx.openDirs ?? [], home, platform, (abs) => inMemoryDir(abs, ctx.openDirs ?? [], host));
+      const open = [...(ctx.openDirs ?? []), ...(ctx.readableDirs ?? [])];
+      const rest = withoutOpenDirs(command, open, home, platform, (abs) => inMemoryDir(abs, open, host));
       if (rest === null || touchesAgentCredentials(rest, home, platform, configDirs)) {
         return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
       }
@@ -83,7 +91,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   for (const raw of named) {
     const abs = anchorAt(action.cwd, expandHome(raw, home, platform), platform);
     const spellings = [abs, ...(platform === "win32" ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
-    const open = spellings.every((path) => inMemoryDir(path, ctx.openDirs ?? [], host));
+    const open = spellings.every((path) => inMemoryDir(path, ctx.openDirs ?? [], host))
+      || (!writes && spellings.every((path) => inMemoryDir(path, ctx.readableDirs ?? [], host)));
     if (!open && spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs))) {
       return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     }

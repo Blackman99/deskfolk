@@ -32,6 +32,7 @@ import { GROK_HIDDEN_COMMANDS, GROK_HOOK_ID, grokCommandsOf, grokHome, grokHooks
 import type { ResolvedAgent } from "./agents/runtime";
 import { classifyAcpError, offers } from "./engine/agent/drivers/acp";
 import { rpcPeer, RpcError, type RpcPeer } from "./engine/agent/jsonrpc";
+import { agentRecordDirs } from "./engine/agent/credentials";
 import { decideAction, type AppAction } from "./engine/agent/policy";
 import { agyContentOf, agyQuestionsOf } from "./project-runner-agy";
 import { LIMIT_GUESS_MS, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
@@ -328,7 +329,9 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
     })();
     const configDirs = store.allAgentConfigDirs();
     const home = homedir();
-    const signIn = live.configDir ? `GROK_HOME=${shellQuote(live.configDir)} grok login` : "grok login";
+    /** Your agents' conversation records: read, never written, in every mode (ADR 0095 addendum 2026-11-23). */
+    const records = agentRecordDirs(home, (runner) => store.agentConfigDirs(runner));
+    const signIn =live.configDir ? `GROK_HOME=${shellQuote(live.configDir)} grok login` : "grok login";
     let turnText = "";
     /** What it says in a turn of its own, after something in the background ended: posted when that turn ends. */
     let selfText = "";
@@ -364,7 +367,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         if (planning) return { kind: "deny" as const, reason: en ? "plan mode is on: nothing changes before the plan is approved" : "计划模式开着：计划批准前什么都不改" };
         return gateChange(permission, { kind: "allow", effect: true, appName: "other" }, { kind_key: TOOL_KIND, target: action.vendorTool, summary: `${TOOL_KIND} ${action.vendorTool}` });
       }
-      return decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own(sessionDir ? [sessionDir] : []) });
+      return decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own(sessionDir ? [sessionDir] : []), readableDirs: records });
     };
 
     /** Holds a call on your card; past `holdMs` Grok is told it waits, and a later yes lets its next try through. */

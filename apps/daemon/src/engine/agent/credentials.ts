@@ -5,7 +5,7 @@
  * you letting one agent read another's (or its own) credentials. Pure, like the rest of the policy:
  * home, platform and the listed account directories come in, so the rules are tested on a fake disk.
  */
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 import { asksKeychainForSecret, isKeychainPath } from "../../keychains";
 import { isAbsoluteHostPath, isWithinPath, workspaceRelative } from "../../workspace-paths";
 
@@ -71,6 +71,22 @@ export function isAgentCredentialPath(abs: string, home: string, platform: NodeJ
 function ownReadableIn(dir: string, norm: string, platform: NodeJS.Platform): boolean {
   const base = dir.replace(platform === "win32" ? /[\\/]+$/ : /\/+$/, "");
   return isWithinPath(`${base}${platform === "win32" ? "\\" : "/"}bundled`, norm, platform);
+}
+
+/**
+ * Where your local agents keep what was said and done, in each one's own home and in every account
+ * directory you listed (`accounts`): Claude Code's `projects` (each session's transcript, its
+ * subagents' and tool results, its memory of each project) and Grok's `sessions`. Records, not
+ * settings or sign-in, though they sit beside them: a project session's agent reads them, and only
+ * reads them (`readableDirs` in the policy). Codex and Antigravity keep theirs where the app has
+ * never looked, so they are not named here.
+ */
+export function agentRecordDirs(home: string, accounts: (runner: "claude_code" | "grok") => string[], platform: NodeJS.Platform = process.platform): string[] {
+  const { join } = platform === "win32" ? win32 : posix;
+  return [
+    ...[join(home, ".claude"), ...accounts("claude_code")].map((dir) => join(dir, "projects")),
+    ...[join(home, ".grok"), ...accounts("grok")].map((dir) => join(dir, "sessions")),
+  ];
 }
 
 /** What an agent may read of its own install without a card (Grok's shipped skills). */
