@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { agyServesAcp, agyTooOld } from "./agents/agy-version";
 import { estimateAgentCost } from "./agents/agent-prices";
+import { acpContextUsage, agentContextWindow } from "./agents/agent-context";
 import { initializeAgy } from "./agents/agy-acp";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { inMemoryDir, type AgentDecision } from "./claude-code/policy";
@@ -406,6 +407,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     /** Read through a call: TypeScript cannot see the notification handler set it. */
     const planned = (): { path: string; content: string } | null => plan;
     let model: string | null = project.model;
+    /** Whether `agy` reported context occupancy directly via `usage_update` during the current prompt. */
+    let sawUsageUpdate = false;
     /** While a resumed session is replayed (`session/load`), what it replays is history, not this run. */
     let replaying = false;
 
@@ -552,6 +555,14 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         case "config_option_update":
           if (Array.isArray(u.configOptions)) live.configOptions = u.configOptions as Array<Record<string, unknown>>;
           return;
+        case "usage_update": {
+          const ctx = acpContextUsage(u, model);
+          if (ctx) {
+            sawUsageUpdate = true;
+            store.recordProjectContext(live.sessionId, ctx);
+          }
+          return;
+        }
       }
     });
 
@@ -644,6 +655,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         turnText = "";
         overstep = null;
         plan = null;
+        sawUsageUpdate = false;
         if (line.command === "compact") update(live.runId, { activity: COMPACTING[en ? "en" : "zh"] });
         live.prompting = true;
         let result: { stopReason?: string; usage?: Record<string, number> } | null = null;
@@ -705,6 +717,9 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       const bill = (usage: Record<string, number> | undefined) => {
         const used = usageOf(usage);
         if (!used) return;
+        if (!sawUsageUpdate && used.input > 0) {
+          store.recordProjectContext(live.sessionId, { used: used.input, limit: agentContextWindow(model), model });
+        }
         try {
           store.insertSpend({
             kind: "turn", purpose: "project", sessionId: live.sessionId, botId: null, turnId: live.runId, providerId: "", providerName: "Antigravity",

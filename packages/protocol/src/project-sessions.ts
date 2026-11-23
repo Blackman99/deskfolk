@@ -158,6 +158,39 @@ export type ConsultMember = { agent: ProjectAgent; model: string | null; effort:
  */
 export type ProjectConsultSetting = { on: boolean; members: ConsultMember[] };
 
+/**
+ * How much of the model's context window a project session's conversation fills, as the agent last
+ * reported it: `used` is the latest prompt size in tokens (uncached input + cache read + cache
+ * write), `limit` is the model's context window in tokens (null when the agent did not report one
+ * and the model is unknown), and `model` is the model it ran on (null when unknown).
+ */
+export type ProjectContextUsage = {
+  used: number;
+  limit: number | null;
+  model?: string | null;
+};
+
+/**
+ * Context usage as stored or sent: a JSON string or an object. Null for anything invalid or empty.
+ */
+export function parseProjectContext(value: unknown): ProjectContextUsage | null {
+  let raw: unknown = value;
+  if (typeof value === "string") {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { used, limit, model } = raw as { used?: unknown; limit?: unknown; model?: unknown };
+  if (typeof used !== "number" || !Number.isFinite(used) || used < 0) return null;
+  const cleanLimit = typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.round(limit) : null;
+  if (limit !== undefined && limit !== null && cleanLimit === null) return null;
+  const cleanModel = typeof model === "string" && model.trim() ? model.trim() : null;
+  return { used: Math.round(used), limit: cleanLimit, ...(cleanModel !== null ? { model: cleanModel } : {}) };
+}
+
 /** At most this many consultants on the switch at once. */
 export const CONSULT_MEMBERS_MAX = 3;
 

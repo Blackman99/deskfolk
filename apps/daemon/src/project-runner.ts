@@ -28,6 +28,7 @@ import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "./claude-code/account";
 import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
+import { agentContextWindow, claudeAssistantPromptTokens, claudeResultContextWindow } from "./agents/agent-context";
 import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage, zodShape, type AgentToolBridge } from "./engine/agent-runner";
 import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from "./project-consult";
@@ -668,6 +669,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     };
     let settling: ReturnType<typeof setTimeout> | null = null;
     let recordedSession: string | null = null;
+    // Current context window size and latest main-agent prompt occupancy for this run.
+    let contextWindow: number | null = project.context?.limit ?? null;
+    let lastPromptTokens: number | null = null;
     try {
       for await (const message of session) {
         if (live.stopped) break;
@@ -724,6 +728,11 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
             }
           }
           if (message.parent_tool_use_id) continue;
+          const promptTokens = claudeAssistantPromptTokens(message.message);
+          if (promptTokens !== null) {
+            lastPromptTokens = promptTokens;
+            store.recordProjectContext(live.sessionId, { used: promptTokens, limit: contextWindow ?? agentContextWindow(models.main), model: models.main });
+          }
           const blocks = Array.isArray(message.message.content) ? message.message.content : [];
           const text = blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
           const error = (message as { error?: string }).error;
@@ -751,6 +760,17 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           live.sent = live.sent.filter((line) => !answered.includes(line));
           const command = answered.find((line) => line.command)?.command ?? null;
           bill(live, message, billed, models.main);
+          const reportedWindow = claudeResultContextWindow(message, models.main);
+          if (reportedWindow !== null) contextWindow = reportedWindow;
+          if (command === "clear") {
+            lastPromptTokens = null;
+            store.recordProjectContext(live.sessionId, null);
+          } else {
+            const used = lastPromptTokens ?? claudeAssistantPromptTokens(message);
+            if (used !== null) {
+              store.recordProjectContext(live.sessionId, { used, limit: contextWindow ?? agentContextWindow(models.main), model: models.main });
+            }
+          }
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
             if (limit && !limit.carried) limitHit = true;

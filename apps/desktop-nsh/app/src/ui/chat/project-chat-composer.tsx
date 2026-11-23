@@ -28,6 +28,7 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentTune } from "./AgentTune";
 import { ConsultPill } from "./ConsultPill";
+import { ProjectContextPill } from "./ProjectContextPill";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { DropVeil, pickInto, stageUris, type ReadUris } from "./composer-drop";
 import type { ComposerEditorHandle } from "./ComposerEditor";
@@ -170,6 +171,7 @@ export function ProjectComposer(props: {
   cleanup(off);
 
   const docked = settled(() => width() > 0 && width() <= 480);
+  const compact = settled(() => width() > 0 && width() <= 440);
   const edge = () => (width() <= 680 ? 12 : 24);
   const refused = () => {
     if (view().sendRefused === "too_many_files") return t().composer.tooManyFiles;
@@ -283,6 +285,7 @@ export function ProjectComposer(props: {
               />
             </View>
             <View class="flex-1" />
+            <ProjectContextPill context={props.selected.project_context} compact={compact()} />
             <If when={voiceOffered() || voice.busy}>
               <VoiceButton voice={voice} disabled={!connected()} />
             </If>

@@ -21,6 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { estimateAgentCost } from "./agents/agent-prices";
+import { acpContextUsage, agentContextWindow } from "./agents/agent-context";
 import { tildeDir } from "./claude-code/account";
 import { shellQuote } from "./agents/status";
 import { gateChange, inMemoryDir } from "./claude-code/policy";
@@ -332,6 +333,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
     /** What it says in a turn of its own, after something in the background ended: posted when that turn ends. */
     let selfText = "";
     let model: string | null = project.model;
+    let sawUsageUpdate = false;
     let configOptions: Array<Record<string, unknown>> = [];
     /** The run's main session folder: its plan is written there. */
     const mainDir = () => (live.acpSession ? grokSessionDir(live.configDir, project.dir, live.acpSession, home) : null);
@@ -519,6 +521,13 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       const cached = num("cachedReadTokens");
       if (input + output === 0) return;
       const used = usage.modelUsage && typeof usage.modelUsage === "object" ? Object.keys(usage.modelUsage as object)[0] ?? null : null;
+      if (sessionId === live.acpSession && !sawUsageUpdate) {
+        const ctxTokens = num("contextTokens") || input;
+        const reportedWindow = num("contextWindow") || num("modelContextWindow") || null;
+        if (ctxTokens > 0) {
+          store.recordProjectContext(live.sessionId, { used: ctxTokens, limit: reportedWindow ?? agentContextWindow(used ?? model), model: used ?? model });
+        }
+      }
       const reported = typeof usage.costUsdTicks === "number" && usage.costIsPartial !== true ? usage.costUsdTicks : null;
       try {
         store.insertSpend({
@@ -584,6 +593,15 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         case "config_option_update":
           if (mine && Array.isArray(u.configOptions)) configOptions = u.configOptions as Array<Record<string, unknown>>;
           return;
+        case "usage_update": {
+          if (!mine) return;
+          const ctx = acpContextUsage(u, model);
+          if (ctx) {
+            sawUsageUpdate = true;
+            store.recordProjectContext(live.sessionId, ctx);
+          }
+          return;
+        }
       }
     };
 
@@ -873,6 +891,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
       /** One prompt: its reply posted. False when the run ends here. */
       const prompt = async (line: Queued): Promise<boolean> => {
         turnText = "";
+        sawUsageUpdate = false;
         if (line.command === "compact") update(live.runId, { activity: COMPACTING[en ? "en" : "zh"] });
         live.inTurn = line.messageId ? [line.messageId] : [];
         live.prompting = true;

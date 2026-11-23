@@ -434,6 +434,7 @@ export class Store {
   readonly projectOf = this.bind(projectSessions.projectOf);
   readonly projectDirs = this.bind(projectSessions.projectDirs);
   readonly recordProjectAgentSession = this.bind(projectSessions.recordProjectAgentSession);
+  readonly recordProjectContext = this.bind(projectSessions.recordProjectContext);
   readonly knownAgentSessions = this.bind(projectSessions.knownAgentSessions);
   readonly projectPermissionMode = this.bind(projectSessions.projectPermissionMode);
   readonly consultantsOf = this.bind(projectSessions.consultantsOf);

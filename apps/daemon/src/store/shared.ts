@@ -173,6 +173,8 @@ export type SessionRow = {
   project_parent_id?: string | null;
   /** JSON as stored; read with `parseConsultSetting`. */
   project_consult?: string | null;
+  /** JSON as stored; read with `parseProjectContext`. */
+  project_context?: string | null;
   created_at: string;
   updated_at: string;
 };

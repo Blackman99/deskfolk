@@ -207,6 +207,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_parent_id TEXT,
   -- The composer's consultant switch (ADR 0116 addendum 2026-11-23): JSON ProjectConsultSetting.
   project_consult TEXT,
+  -- The conversation's current context window usage: JSON ProjectContextUsage.
+  project_context TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

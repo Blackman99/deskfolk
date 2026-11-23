@@ -481,6 +481,7 @@ export class SessionHistory {
                     project_effort: detail.project_effort !== undefined ? detail.project_effort : (s.project_effort ?? null),
                     project_mode: detail.project_mode !== undefined ? detail.project_mode : (s.project_mode ?? null),
                     project_consult: detail.project_consult !== undefined ? detail.project_consult : (s.project_consult ?? null),
+                    project_context: detail.project_context !== undefined ? detail.project_context : (s.project_context ?? null),
                   }
                 : {}),
             }

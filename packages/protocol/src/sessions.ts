@@ -1,7 +1,7 @@
 import type { USER_MEMBER } from "./constants.ts";
 import type { Message } from "./messages.ts";
 import type { ListPage } from "./runtime.ts";
-import type { ProjectAgent, ProjectAgentMode, ProjectConsultSetting } from "./project-sessions.ts";
+import type { ProjectAgent, ProjectAgentMode, ProjectConsultSetting, ProjectContextUsage } from "./project-sessions.ts";
 
 /** A project session (ADR 0095) is you and a local agent in a directory, with no Bot. */
 export type SessionKind = "direct" | "group" | "project";
@@ -92,6 +92,11 @@ export type Session = {
    * talked over with its members first. Null when never set; absent from a daemon older than that.
    */
   project_consult?: ProjectConsultSetting | null;
+  /**
+   * How much of the model's context window this project session currently fills, as the agent last
+   * reported it. Null before its first run or after clearing/starting over; absent from an older daemon.
+   */
+  project_context?: ProjectContextUsage | null;
   created_at: string;
   updated_at: string;
 };

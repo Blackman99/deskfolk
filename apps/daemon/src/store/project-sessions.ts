@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isConsultTask, isProjectAgent, parseConsultSetting, type ProjectConsultSetting, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type PermissionMode, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isConsultTask, isProjectAgent, parseConsultSetting, parseProjectContext, type ProjectConsultSetting, type ProjectContextUsage, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type PermissionMode, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -53,7 +53,7 @@ export function migrateProjectSessions(db: Database): void {
     }
   }
   const names = db.query<{ name: string }, []>(`PRAGMA table_info(sessions)`).all().map((row) => row.name);
-  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id", "project_consult"]) {
+  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id", "project_consult", "project_context"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
   // What a run has going beside its reply (ADR 0095, 25). A table made before them has neither.
@@ -80,6 +80,8 @@ export type ProjectOf = {
   parentId: string | null;
   /** The composer's consultant switch (ADR 0116 addendum 2026-11-23); null when never set. */
   consult: ProjectConsultSetting | null;
+  /** How much of the model's context window the session currently fills; null when not yet known. */
+  context: ProjectContextUsage | null;
 };
 
 /** Every project session's directory: where, besides the workspace, the app may save a file. */
@@ -93,15 +95,15 @@ export function projectDirs(ctx: StoreContext): string[] {
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
-    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null; project_parent_id: string | null; project_consult: string | null }, [string]>(
-      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode, project_parent_id, project_consult FROM sessions WHERE id = ?`,
+    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null; project_parent_id: string | null; project_consult: string | null; project_context: string | null }, [string]>(
+      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode, project_parent_id, project_consult, project_context FROM sessions WHERE id = ?`,
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
   return { dir: row.project_dir, agent: isProjectAgent(row.project_agent) ? row.project_agent : "claude_code", configDir: row.project_config_dir,
     agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
     effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null, parentId: row.project_parent_id,
-    consult: parseConsultSetting(row.project_consult) };
+    consult: parseConsultSetting(row.project_consult), context: parseProjectContext(row.project_context) };
 }
 
 /**
@@ -183,13 +185,26 @@ export function tuneProjectSession(ctx: StoreContext, sessionId: string, change:
  * carried on (Codex's `/new`), as clearing the history does.
  */
 export function recordProjectAgentSession(ctx: StoreContext, sessionId: string, agentSession: string | null, startOver = false): void {
-  ctx.db.run(`UPDATE sessions SET project_agent_session = ?${startOver ? ", project_source = NULL" : ""} WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
+  ctx.db.run(`UPDATE sessions SET project_agent_session = ?${startOver ? ", project_source = NULL, project_context = NULL" : ""} WHERE id = ? AND kind = 'project'`, [agentSession, sessionId]);
   const project = agentSession ? projectOf(ctx, sessionId) : null;
   if (!project?.parentId) return;
   const line = `${project.agent}:${agentSession}`;
   const kept = consultedSessions(ctx);
   if (kept.includes(line)) return;
   setSetting(ctx, CONSULTED_KEY, [...kept, line].slice(-CONSULTED_KEEP).join("\n"));
+}
+
+/**
+ * Updates how much of the model's context window a project session currently fills; null clears it
+ * (after `/clear` or starting a new conversation). Skips writing when unchanged so no redundant
+ * `session.upsert` event is emitted.
+ */
+export function recordProjectContext(ctx: StoreContext, sessionId: string, context: ProjectContextUsage | null): void {
+  const clean = context ? parseProjectContext(context) : null;
+  const serialized = clean ? JSON.stringify(clean) : null;
+  const existing = ctx.db.query<{ project_context: string | null }, [string]>(`SELECT project_context FROM sessions WHERE id = ? AND kind = 'project'`).get(sessionId);
+  if (!existing || existing.project_context === serialized) return;
+  ctx.db.run(`UPDATE sessions SET project_context = ? WHERE id = ? AND kind = 'project'`, [serialized, sessionId]);
 }
 
 /**

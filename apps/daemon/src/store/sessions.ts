@@ -9,6 +9,7 @@ import {
   type SessionWaitingOnYou,
   type Turn,
   parseConsultSetting,
+  parseProjectContext,
 } from "@real-bot/protocol";
 import { consultantsOf } from "./project-sessions";
 import { incomingPlaybookId } from "./playbooks";
@@ -155,6 +156,7 @@ export function listSessions(ctx: StoreContext): SessionSummary[] {
     .map((s) => ({
       ...s,
       project_consult: parseConsultSetting(s.project_consult),
+      project_context: parseProjectContext(s.project_context),
       last_read_at: s.last_read_at ?? null,
       archived_at: s.archived_at ?? null,
       entry_message_id: entries.get(s.id) ?? null,
@@ -201,6 +203,7 @@ export function getSession(ctx: StoreContext, id: string, opts: { messageLimit?:
   return {
     ...session,
     project_consult: parseConsultSetting(session.project_consult),
+    project_context: parseProjectContext(session.project_context),
     last_read_at: session.last_read_at ?? null,
     archived_at: session.archived_at ?? null,
     entry_message_id: entryMessageIds(ctx, id).get(id) ?? null,
@@ -521,7 +524,7 @@ export function clearSessionMessages(ctx: StoreContext, id: string, opts: { eras
     ctx.db.run(`UPDATE sessions SET last_read_at = ?, updated_at = ? WHERE id = ?`, [now, now, id]);
     // A project session starts over in its directory (ADR 0095): its agent's next run is a new session.
     ctx.db.run(`DELETE FROM agent_runs WHERE session_id = ?`, [id]);
-    ctx.db.run(`UPDATE sessions SET project_agent_session = NULL, project_source = NULL WHERE id = ? AND kind = 'project'`, [id]);
+    ctx.db.run(`UPDATE sessions SET project_agent_session = NULL, project_source = NULL, project_context = NULL WHERE id = ? AND kind = 'project'`, [id]);
     // Its consultants (ADR 0116) start over with it: the switch's note would hand the old ones back.
     for (const consultant of consultantsOf(ctx, id)) deleteSession(ctx, consultant, { eraseQuotes: false });
     return dormant;

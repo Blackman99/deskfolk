@@ -127,6 +127,9 @@ export const zh = {
   commandsNone: (agent: string) => `没有对得上的命令；回车照样发给 ${agent}。`,
   commandKeys: { move: "选择", fill: "补全", run: "执行", close: "关闭" },
   commandChoicesLabel: (command: string) => `/${command} 可以接的参数`,
+  contextLabel: "上下文占用",
+  contextHint: (used: string, limit: string, pct: string) => `上下文占用：${used} / ${limit} tokens（${pct}）`,
+  contextUsedOnlyHint: (used: string) => `上下文占用：${used} tokens`,
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -251,4 +254,7 @@ export const en: CopyShape<typeof zh> = {
   commandsNone: (agent: string) => `No command matches; Enter still sends it to ${agent}.`,
   commandKeys: { move: "Move", fill: "Fill in", run: "Run", close: "Close" },
   commandChoicesLabel: (command: string) => `What /${command} takes`,
+  contextLabel: "Context usage",
+  contextHint: (used: string, limit: string, pct: string) => `Context usage: ${used} / ${limit} tokens (${pct})`,
+  contextUsedOnlyHint: (used: string) => `Context usage: ${used} tokens`,
 };
