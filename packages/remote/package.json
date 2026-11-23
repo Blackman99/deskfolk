@@ -16,7 +16,7 @@
     "smoke:serve": "bun test/browser/serve.ts"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.4",
+    "@types/bun": "^1.4.5",
     "typescript": "^6.0.3"
   },
   "dependencies": {
