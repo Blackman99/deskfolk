@@ -800,6 +800,12 @@ test("a phone reaches the same routes", () => {
   ok({ v: 1, id, method: "GET", path: "/v1/runtime/claude-code/models" });
   expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { effort: "huge" } })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: {} })).toThrow();
+  // The consultant switch (ADR 0116 addendum 2026-11-23): at most three members, each an agent the app runs.
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { consult: { on: true, members: [{ agent: "codex", model: "gpt-5.6-terra", effort: "high" }] } } });
+  ok({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { consult: null } });
+  const four = Array.from({ length: 4 }, () => ({ agent: "grok", model: null, effort: null }));
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { consult: { on: true, members: four } } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "PATCH", path: `/v1/project-sessions/${ulid()}`, body: { consult: { on: true, members: [{ agent: "gemini" }] } } })).toThrow();
   ok({ v: 1, id, method: "PATCH", path: `/v1/sessions/${ulid()}`, body: { name: "登录修复" } });
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: `/v1/agent-runs/${ulid()}/delete` })).toThrow();
 });

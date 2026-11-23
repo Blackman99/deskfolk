@@ -4,6 +4,7 @@
  * names and places its calls take on the task map, and starting its process recorded and killed
  * with the run.
  */
+import { consultBrief } from "./project-consult-brief";
 import { spawn, type ChildProcess } from "node:child_process";
 import { statSync } from "node:fs";
 import type { ClaudeCodeCommand, Message } from "@real-bot/protocol";
@@ -64,6 +65,8 @@ function pictureBlock(abs: string, name: string): Block | null {
 /** Your line as an ACP agent reads it: its pictures first, then your words, any other file by its path; annotations spelled out after. */
 export function lineBlocks(store: Store, message: Message, en: boolean): Block[] {
   const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
+  // The consultant switch's note, when it is on (ADR 0116 addendum 2026-11-23).
+  const brief = consultBrief(store, message, en);
   const pictures: Block[] = [];
   const named: string[] = [];
   for (const att of message.attachments) {
@@ -78,7 +81,7 @@ export function lineBlocks(store: Store, message: Message, en: boolean): Block[]
     else named.push(`${en ? "Attached: " : "附件："}${abs}`);
   }
   for (const crop of notes?.crops ?? []) pictures.push({ type: "image", mimeType: crop.mime, data: Buffer.from(crop.bytes).toString("base64") });
-  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
+  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? "", brief ?? ""].filter(Boolean).join("\n\n");
   return [...pictures, ...(text || pictures.length === 0 ? [{ type: "text" as const, text: text || message.body }] : [])];
 }
 

@@ -31,6 +31,7 @@ import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/mod
 import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage, zodShape, type AgentToolBridge } from "./engine/agent-runner";
 import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from "./project-consult";
+import { consultBrief } from "./project-consult-brief";
 import { outNote, pickClaudeAccount, seatOf, soonestBack } from "./claude-code/account-pick";
 import { LIMIT_GUESS_MS, resetMs, RESUME_MARGIN_MS } from "./engine/agent/account-switch";
 import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
@@ -252,7 +253,9 @@ function pictureOf(abs: string, att: Attachment): ImageBlock | null {
  */
 function lineContent(store: Store, message: Message, en: boolean): LineContent {
   const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
-  if (message.attachments.length === 0 && !notes) return message.body;
+  // The consultant switch's note, when it is on (ADR 0116 addendum 2026-11-23).
+  const brief = consultBrief(store, message, en);
+  if (message.attachments.length === 0 && !notes && !brief) return message.body;
   const pictures: ImageBlock[] = [];
   const named: string[] = [];
   for (const att of message.attachments) {
@@ -269,7 +272,7 @@ function lineContent(store: Store, message: Message, en: boolean): LineContent {
   for (const crop of notes?.crops ?? []) {
     pictures.push({ type: "image", source: { type: "base64", media_type: crop.mime as ImageBlock["source"]["media_type"], data: Buffer.from(crop.bytes).toString("base64") } });
   }
-  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
+  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? "", brief ?? ""].filter(Boolean).join("\n\n");
   // The API takes no empty text block: a line of pictures alone is just them.
   if (pictures.length === 0) return text || message.body;
   return text ? [...pictures, { type: "text", text }] : pictures;

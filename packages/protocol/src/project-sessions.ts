@@ -146,6 +146,53 @@ export type AgentTask = {
 };
 
 /**
+ * One consultant the composer's switch brings in (ADR 0116 addendum 2026-11-23): which agent, and
+ * the model and thinking level it runs on (null: that agent's default).
+ */
+export type ConsultMember = { agent: ProjectAgent; model: string | null; effort: string | null };
+
+/**
+ * The composer's consultant switch, a project session's own like plan mode: while `on`, every line
+ * of yours is talked over with `members` first, each answering on its own, and the agent sums them
+ * up. Off keeps the members for the next time it is turned on.
+ */
+export type ProjectConsultSetting = { on: boolean; members: ConsultMember[] };
+
+/** At most this many consultants on the switch at once. */
+export const CONSULT_MEMBERS_MAX = 3;
+
+/**
+ * The switch as stored or sent: a JSON string or an object. Null for anything that is not one —
+ * an unknown agent, too many members, a model that is not a string — or for none at all. With no
+ * members it cannot be on.
+ */
+export function parseConsultSetting(value: unknown): ProjectConsultSetting | null {
+  let raw: unknown = value;
+  if (typeof value === "string") {
+    try {
+      raw = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { on, members } = raw as { on?: unknown; members?: unknown };
+  if (typeof on !== "boolean" || !Array.isArray(members) || members.length > CONSULT_MEMBERS_MAX) return null;
+  const out: ConsultMember[] = [];
+  for (const member of members) {
+    if (!member || typeof member !== "object") return null;
+    const { agent, model, effort } = member as { agent?: unknown; model?: unknown; effort?: unknown };
+    if (!isProjectAgent(agent)) return null;
+    if (model !== undefined && model !== null && (typeof model !== "string" || !model.trim())) return null;
+    if (effort !== undefined && effort !== null && (typeof effort !== "string" || !effort.trim())) return null;
+    const next = { agent, model: typeof model === "string" ? model.trim() : null, effort: typeof effort === "string" ? effort.trim() : null };
+    // The same agent, model and level twice is one consultant.
+    if (!out.some((one) => one.agent === next.agent && one.model === next.model && one.effort === next.effort)) out.push(next);
+  }
+  return { on: on && out.length > 0, members: out };
+}
+
+/**
  * The id of a consultant's task starts so (ADR 0116): `consult_<consultant session>_<the line it was
  * asked>`, both ULIDs — within the 64 letters, digits, `_` and `-` a task id may be on the phone's relay.
  */
@@ -220,6 +267,8 @@ export type PatchProjectSessionRequest = {
    * session is carried to that account first; refused (409) while a run is going on. Claude Code only.
    */
   config_dir?: string | null;
+  /** The composer's consultant switch (ADR 0116 addendum 2026-11-23); null clears it. */
+  consult?: ProjectConsultSetting | null;
 };
 
 export type CreateProjectSessionRequest = {

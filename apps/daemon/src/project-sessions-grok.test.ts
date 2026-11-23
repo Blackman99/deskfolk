@@ -536,3 +536,16 @@ test("the model and thinking level picked are set on Grok's session; a level the
   await h.settled(id);
   expect(h.sent(1, "session/set_config_option").map((params) => [params.configId, params.value])).toEqual([["model", "grok-4.5"]]);
 });
+
+test("with the consultant switch on, the agent reads whom to ask after your line, and your line stays as typed (ADR 0116 addendum)", async () => {
+  const h = start([{ prompts: [[{ say: "ok" }]] }]);
+  const id = await h.open();
+  h.store.tuneProjectSession(id, { consult: { on: true, members: [{ agent: "codex", model: "gpt-5.6-terra", effort: null }] } });
+  await h.say(id, "看看方案");
+  await h.settled(id);
+  const blocks = h.sent(0, "session/prompt")[0]!.prompt as Array<{ type: string; text?: string }>;
+  const text = blocks.find((block) => block.type === "text")?.text ?? "";
+  expect(text).toStartWith("看看方案\n\n[参谋开着]");
+  expect(text).toContain("1. Codex · gpt-5.6-terra —— 新请： agent=codex, model=gpt-5.6-terra");
+  expect(h.lines(id)[0]!.body).toBe("看看方案");
+});

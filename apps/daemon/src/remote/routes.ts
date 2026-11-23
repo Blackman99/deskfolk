@@ -1,4 +1,4 @@
-import { ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, BUILTIN_PLAYBOOK_IDS, PLAYBOOK_DIFF_MAX, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { CONSULT_MEMBERS_MAX, ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, BUILTIN_PLAYBOOK_IDS, PLAYBOOK_DIFF_MAX, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -64,7 +64,10 @@ add("POST", "project-sessions", { agent: one(...PROJECT_AGENTS), dir: string, co
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay|commands|tasks)");
 get("project-sessions/:id/locate", { path: string }, ["path"]);
-add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)), mode: nullable(one("plan")), config_dir: nullable(string) }, [], true);
+// The consultant switch (ADR 0116 addendum 2026-11-23): at most CONSULT_MEMBERS_MAX members.
+const consultMember = object({ agent: one(...PROJECT_AGENTS), model: nullable(string), effort: nullable(effort) }, ["agent"]);
+const consultSetting: Check = v => object({ on: bool, members: list(consultMember) }, ["on", "members"])(v) && (v as { members: unknown[] }).members.length <= CONSULT_MEMBERS_MAX;
+add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)), mode: nullable(one("plan")), config_dir: nullable(string), consult: nullable(consultSetting) }, [], true);
 get("runtime/claude-code/models", { config_dir: string });
 add("POST", "agent-runs/:id/(approve|deny|stop)");
 // What it runs in the background and its subagents (ADR 0095, 25): a task opened, or ended. Claude Code names them.

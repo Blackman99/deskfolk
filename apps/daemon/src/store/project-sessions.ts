@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { isConsultTask, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type PermissionMode, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
+import { isConsultTask, isProjectAgent, parseConsultSetting, type ProjectConsultSetting, isProjectAgentMode, PROJECT_AGENT_AUTHOR, USER_MEMBER, type AgentRun, type AskAnswer, type AskSpec, type AgentRunApproval, type AgentRunStatus, type AgentRunTask, type AgentTask, type Message, type PermissionMode, type ProjectAgent, type ProjectAgentMode, type SessionDetail } from "@real-bot/protocol";
 import type { ImportedSession } from "../agents/agent-sessions";
 import { HttpError } from "../errors";
 import { isoNow, ulid } from "../ids";
@@ -53,7 +53,7 @@ export function migrateProjectSessions(db: Database): void {
     }
   }
   const names = db.query<{ name: string }, []>(`PRAGMA table_info(sessions)`).all().map((row) => row.name);
-  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id"]) {
+  for (const name of ["project_dir", "project_agent", "project_config_dir", "project_agent_session", "project_source", "project_model", "project_effort", "project_mode", "project_parent_id", "project_consult"]) {
     if (!names.includes(name)) db.run(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
   }
   // What a run has going beside its reply (ADR 0095, 25). A table made before them has neither.
@@ -78,6 +78,8 @@ export type ProjectOf = {
   mode: ProjectAgentMode | null;
   /** A consultant's (ADR 0116): the session whose agent asked it in; null for every session of yours. */
   parentId: string | null;
+  /** The composer's consultant switch (ADR 0116 addendum 2026-11-23); null when never set. */
+  consult: ProjectConsultSetting | null;
 };
 
 /** Every project session's directory: where, besides the workspace, the app may save a file. */
@@ -91,14 +93,15 @@ export function projectDirs(ctx: StoreContext): string[] {
 /** A project session's directory and agent, or null for any other conversation. */
 export function projectOf(ctx: StoreContext, sessionId: string): ProjectOf | null {
   const row = ctx.db
-    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null; project_parent_id: string | null }, [string]>(
-      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode, project_parent_id FROM sessions WHERE id = ?`,
+    .query<{ kind: string; project_dir: string | null; project_agent: string | null; project_config_dir: string | null; project_agent_session: string | null; project_source: string | null; project_model: string | null; project_effort: string | null; project_mode: string | null; project_parent_id: string | null; project_consult: string | null }, [string]>(
+      `SELECT kind, project_dir, project_agent, project_config_dir, project_agent_session, project_source, project_model, project_effort, project_mode, project_parent_id, project_consult FROM sessions WHERE id = ?`,
     )
     .get(sessionId);
   if (!row || row.kind !== "project" || !row.project_dir) return null;
   return { dir: row.project_dir, agent: isProjectAgent(row.project_agent) ? row.project_agent : "claude_code", configDir: row.project_config_dir,
     agentSession: row.project_agent_session, source: row.project_source, model: row.project_model,
-    effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null, parentId: row.project_parent_id };
+    effort: row.project_effort, mode: isProjectAgentMode(row.project_mode) ? row.project_mode : null, parentId: row.project_parent_id,
+    consult: parseConsultSetting(row.project_consult) };
 }
 
 /**
@@ -160,8 +163,13 @@ function consultedSessions(ctx: StoreContext): string[] {
  * on or off (ADR 0098), and the account its next run spends: a key left out stays, null goes back
  * to the agent's default (for the account, the daemon's own environment).
  */
-export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null }): SessionDetail {
+export function tuneProjectSession(ctx: StoreContext, sessionId: string, change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null; consult?: ProjectConsultSetting | null }): SessionDetail {
   if (!projectOf(ctx, sessionId)) throw new HttpError(404, "not_found", "not a project session");
+  // The consultant switch (ADR 0116 addendum 2026-11-23): with no members it is off.
+  if (change.consult !== undefined) {
+    const consult = change.consult ? { on: change.consult.on && change.consult.members.length > 0, members: change.consult.members } : null;
+    ctx.db.run(`UPDATE sessions SET project_consult = ? WHERE id = ? AND kind = 'project'`, [consult ? JSON.stringify(consult) : null, sessionId]);
+  }
   if (change.model !== undefined) ctx.db.run(`UPDATE sessions SET project_model = ? WHERE id = ? AND kind = 'project'`, [change.model, sessionId]);
   if (change.effort !== undefined) ctx.db.run(`UPDATE sessions SET project_effort = ? WHERE id = ? AND kind = 'project'`, [change.effort, sessionId]);
   if (change.mode !== undefined) ctx.db.run(`UPDATE sessions SET project_mode = ? WHERE id = ? AND kind = 'project'`, [change.mode, sessionId]);

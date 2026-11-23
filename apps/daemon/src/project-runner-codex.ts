@@ -42,6 +42,7 @@ import { changeVerdict } from "./permission-gate";
 import { questionDesk, type AgentQuestion, type QuestionDesk } from "./project-asks";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
 import { CONSULT_CODEX_TIMEOUT_S, CONSULT_SERVER, type ConsultDesk } from "./project-consult";
+import { consultBrief } from "./project-consult-brief";
 import type { Store } from "./store";
 
 export type CodexProjectDeps = {
@@ -132,6 +133,8 @@ function cropFile(crop: AnnotationCropBytes): string | null {
  */
 function lineInput(store: Store, message: Message, en: boolean): CodexInput[] {
   const notes = agentAnnotations(store, message.id, en ? "en" : "zh");
+  // The consultant switch's note, when it is on (ADR 0116 addendum 2026-11-23).
+  const brief = consultBrief(store, message, en);
   const pictures: CodexInput[] = [];
   const named: string[] = [];
   for (const att of message.attachments) {
@@ -148,7 +151,7 @@ function lineInput(store: Store, message: Message, en: boolean): CodexInput[] {
     const path = cropFile(crop);
     if (path) pictures.push({ type: "localImage", path });
   }
-  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? ""].filter(Boolean).join("\n\n");
+  const text = [message.body.trim() ? message.body : "", ...named, notes?.text ?? "", brief ?? ""].filter(Boolean).join("\n\n");
   return [...pictures, ...(text || pictures.length === 0 ? [{ type: "text" as const, text: text || message.body, text_elements: [] as [] }] : [])];
 }
 

@@ -1,4 +1,4 @@
-import { AGENT_KINDS, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgent, type ProjectAgentMode } from "@real-bot/protocol";
+import { AGENT_KINDS, CONSULT_MEMBERS_MAX, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, parseConsultSetting, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type ProjectConsultSetting, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgent, type ProjectAgentMode } from "@real-bot/protocol";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -186,11 +186,11 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   // while a run is still writing it. A key left out stays; null is the agent's own default.
   params = matchPath(path, "/v1/project-sessions/:id");
   if (params && method === "PATCH") {
-    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; mode?: unknown; config_dir?: unknown };
+    const body = (input.body ?? {}) as { model?: unknown; effort?: unknown; mode?: unknown; config_dir?: unknown; consult?: unknown };
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
     const caps = PROJECT_AGENT_CAPS[project.agent];
-    const change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null } = {};
+    const change: { model?: string | null; effort?: string | null; mode?: ProjectAgentMode | null; configDir?: string | null; consult?: ProjectConsultSetting | null } = {};
     if (body.model !== undefined) {
       const model = typeof body.model === "string" ? body.model.trim() : body.model;
       if (model !== null && (typeof model !== "string" || !isAgentModelName(model))) {
@@ -231,11 +231,22 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       }
       change.configDir = configDir;
     }
-    if (change.model === undefined && change.effort === undefined && change.mode === undefined && change.configDir === undefined) {
-      throw new HttpError(422, "invalid_args", "model, effort, mode or config_dir is required");
+    // The composer's consultant switch (ADR 0116 addendum 2026-11-23): a consultant has none of its own.
+    if (body.consult !== undefined) {
+      if (project.parentId) throw new HttpError(422, "invalid_args", "a consultant asks no consultant of its own");
+      const consult = body.consult === null ? null : parseConsultSetting(body.consult);
+      if (body.consult !== null && !consult) {
+        throw new HttpError(422, "invalid_args", `consult must be { on, members } with at most ${CONSULT_MEMBERS_MAX} members, each { agent, model, effort }, or null`);
+      }
+      change.consult = consult;
+    }
+    if (change.model === undefined && change.effort === undefined && change.mode === undefined && change.configDir === undefined && change.consult === undefined) {
+      throw new HttpError(422, "invalid_args", "model, effort, mode, config_dir or consult is required");
     }
     const session = store.tuneProjectSession(params.id!, change);
-    projects.tune(params.id!, change);
+    // The switch is read as each line goes in; nothing of a run going now changes with it.
+    const { consult: _consult, ...runChange } = change;
+    if (Object.keys(runChange).length > 0) projects.tune(params.id!, runChange);
     publish({ event: "session.upsert", occurred_at: occurred(), ...sessionUpsertFields(session) });
     return jsonResponse(session, 200, null);
   }

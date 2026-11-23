@@ -302,3 +302,89 @@ test("a Grok consultant's question goes to the asking agent, and its answer goes
   // One Grok run took both the question and its answer.
   expect(h.store.db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM agent_runs WHERE session_id = ?`).get(consultant)?.n).toBe(1);
 });
+
+test("the consultant switch is stored as sent, checked, and off with no members (ADR 0116 addendum)", async () => {
+  const h = start(async () => "好", async () => "好");
+  const parent = await h.session();
+  const patch = (consult: unknown) => h.call<SessionDetail & { error?: unknown }>("PATCH", `/v1/project-sessions/${parent}`, { consult });
+  const set = await patch({ on: true, members: [{ agent: "codex", model: "gpt-5.6-terra", effort: null }, { agent: "claude_code", model: "opus", effort: "high" }] });
+  expect(set.status).toBe(200);
+  expect(set.body.project_consult).toEqual({ on: true, members: [{ agent: "codex", model: "gpt-5.6-terra", effort: null }, { agent: "claude_code", model: "opus", effort: "high" }] });
+  // Listed with it, as the sidebar and the composer read it.
+  const listed = await h.call<{ items: Array<{ id: string; project_consult?: unknown }> }>("GET", "/v1/sessions");
+  expect(listed.body.items.find((item) => item.id === parent)?.project_consult).toEqual(set.body.project_consult);
+  // No members: off, whatever was sent.
+  expect((await patch({ on: true, members: [] })).body.project_consult).toEqual({ on: false, members: [] });
+  // Four is one too many; an agent the app does not run is refused.
+  const four = Array.from({ length: 4 }, () => ({ agent: "grok", model: null, effort: null }));
+  expect((await patch({ on: true, members: four })).status).toBe(422);
+  expect((await patch({ on: true, members: [{ agent: "gemini", model: null, effort: null }] })).status).toBe(422);
+  expect((await patch(null)).body.project_consult).toBeNull();
+});
+
+test("with the switch on, each line of yours reaches the agent with whom to ask; a member asked before goes on in its own consultant", async () => {
+  const h = start(async (ctx) => {
+    // The first line: the agent asks the Claude member as told, which opens its consultant.
+    if (ctx.line.startsWith("缓存放哪")) await consult(ctx, { agent: "claude_code", model: "haiku", message: "缓存放哪一层？" });
+    return "好";
+  }, async () => "服务层");
+  const parent = await h.session();
+  await h.call("PATCH", `/v1/project-sessions/${parent}`, { consult: { on: true, members: [{ agent: "claude_code", model: "haiku", effort: null }, { agent: "codex", model: null, effort: "high" }] } });
+  await h.say(parent, "缓存放哪一层？");
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  const first = h.seen.lines[0]!;
+  expect(first).toStartWith("缓存放哪一层？\n\n[参谋开着]");
+  expect(first).toContain("1. Claude Code · haiku —— 新请： agent=claude_code, model=haiku");
+  expect(first).toContain("2. Codex · high —— 新请： agent=codex, effort=high");
+  // What you said is kept as you said it.
+  expect(h.lines(parent)[0]!.body).toBe("缓存放哪一层？");
+
+  const consultant = h.store.consultantsOf(parent)[0]!;
+  await h.say(parent, "那失效呢？");
+  await h.until(() => h.seen.lines.some((line) => line.startsWith("那失效呢？")));
+  const second = h.seen.lines.find((line) => line.startsWith("那失效呢？"))!;
+  expect(second).toContain(`1. Claude Code · haiku —— 接着用 consultant=${consultant}`);
+  expect(second).toContain("2. Codex · high —— 新请： agent=codex, effort=high");
+
+  // A command goes as typed; a line that starts with a path is no command; switched off, a line goes alone.
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  await h.say(parent, "/compact");
+  await h.until(() => h.seen.lines.includes("/compact"));
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  await h.say(parent, "/Users/me/plan.md 这个怎么样");
+  await h.until(() => h.seen.lines.some((line) => line.startsWith("/Users/me/plan.md 这个怎么样\n\n[参谋开着]")));
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  await h.call("PATCH", `/v1/project-sessions/${parent}`, { consult: { on: false, members: [{ agent: "codex", model: null, effort: null }] } });
+  await h.say(parent, "就这样");
+  await h.until(() => h.seen.lines.includes("就这样"));
+});
+
+test("two members on one model at two levels each go on in a consultant of their own; clearing the history starts them over", async () => {
+  const h = start(async (ctx) => {
+    if (ctx.line.startsWith("第一句")) {
+      await Promise.all([
+        consult(ctx, { agent: "claude_code", model: "opus", effort: "high", message: "高" }),
+        consult(ctx, { agent: "claude_code", model: "opus", effort: "low", message: "低" }),
+      ]);
+    }
+    return "好";
+  }, async ({ line }) => `收到：${line.slice(-1)}`);
+  const parent = await h.session();
+  await h.call("PATCH", `/v1/project-sessions/${parent}`, { consult: { on: true, members: [{ agent: "claude_code", model: "opus", effort: "high" }, { agent: "claude_code", model: "opus", effort: "low" }, { agent: "claude_code", model: "opus", effort: "high" }] } });
+  // The same agent, model and level twice is one member.
+  expect(h.store.projectOf(parent)?.consult?.members).toHaveLength(2);
+  await h.say(parent, "第一句");
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  const [high, low] = h.store.consultantsOf(parent);
+  expect(h.store.projectOf(high!)?.effort).toBe("high");
+  expect(h.store.projectOf(low!)?.effort).toBe("low");
+  await h.say(parent, "第二句");
+  await h.until(() => h.seen.lines.some((line) => line.startsWith("第二句")));
+  const second = h.seen.lines.find((line) => line.startsWith("第二句"))!;
+  expect(second).toContain(`1. Claude Code · opus · high —— 接着用 consultant=${high}`);
+  expect(second).toContain(`2. Claude Code · opus · low —— 接着用 consultant=${low}`);
+  // Cleared, the session starts over, and so do its consultants.
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  expect((await h.call("POST", `/v1/sessions/${parent}/clear`)).status).toBe(204);
+  expect(h.store.consultantsOf(parent)).toEqual([]);
+});

@@ -866,3 +866,15 @@ test("a question Codex marks secret gets no card, only a line saying it asked; o
   await h.settled(id);
   expect(h.log(0).find((entry) => "questions" in entry)?.answer as unknown).toEqual({ answers: { one: { answers: ["随便"] }, many: { answers: ["选项 3"] } } });
 });
+
+test("with the consultant switch on, Codex reads whom to ask after your line, and your line stays as typed (ADR 0116 addendum)", async () => {
+  const h = start([{ turns: [[{ say: "ok" }]] }]);
+  const id = await h.open();
+  h.store.tuneProjectSession(id, { consult: { on: true, members: [{ agent: "grok", model: null, effort: null }] } });
+  await h.say(id, "看看方案");
+  await h.settled(id);
+  const text = (h.sent(0, "turn/start")[0]!.input as Array<{ type: string; text?: string }>).find((part) => part.type === "text")?.text ?? "";
+  expect(text).toStartWith("看看方案\n\n[参谋开着]");
+  expect(text).toContain("1. Grok —— 新请： agent=grok");
+  expect(h.lines(id)[0]!.body).toBe("看看方案");
+});

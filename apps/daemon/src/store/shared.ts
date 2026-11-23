@@ -171,6 +171,8 @@ export type SessionRow = {
   project_effort?: string | null;
   project_mode?: ProjectAgentMode | null;
   project_parent_id?: string | null;
+  /** JSON as stored; read with `parseConsultSetting`. */
+  project_consult?: string | null;
   created_at: string;
   updated_at: string;
 };

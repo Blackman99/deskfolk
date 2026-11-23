@@ -1,7 +1,7 @@
 import type { USER_MEMBER } from "./constants.ts";
 import type { Message } from "./messages.ts";
 import type { ListPage } from "./runtime.ts";
-import type { ProjectAgent, ProjectAgentMode } from "./project-sessions.ts";
+import type { ProjectAgent, ProjectAgentMode, ProjectConsultSetting } from "./project-sessions.ts";
 
 /** A project session (ADR 0095) is you and a local agent in a directory, with no Bot. */
 export type SessionKind = "direct" | "group" | "project";
@@ -87,6 +87,11 @@ export type Session = {
    * absent from a daemon older than that ADR.
    */
   project_parent_id?: string | null;
+  /**
+   * The composer's consultant switch (ADR 0116 addendum 2026-11-23): on, every line of yours is
+   * talked over with its members first. Null when never set; absent from a daemon older than that.
+   */
+  project_consult?: ProjectConsultSetting | null;
   created_at: string;
   updated_at: string;
 };
