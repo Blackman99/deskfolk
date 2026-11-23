@@ -12,6 +12,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - Each consultation is a row under that run's reply, with the agent's logo and the model, opening onto what it was asked and what it answered. Consultants are not in the sidebar or search, and they stop when you press Stop.
 - A Consult switch sits beside plan mode in the composer: choose up to three consultants (which agent, which model, what thinking level), and while it is on, every line you send has the agent ask them first, each on its own, then tell you their views and its own conclusion.
 
+### A Bot no longer says an interface change took when nothing changed
+
+- The native app has no web page's DOM and never applied custom CSS, yet Settings still took a stylesheet and the Bots' interface tools still taught them to write one, then say "done" while nothing changed. CSS can no longer be written: a Bot that tries is told it cannot, and the stylesheet page is gone from Settings › Interface. A stylesheet an earlier version saved stays stored, with one notice at the top of the page to copy or clear it.
+- The font, type size and conversation width tokens were not read by anything either, so setting them changed nothing; they now count as not taken. A desktop window reports the tokens and words the app takes to the Bots, and every window, the phone's too, reports which tokens did not take and why; a Bot that sets a token the app does not have is told right after the change. Colours and corners still change as before.
+- A fixed set of style choices comes next (corners, flat or shadowed, the conversation's width, the font); see ADR 0117.
+
 ## 0.6.0 — 2026-11-22
 
 Linux has packages again, the native app as a deb and an AppImage (a preview). On Windows, a phone pairs with Windows Hello again, and notifications, voice input, the tray and opening files work as on the Mac. Project sessions also run Antigravity and Grok, carry on a Codex session from your terminal, and their agents can ask you questions on cards. The phone's page is the desktop app's own, with its terminal and files. Signed and notarized for macOS; the Windows and Linux packages are unsigned.

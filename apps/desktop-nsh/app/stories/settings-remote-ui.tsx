@@ -36,6 +36,13 @@ export default function SettingsRemoteUi() {
   const relayInvalid = signal<HostRelayField | null>(null);
   const log = signal("");
   const handle = signal<InterfaceTabController | null>(null);
+  /** The daemon refuses any stylesheet now (ADR 0117): one an earlier version saved is shown by faking the snapshot. */
+  const fakeOldCss = signal(false);
+  const interfaceSnapshot = () => {
+    const snap = runtime.snapshot;
+    const iface = snap.interface;
+    return fakeOldCss() && iface ? { ...snap, interface: { ...iface, profile: { ...iface.profile, css: "a { color: red; }" } } } : snap;
+  };
 
   // A fake local API for the standalone remote screen card.
   const screen = signal<RemoteScreenStatus>({
@@ -140,7 +147,8 @@ export default function SettingsRemoteUi() {
         <Chip id="seed-reset" label="reset" onPress={edit({ reset: ["tokens", "behaviour", "css", "copy"], enabled: true })} />
         <Chip id="seed-copy" label="copy" onPress={edit({ copy: { zh: { "composer.send": "发出去" } } })} />
         <Chip id="seed-motion" label="motion" onPress={edit({ behaviour: { motion: "reduce" }, tokens: { light: { "--accent": "red" } } })} />
-        <Chip id="seed-css-other" label="css" onPress={edit({ css: { set: ".bot { color: blue }" } })} />
+        <Chip id="seed-css-refused" label="css" onPress={() => void edit({ css: { set: ".bot { color: blue }" } })().catch(() => {})} />
+        <Chip id="fake-old-css" label="old css" onPress={() => fakeOldCss.set(!fakeOldCss())} />
         <Chip id="read-profile" label="read" onPress={() => void readProfile()} />
         <Text testID="profile" class="text-[11px] text-ink-muted">{`profile=${profileText()}`}</Text>
         <Chip id="probe-back" label="back" onPress={() => log.set(`back:${handle()?.backFromSection()}`)} />
@@ -178,7 +186,7 @@ export default function SettingsRemoteUi() {
         </Scroll>
       </If>
       <If when={page() === "interface"}>
-        <InterfaceTab snapshot={runtime.snapshot} locale={lang()} controller={(h) => handle.set(h)} />
+        <InterfaceTab snapshot={interfaceSnapshot()} locale={lang()} controller={(h) => handle.set(h)} />
       </If>
       <ToastHost />
     </View>

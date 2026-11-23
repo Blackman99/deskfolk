@@ -14,7 +14,7 @@ import { state } from "../../lib/reactive";
  * change and report NSH's page instead of the app. Everything the original did to the document
  * comes from an `InterfaceLook` the platform hands to `start()`: painting the profile (NSH: the
  * theme's tokens), measuring the floors (NSH: the contrast of each `floor()` against its grounds),
- * the way-back key, the kind of window, and (milestone 2) the report and the catalog. Without one
+ * the way-back key, the kind of window, and what it found with the catalog (ADR 0117). Without one
  * nothing is painted or reported, and the behaviour still applies. The floor check is asynchronous
  * (views are measured), so a profile applied meanwhile wins over a stale answer. Code colours and
  * the stylesheet cache are the look's to do (none in milestone 1); glass content reads the
@@ -160,7 +160,10 @@ class InterfaceController {
         },
         floors: () => this.floorsMayHaveMoved(),
         surface: (surface) => {
+          if (surface === this.surface) return;
           this.surface = surface;
+          // Reports are kept per kind of window, and only a desktop one sends the catalog: say it again.
+          this.schedule();
         },
       }));
     }
@@ -169,10 +172,16 @@ class InterfaceController {
     return () => this.stop();
   }
 
-  /** A new connection: the api to report through, and the catalog to send again. */
+  /**
+   * A new connection: the api to report through, and the report and catalog to send again. The
+   * daemon keeps them in memory only, and a profile that did not change while it was away is not
+   * applied again, so nothing else would send them (ADR 0117).
+   */
   connect(api: InterfaceApi | null): void {
-    if (api !== this.api) this.catalogSent = false;
+    if (api === this.api) return;
+    this.catalogSent = false;
     this.api = api;
+    if (api && this.started) this.schedule();
   }
 
   private stop(): void {

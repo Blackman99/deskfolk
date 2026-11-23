@@ -55,15 +55,15 @@ async function pick(app: App, section: string) {
 test("the page opens on the behaviour with the switch over it, and one tab shows one part", async () => {
   const app = await page();
   await app.waitFor("id:interface-enabled-toggle");
-  for (const section of ["behaviour", "tokens", "css", "copy", "history"]) expect(app.shows(`id:interface-tab-${section}`)).toBe(true);
+  for (const section of ["behaviour", "tokens", "copy", "history"]) expect(app.shows(`id:interface-tab-${section}`)).toBe(true);
   expect(app.texts()).toContain(t.ui.enabled);
   expect(app.shows("id:interface-behaviour")).toBe(true);
   expect(app.shows("id:interface-tokens")).toBe(false);
   await pick(app, "tokens");
   await app.waitFor("id:interface-tokens");
   expect(app.shows("id:interface-behaviour")).toBe(false);
-  await pick(app, "css");
-  await app.waitFor("id:css-text");
+  expect(app.shows("id:interface-tab-css")).toBe(false);
+  expect(app.shows("id:interface-legacy-css")).toBe(false);
   await pick(app, "copy");
   await app.waitFor("id:interface-copy");
   await pick(app, "history");
@@ -132,31 +132,13 @@ test("a token the daemon refuses says why under the form", async () => {
   expect(app.shows("id:token-not-a-token")).toBe(false);
 });
 
-test("the stylesheet saves a second after typing stops, and shows its length", async () => {
+test("a stylesheet can no longer be written, and the page has no place for one", async () => {
   const app = await page();
-  await pick(app, "css");
-  await app.waitFor("id:css-text");
-  await app.type("id:css-text", ".a { color: red }");
-  await app.waitUntil(() => app.texts().some((text) => text.startsWith("17 字")));
-  await app.waitUntil(() => app.texts().includes(t.sidebar.autoSaved), { timeout: 6000 });
-  expect((await read(app)).css).toBe(".a { color: red }");
-  await app.press("id:css-hooks-toggle");
-  await app.waitFor("id:css-hooks");
-  expect(app.texts().some((text) => text.startsWith('[data-ui="'))).toBe(true);
-});
-
-test("a stylesheet changed elsewhere meanwhile is shown, and yours stays to copy", async () => {
-  const app = await page();
-  await pick(app, "css");
-  await app.waitFor("id:css-text");
-  await app.type("id:css-text", ".mine {}");
-  // Another editor (a Bot) changes it before this page's save, which then carries a stale revision.
-  await app.press("id:seed-css-other");
-  await app.waitFor("id:css-stale", { timeout: 6000 });
-  await app.waitUntil(() => app.value("id:css-text") === ".bot { color: blue }");
-  await app.press("id:css-copy-mine");
-  await app.waitUntil(() => (app.clipboard() ?? "").includes(".mine {}"));
-  expect((await read(app)).css).toBe(".bot { color: blue }");
+  expect(app.shows("id:css-text")).toBe(false);
+  // The daemon refuses a write of any text; the only change left to a stylesheet is clearing it.
+  await app.press("id:seed-css-refused");
+  await app.wait(300);
+  expect((await read(app)).css).toBe("");
 });
 
 test("the words you changed are listed in the language shown and put back one at a time", async () => {
@@ -205,6 +187,28 @@ test("the reports card says what each kind of window found, or that none has", a
   await app.waitFor("id:interface-reports");
   await app.waitUntil(() => app.shows("id:report-none") || app.shows("id:report-desktop"));
   if (app.shows("id:report-none")) expect(app.texts()).toContain(t.ui.report.none);
+});
+
+/** A stylesheet saved by an earlier version: one notice over the parts, with Copy and Clear. */
+async function oldStylesheetNotice(app: App): Promise<void> {
+  expect(app.shows("id:interface-legacy-css")).toBe(false);
+  await app.press("id:fake-old-css");
+  await app.waitFor("id:interface-legacy-css");
+  expect(app.texts()).toContain(t.ui.legacyCss.title);
+  expect(app.shows("id:interface-legacy-css-copy")).toBe(true);
+  expect(app.shows("id:interface-legacy-css-clear")).toBe(true);
+  await app.press("id:fake-old-css");
+  await app.waitUntil(() => !app.shows("id:interface-legacy-css"));
+}
+
+test("a stylesheet an earlier version saved gets a notice to copy or clear it", async () => {
+  await oldStylesheetNotice(await page());
+});
+
+test("on a phone the old stylesheet's notice sits over the list", async () => {
+  const app = await page({ width: 600, height: 900 });
+  await app.waitFor("id:section-tokens");
+  await oldStylesheetNotice(app);
 });
 
 test("on a phone the parts are a list, each opened as a page of its own and closed by Back", async () => {

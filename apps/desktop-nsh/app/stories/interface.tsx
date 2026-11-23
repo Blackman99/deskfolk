@@ -5,7 +5,7 @@
  * time, a changed word, why the window shows the default, the floors it failed, what the theme took.
  * The buttons on top change the profile the daemon keeps (one per run: tests put it back).
  */
-import { Scroll, Text, token, View } from "nsh";
+import { Scroll, signal, Text, token, View } from "nsh";
 import type { InterfacePatch } from "@real-bot/protocol";
 import { copy, runtime } from "../src/runtime";
 import { formatMessageTime } from "../src/m/chat/chat-view.ts";
@@ -13,7 +13,7 @@ import { interfaceBehaviour, interfaceController } from "../src/m/interface/cont
 import { Button } from "../src/ui/Button";
 import { SendButton } from "../src/ui/chat/SendButton";
 import { floorCount } from "../src/ui/interface/floor";
-import { wireInterfaceHere } from "../src/ui/interface/look";
+import { nshLook, tokensNotTaken, wireInterfaceHere } from "../src/ui/interface/look";
 import { reduceMotion } from "../src/ui/interface/motion";
 import { APP_THEME, roundTrip, themeOutcome } from "../src/ui/interface/theme";
 import { ToastHost } from "../src/ui/ToastHost";
@@ -47,6 +47,13 @@ export default function InterfaceStory() {
   });
   const edit = (patch: InterfacePatch) => () => void runtime.client?.patchInterface({ patch, reason: "interface story" });
   const line = (id: string, text: () => string) => <Text testID={id} class="text-[12px] text-ink">{text()}</Text>;
+  /** What the daemon holds from this window's reports (ADR 0117), read on demand. */
+  const reports = signal("");
+  const readReports = async () => {
+    reports.set("");
+    const state = await runtime.client?.getInterface();
+    reports.set(JSON.stringify((state?.reports ?? []).map((report) => [report.surface, report.applied, report.bad_tokens])));
+  };
 
   return (
     <View class="flex-1 min-h-0 bg-bg">
@@ -57,8 +64,10 @@ export default function InterfaceStory() {
         <Chip id="apply-hide-approve" label="hide Allow" onPress={edit(RESET_THEN({ tokens: { light: { "--on-accent": "#146a7c" } } }))} />
         <Chip id="apply-dark-break" label="hide Stop in dark" onPress={edit(RESET_THEN({ tokens: { dark: { "--btn-secondary-bg": APP_THEME.cssVars.dark.ink! } } }))} />
         <Chip id="apply-unreadable" label="unreadable" onPress={edit(RESET_THEN({ tokens: { light: { "--pane": "banana", "--accent": "#7040c0" } } }))} />
+        <Chip id="apply-font" label="font" onPress={edit(RESET_THEN({ tokens: { both: { "--font": "Georgia, serif", "--accent": "#7040c0" } } }))} />
         <Chip id="apply-off" label="off" onPress={edit({ enabled: false })} />
         <Chip id="reset" label="reset" onPress={edit(RESET)} />
+        <Chip id="read-reports" label="reports" onPress={() => void readReports()} />
       </View>
       <Scroll class="flex-1" contentClass="p-4 gap-2">
         {line("revision", () => `revision=${runtime.snapshot.interface?.revision ?? "none"}`)}
@@ -78,6 +87,17 @@ export default function InterfaceStory() {
         {line("floor-why", () => `why=${interfaceController.floorFailed.map((failure) => failure.why).join(";")}`)}
         {line("outcome", () => `outcome=${JSON.stringify(themeOutcome())}`)}
         {line("round-trip", () => `roundtrip=${roundTrip()}`)}
+        {line("reports", () => `reports=${reports()}`)}
+        {line("not-taken", () => {
+          themeOutcome();
+          return `nottaken=${JSON.stringify(tokensNotTaken(true))}`;
+        })}
+        {line("catalog", () => {
+          const catalog = nshLook.catalog!(null);
+          const has = (name: string) => catalog.tokens.some((token) => token.name === name);
+          const renamed = !catalog.tokens.some((token) => `${token.light} ${token.dark}`.includes("var(--brand)"));
+          return `catalog=accent:${has("--accent")} radius:${has("--radius-md")} brand:${has("--brand")} font:${has("--font")} body:${has("--text-body")} width:${has("--chat-max-width")} renamed:${renamed} words:${Object.keys(catalog.copy.zh).length > 100}`;
+        })}
         {line("floor-count", () => `marked=${floorCount()}`)}
         <View class="flex-row items-center gap-3 p-3 rounded-(--radius-md) bg-pane">
           <SendButton

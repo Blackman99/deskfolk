@@ -4,14 +4,17 @@
  *
  * - tokens: any design token (`--x`) the app defines, set for the light look, the dark look or both;
  * - behaviour: a fixed list of how the app works, each with the values it takes;
- * - css: a stylesheet of your own, for anything the two lists do not reach;
  * - copy: the app's own words, changed one at a time.
+ *
+ * `css`, a stylesheet of your own, was a fourth layer while the app ran in a web view. The native
+ * app has no DOM to apply one to (ADR 0117): a stylesheet already saved is kept as it was, so old
+ * revisions read and restore unchanged, but a change may only clear it.
  *
  * The defaults stay code (`tokens.css`, `copy/`); the profile only overrides. A Bot changes it when
  * you ask in a conversation (`edit_interface`), you change it in Settings › 界面, and every change is
  * a revision you can take back. What no layer may do is hide what you need to stay in charge — Stop,
  * the buttons on a card that waits for you, the way back to Settings: each window checks those after
- * applying the profile and drops the token and CSS layers where they would be hidden (`data-floor`).
+ * applying the profile and drops the token layer where it would hide one.
  */
 import type { Locale, Theme } from "./constants.ts";
 
@@ -26,16 +29,15 @@ export const INTERFACE_COPY_MAX = 500;
 export const INTERFACE_COPY_TEXT_MAX = 500;
 /** How long a change's reason may be. */
 export const INTERFACE_REASON_MAX = 500;
-/** How many changes to the stylesheet one edit may make. */
-export const INTERFACE_CSS_EDITS_MAX = 10;
 /** The newest revisions a snapshot carries, heads only. */
 export const INTERFACE_RECENT_MAX = 20;
 /** The approval card kind a Bot's interface change waits on under ask-first (a change, not a setup change). */
 export const INTERFACE_EDIT_KIND = "ui-edit";
 
 /**
- * The parts of the app a stylesheet of yours can count on: `[data-ui="…"]` stays on the same part
- * from one version to the next, unlike class names. A source test checks each one is still there.
+ * The app's main parts by stable names (ADR 0108 decision 7). They were what a stylesheet of yours
+ * aimed at (`[data-ui="…"]`) while the app ran in a web view; the native app applies no stylesheet
+ * (ADR 0117), so for now they only name the parts. A source test checks each one is still there.
  */
 export const UI_HOOKS = [
   ["sidebar", "侧栏", "the sidebar"],
@@ -129,7 +131,7 @@ export const INTERFACE_BEHAVIOUR_SPECS: Record<InterfaceBehaviourKey, { values: 
   send_key: { values: ["enter", "mod_enter"], desktopOnly: false, zh: "回车发送，或 ⌘/Ctrl+回车 发送", en: "Enter sends, or ⌘/Ctrl+Enter sends" },
   time_format: { values: ["24h", "12h"], desktopOnly: false, zh: "消息时间按 24 小时或 12 小时制", en: "Message times in 24-hour or 12-hour form" },
   motion: { values: ["system", "reduce"], desktopOnly: false, zh: "动效跟随系统，或一直减弱", en: "Motion as the system says, or always reduced" },
-  content_glass: { values: ["solid", "frosted", "clear"], desktopOnly: true, zh: "内容区透出窗口的毛玻璃：实色、磨砂或通透；只在有窗口材质的桌面上（macOS、Windows 11），菜单、弹窗、浮窗、编辑器和终端保持实色。要内容区毛玻璃就用它，别在钩子上写 backdrop-filter", en: "Whether the content cards let the window's glass through: solid, frosted or clear; only on a desktop whose window has a material (macOS, Windows 11), with menus, dialogs, floating panes, the editor and the terminal staying solid. Use this for glass content, not backdrop-filter on hooks" },
+  content_glass: { values: ["solid", "frosted", "clear"], desktopOnly: true, zh: "内容区透出窗口的毛玻璃：实色、磨砂或通透；只在有窗口材质的桌面上（macOS、Windows 11），菜单、弹窗、浮窗、编辑器和终端保持实色。要内容区毛玻璃就用它", en: "Whether the content cards let the window's glass through: solid, frosted or clear; only on a desktop whose window has a material (macOS, Windows 11), with menus, dialogs, floating panes, the editor and the terminal staying solid. This is the way to glass content" },
   code_theme: { values: "per-look", desktopOnly: false, zh: "代码高亮的配色，浅色深色各选一个：聊天代码块、命令输出和文件编辑器都用它，连同它的底色", en: "The colours code is highlighted in, one per look: chat's code blocks, command output and the file editor all take it, its background too" },
 };
 
@@ -219,9 +221,6 @@ export type InterfaceState = {
 /** `GET /v1/interface` and what its writes answer: the state, and what each kind of window last found. */
 export type InterfaceResponse = InterfaceState & { reports: InterfaceWindowReport[] };
 
-/** A change to the stylesheet: replace a passage found once, add after one, or append. */
-export type InterfaceCssEdit = { old: string; new: string } | { after: string; add: string } | { add: string };
-
 /** A change to the profile, as a Bot's tool and Settings send it; null removes an entry. */
 export type InterfacePatch = {
   enabled?: boolean;
@@ -230,7 +229,8 @@ export type InterfacePatch = {
     open_placement?: Partial<Record<InterfaceOpenKind, InterfaceOpenPlacement | null>> | null;
     code_theme?: { light?: InterfaceCodeThemeLight | null; dark?: InterfaceCodeThemeDark | null } | null;
   };
-  css?: { set: string } | { edits: InterfaceCssEdit[] };
+  /** Only clearing a stylesheet saved before ADR 0117: `{ set: "" }`. */
+  css?: { set: "" };
   copy?: { zh?: Record<string, string | null>; en?: Record<string, string | null> };
   /** Parts put back to the app's own, before anything else in the patch applies. */
   reset?: Array<"tokens" | "behaviour" | "css" | "copy">;
@@ -336,41 +336,6 @@ function behaviourValue(key: InterfaceBehaviourKey, value: unknown): unknown {
   return value;
 }
 
-function applyCss(current: string, raw: unknown): string {
-  if (!isRecord(raw)) throw new InterfacePatchError("invalid_args", "css must be { set } or { edits }");
-  if (raw.set !== undefined) {
-    if (typeof raw.set !== "string" || raw.edits !== undefined) throw new InterfacePatchError("invalid_args", "css.set must be the whole stylesheet as text, alone");
-    return raw.set;
-  }
-  const edits = raw.edits;
-  if (!Array.isArray(edits) || edits.length === 0) throw new InterfacePatchError("invalid_args", "css.edits must list at least one change");
-  if (edits.length > INTERFACE_CSS_EDITS_MAX) throw new InterfacePatchError("too_many", `at most ${INTERFACE_CSS_EDITS_MAX} changes to the stylesheet at once`);
-  let css = current;
-  edits.forEach((edit: unknown, at) => {
-    const n = at + 1;
-    if (!isRecord(edit)) throw new InterfacePatchError("invalid_args", `css edit ${n} is not an object`);
-    const text = (key: string) => (typeof edit[key] === "string" ? (edit[key] as string) : undefined);
-    const old = text("old"), next = text("new"), after = text("after"), add = text("add");
-    const once = (needle: string) => {
-      const first = css.indexOf(needle);
-      if (needle === "" || first < 0) throw new InterfacePatchError("not_found", `css edit ${n}: that passage is not in the stylesheet`);
-      if (css.indexOf(needle, first + 1) >= 0) throw new InterfacePatchError("ambiguous", `css edit ${n}: that passage occurs more than once; quote more of it`);
-      return first;
-    };
-    if (old !== undefined && next !== undefined && after === undefined && add === undefined) {
-      const at0 = once(old);
-      css = css.slice(0, at0) + next + css.slice(at0 + old.length);
-    } else if (after !== undefined && add !== undefined && old === undefined && next === undefined) {
-      const at0 = once(after) + after.length;
-      css = css.slice(0, at0) + add + css.slice(at0);
-    } else if (add !== undefined && old === undefined && next === undefined && after === undefined) {
-      css = css === "" ? add : css.endsWith("\n") ? css + add : `${css}\n${add}`;
-    } else {
-      throw new InterfacePatchError("invalid_args", `css edit ${n}: give old + new, after + add, or add alone`);
-    }
-  });
-  return css;
-}
 
 function copySide(raw: unknown, into: Record<string, string>, where: string): void {
   if (raw === undefined) return;
@@ -475,10 +440,14 @@ export function applyInterfacePatch(current: InterfaceProfile, raw: unknown): In
     }
   }
   if (raw.css !== undefined) {
-    const css = applyCss(next.css, raw.css);
-    const problem = cssProblem(css);
-    if (problem) throw new InterfacePatchError("invalid_args", `the stylesheet ${problem}`);
-    next.css = css;
+    // The native app applies no stylesheet (ADR 0117): one saved before can only be cleared.
+    if (!isRecord(raw.css) || raw.css.set !== "" || Object.keys(raw.css).length !== 1) {
+      throw new InterfacePatchError(
+        "unsupported",
+        "the app no longer applies a stylesheet (ADR 0117): change tokens, behaviour or copy instead; css only takes { set: \"\" } to clear one saved before",
+      );
+    }
+    next.css = "";
   }
   if (raw.copy !== undefined) {
     if (!isRecord(raw.copy)) throw new InterfacePatchError("invalid_args", "copy must be { zh, en }");

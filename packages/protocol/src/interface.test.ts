@@ -38,14 +38,15 @@ describe("interface profile (ADR 0106)", () => {
     expect(tokenValueProblem("color-mix(in oklab, var(--accent) 40%, white)")).toBeNull();
   });
 
-  test("the stylesheet changes like a prompt: replace once, add after once, append, or set whole", () => {
-    let profile = applyInterfacePatch(emptyInterfaceProfile(), { css: { set: "[data-ui=\"sidebar\"] { opacity: 0.9; }" } });
-    profile = applyInterfacePatch(profile, { css: { edits: [{ old: "0.9", new: "0.95" }, { add: "[data-ui=\"tab\"] { font-weight: 600; }" }] } });
-    expect(profile.css).toBe("[data-ui=\"sidebar\"] { opacity: 0.95; }\n[data-ui=\"tab\"] { font-weight: 600; }");
-    profile = applyInterfacePatch(profile, { css: { edits: [{ after: "opacity: 0.95;", add: " color: var(--ink);" }] } });
-    expect(profile.css).toContain("opacity: 0.95; color: var(--ink);");
-    expect(patchError(() => applyInterfacePatch(profile, { css: { edits: [{ old: "nowhere", new: "x" }] } })).code).toBe("not_found");
-    expect(patchError(() => applyInterfacePatch(profile, { css: { edits: [{ old: "data-ui", new: "x" }] } })).code).toBe("ambiguous");
+  test("a stylesheet can no longer be written, only one saved before cleared (ADR 0117)", () => {
+    const saved = { ...emptyInterfaceProfile(), css: "[data-ui=\"sidebar\"] { opacity: 0.9; }" };
+    expect(patchError(() => applyInterfacePatch(emptyInterfaceProfile(), { css: { set: "a{}" } })).code).toBe("unsupported");
+    expect(patchError(() => applyInterfacePatch(saved, { css: { edits: [{ add: "b{}" }] } })).code).toBe("unsupported");
+    expect(patchError(() => applyInterfacePatch(saved, { css: { set: "", edits: [] } })).code).toBe("unsupported");
+    expect(applyInterfacePatch(saved, { css: { set: "" } }).css).toBe("");
+    expect(applyInterfacePatch(saved, { reset: ["css"] }).css).toBe("");
+    // What is saved reads back as it was, so old revisions and restores are untouched.
+    expect(normalizeInterfaceProfile(saved).css).toBe(saved.css);
   });
 
   test("a stylesheet loads nothing from elsewhere and holds no markup", () => {
@@ -92,7 +93,7 @@ describe("interface profile (ADR 0106)", () => {
   });
 
   test("a reset puts parts back before the rest applies", () => {
-    const start = applyInterfacePatch(emptyInterfaceProfile(), { tokens: { light: { "--accent": "red" } }, css: { set: "a{}" } });
+    const start = { ...applyInterfacePatch(emptyInterfaceProfile(), { tokens: { light: { "--accent": "red" } } }), css: "a{}" };
     const next = applyInterfacePatch(start, { reset: ["tokens", "css"], tokens: { light: { "--bg": "white" } } });
     expect(next.tokens.light).toEqual({ "--bg": "white" });
     expect(next.css).toBe("");

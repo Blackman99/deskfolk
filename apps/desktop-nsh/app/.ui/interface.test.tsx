@@ -130,6 +130,23 @@ test("a value NSH cannot read is left out, not filled from the other look", asyn
   expect(line(app, "pane=")).toBe(`pane=${hex(APP.light.pane!)}`);
 });
 
+test("tokens nothing reads are not taken, and the catalog lists only what a profile can set (ADR 0117)", async () => {
+  const app = await story();
+  await press(app, "id:apply-font");
+  await app.waitUntil(() => line(app, "nottaken=").includes("--font"), { timeout: 8000 });
+  expect(JSON.parse(line(app, "nottaken=").slice("nottaken=".length))).toEqual(["light:--font (not used here)", "dark:--font (not used here)"]);
+  expect(JSON.parse(line(app, "outcome=").slice("outcome=".length)).applied).toContain("light:--accent");
+  expect(line(app, "catalog=")).toBe("catalog=accent:true radius:true brand:false font:false body:false width:false renamed:true words:true");
+  // The window tells the daemon, which is what a Bot's describe_interface reads.
+  const want = JSON.stringify([["desktop", true, ["light:--font (not used here)", "dark:--font (not used here)"]]]);
+  const deadline = Date.now() + 6000;
+  do {
+    await app.press("id:read-reports");
+    await app.wait(150);
+  } while (line(app, "reports=") !== `reports=${want}` && Date.now() < deadline);
+  expect(line(app, "reports=")).toBe(`reports=${want}`);
+});
+
 test("a profile that leaves Stop unreadable is dropped in this window; words stay; the next profile gets its chance", async () => {
   const app = await story();
   await press(app, "id:apply-floor-break");

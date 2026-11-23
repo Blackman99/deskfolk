@@ -390,9 +390,10 @@ export function getStarterOptions(input: StarterPromptInput): StarterOption[] {
 }
 
 /**
- * The first starter in a direct: a job to hand off and come back to, not a question (ROADMAP item
- * 3). The Bot writes a brief of the workspace now and sets up a routine that writes the next one
- * every morning, so tomorrow there is something waiting. It only fills the draft; you send it.
+ * The first starter in a direct: a job to hand off and come back to, not a question (ROADMAP
+ * section 1, the first run). The Bot writes a brief of the workspace now and sets up a routine that
+ * writes the next one every morning, so tomorrow there is something waiting. It only fills the
+ * draft; you send it.
  */
 export function handOffStarter(locale: "zh" | "en" | string): StarterOption {
   if (locale === "en") {

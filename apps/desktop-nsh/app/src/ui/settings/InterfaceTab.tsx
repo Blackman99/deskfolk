@@ -1,12 +1,13 @@
 /**
  * Settings › Interface (`settings/InterfaceTab.svelte`, ADR 0106): the profile every window reads,
  * as a Bot or you change it. The one place that shows all of it, and the way back from any of it.
- * Its parts (behaviour, tokens, CSS, words, history and reports) are tabs on a wide window and a list
- * on a phone, so none sits below the others; the switch for the whole of it stays over them.
+ * Its parts (behaviour, tokens, words, history and reports) are tabs on a wide window and a list
+ * on a phone, so none sits below the others; the switch for the whole of it stays over them. There is
+ * no stylesheet page: the native app applies none (ADR 0117). A stylesheet saved by an earlier version
+ * is kept, shown in a notice over the parts with Copy and Clear (the only change still allowed to it).
  *
  * The cards edit the same profile through `runtime`, which every window applies (ADR 0108): tokens,
- * behaviour and words take here at once; the stylesheet is the Svelte app's and does nothing in NSH.
- * The switch and "show yours here again" are of the floor.
+ * behaviour and words take here at once. The switch and "show yours here again" are of the floor.
  *
  * Props: `snapshot`; `locale`; `phone` (no workbench: the desktop-only rows are left out); `notices`
  * (what the dialog says over any page: pending credentials, a failed save, setup not done);
@@ -15,7 +16,7 @@
  * `backFromSection()`, Back on a phone from a part's page to the list, true when it did).
  * Narrow is `narrowWindow()` (680 wide or less; the Svelte page broke at 720).
  */
-import { Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
+import { Clipboard, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
 import type { InterfaceBehaviour } from "@real-bot/protocol";
 import { copy, runtime } from "../../runtime";
 import { escapeKeyLabel, interfaceController } from "../../m/interface/controller.svelte.ts";
@@ -28,7 +29,6 @@ import { narrowWindow } from "../Modal";
 import { Switch } from "../Switch";
 import { InterfaceBehaviourCard } from "./InterfaceBehaviourCard";
 import { InterfaceCopyCard } from "./InterfaceCopyCard";
-import { InterfaceCssCard } from "./InterfaceCssCard";
 import { InterfaceHistoryCard } from "./InterfaceHistoryCard";
 import { InterfaceReportsCard } from "./InterfaceReportsCard";
 import { InterfaceTokensCard } from "./InterfaceTokensCard";
@@ -38,8 +38,8 @@ import { SettingsRow } from "./SettingsRow";
 import { SettingsSectionList } from "./SettingsSectionList";
 import { SettingsSectionTabs } from "./SettingsSectionTabs";
 
-export type InterfaceSection = "behaviour" | "tokens" | "css" | "copy" | "history";
-const SECTIONS: readonly InterfaceSection[] = ["behaviour", "tokens", "css", "copy", "history"];
+export type InterfaceSection = "behaviour" | "tokens" | "copy" | "history";
+const SECTIONS: readonly InterfaceSection[] = ["behaviour", "tokens", "copy", "history"];
 
 export type InterfaceTabController = { sectionTitle(): string | null; backFromSection(): boolean };
 
@@ -103,7 +103,6 @@ export function InterfaceTab(props: {
       return n === 0 ? c().summary.allDefault : changed(n);
     }
     if (of === "tokens") return tokenCount() === 0 ? c().tokens.empty : changed(tokenCount());
-    if (of === "css") return state.profile.css.length === 0 ? c().css.empty : c().css.length.replace("{n}", String(state.profile.css.length));
     if (of === "copy") return wordCount() === 0 ? c().copyWords.empty : changed(wordCount());
     const latest = state.recent[0];
     if (!latest) return c().history.empty;
@@ -133,7 +132,7 @@ export function InterfaceTab(props: {
 
   const icon = (of: InterfaceSection, size: number, active = false) => (
     <Icon
-      name={of === "behaviour" ? "pointer" : of === "tokens" ? "tag" : of === "css" ? "code" : of === "copy" ? "type" : "history"}
+      name={of === "behaviour" ? "pointer" : of === "tokens" ? "tag" : of === "copy" ? "type" : "history"}
       size={size >= 18 ? 20 : 16}
       class={active ? "tint-brand" : "tint-ink-muted"}
     />
@@ -152,6 +151,24 @@ export function InterfaceTab(props: {
       </View>
     </If>
   );
+
+  /** A stylesheet an earlier version saved: kept, not applied; copy it out or clear it. */
+  const legacyCss = () => {
+    const css = iface()?.profile.css ?? "";
+    if (css.trim() === "") return null;
+    return (
+      <View testID="interface-legacy-css" class="flex-col gap-2 px-[14px] py-[10px] rounded-(--radius-lg) border border-warn-line bg-warn-bg">
+        <View class="flex-col gap-[2px]">
+          <Text class="text-[13px] font-bold text-warn-text">{c().legacyCss.title}</Text>
+          <Text class="text-[13px] text-warn-text">{c().legacyCss.hint}</Text>
+        </View>
+        <View class="flex-row gap-2">
+          <Button size="sm" variant="secondary" testID="interface-legacy-css-copy" onPress={() => void Clipboard.writeText(css).catch(() => {})}>{c().legacyCss.copy}</Button>
+          <Button size="sm" variant="secondary" testID="interface-legacy-css-clear" onPress={() => void editInterfaceOrToast(runtime, { css: { set: "" } })}>{c().legacyCss.clear}</Button>
+        </View>
+      </View>
+    );
+  };
 
   /** The switch for the whole of it is one of the floor (ADR 0108): its thumb on its track. */
   const enabledSwitch = () => (
@@ -179,6 +196,7 @@ export function InterfaceTab(props: {
           {/* The switch for the whole of it, and why this window shows the default, stay over every part. */}
           <View class="flex-col shrink-0 gap-[10px] px-6 pt-3 pb-[10px] bg-pane">
             {paused()}
+            {legacyCss()}
             <View class="flex-row items-center justify-between gap-4">
               <View class="flex-col gap-[2px] min-w-0 shrink grow">
                 <Text testID="interface-enabled-label" class="text-[13px] font-medium leading-[1.3] text-ink">{c().enabled}</Text>
@@ -211,9 +229,6 @@ export function InterfaceTab(props: {
                 <If when={picked() === "tokens"}>
                   <InterfaceTokensCard tokens={iface()!.profile.tokens} />
                 </If>
-                <If when={picked() === "css"}>
-                  <InterfaceCssCard iface={iface()!} locale={props.locale} />
-                </If>
                 <If when={picked() === "copy"}>
                   <InterfaceCopyCard words={iface()!.profile.copy} locale={props.locale} />
                 </If>
@@ -238,6 +253,7 @@ export function InterfaceTab(props: {
             }
           >
             {paused()}
+            {legacyCss()}
             <SettingsCard testID="interface-enabled">
               <SettingsRow title={c().enabled} titleId="interface-enabled-label" desc={c().enabledHint} last>
                 {enabledSwitch()}

@@ -31,10 +31,10 @@ describe("the app's words, changed", () => {
     expect(copyOverrideProblem(base, "chat.sendHintShortcut", "发出")).toBeNull();
     expect(copyOverrideProblem(base, "chat.nope", "x")).toBe("no words at that key");
     expect(copyOverrideProblem(base, "chat", "x")).toBe("not plain words at that key");
-    expect(copyOverrideProblem(base, "ui.css.length", "共 字")).toBe("keeps {n}");
-    const changed = withCopyOverrides(base, { "chat.sendHintShortcut": "发出（Enter）", "ui.css.length": "共 {n} 字", "chat.nope": "x" });
+    expect(copyOverrideProblem(base, "ui.history.more", "还有 处")).toBe("keeps {n}");
+    const changed = withCopyOverrides(base, { "chat.sendHintShortcut": "发出（Enter）", "ui.history.more": "还有 {n} 处", "chat.nope": "x" });
     expect(changed.chat.sendHintShortcut).toBe("发出（Enter）");
-    expect(changed.ui.css.length).toBe("共 {n} 字");
+    expect(changed.ui.history.more).toBe("还有 {n} 处");
     // Only the objects on the way are copied; the rest are the app's own.
     expect(changed.composer).toBe(base.composer);
     expect(base.chat.sendHintShortcut).toBe("发送（Enter）");

@@ -82,8 +82,32 @@ function builtins(t: Vars): Vars {
   return out;
 }
 
+/**
+ * Tokens `theme.json` carries that nothing in the native app reads (ADR 0117): the fonts, the type
+ * sizes and the conversation's width come from `tokens.css`, but the views name sizes and widths in
+ * their classes. Set, they would change nothing, so a profile's are reported as not here and the
+ * catalog leaves them out.
+ */
+const NOT_READ = /^(font|mono|text-(display|title|heading|body|small|caption|micro)|chat-max-width)$/;
+
 /** The tokens the app's theme has a place for; NSH's own are worked out, not set. */
-const PLACES = new Set([...Object.keys(APP_THEME.cssVars.light), ...Object.keys(APP_THEME.cssVars.dark)].filter((name) => !(name in BUILTINS)));
+const PLACES = new Set(
+  [...Object.keys(APP_THEME.cssVars.light), ...Object.keys(APP_THEME.cssVars.dark)].filter((name) => !(name in BUILTINS) && !NOT_READ.test(name)),
+);
+
+/** The theme's names back as the profile has them (`brand` is `--accent`), the same inside `var()`. */
+const PROFILE_NAME: Record<string, string> = Object.fromEntries(Object.entries(RENAME).map(([profile, theme]) => [theme, profile]));
+const profileValue = (value: string): string => value.replace(/var\(\s*--([a-z0-9-]+)/gi, (_m, ref: string) => `var(--${PROFILE_NAME[ref] ?? ref}`);
+
+/**
+ * The tokens a profile can set here, by the profile's names, with the app's own value in each look:
+ * the window's catalog (ADR 0117), so a Bot looks up what takes instead of guessing.
+ */
+export function catalogTokens(): Array<{ name: string; light: string | null; dark: string | null }> {
+  const { light, dark } = APP_THEME.cssVars;
+  const value = (vars: Vars, name: string) => (vars[name] === undefined ? null : profileValue(vars[name]!));
+  return [...PLACES].sort().map((name) => ({ name: `--${PROFILE_NAME[name] ?? name}`, light: value(light, name), dark: value(dark, name) }));
+}
 
 /** One value of the profile, as the theme names it. */
 type Entry = { look: Look; name: string; value: string; from: string };
@@ -93,7 +117,7 @@ export type ThemeOutcome = {
   on: boolean;
   /** In force. */
   applied: string[];
-  /** The theme has no place for them (shadows, durations, type sizes, NSH's own tokens). */
+  /** The theme has no place for them, or nothing reads them (shadows, durations, fonts, type sizes, NSH's own tokens). */
   notHere: string[];
   /** NSH could not read the value as the kind of token it is, or it names itself through others. */
   unread: string[];

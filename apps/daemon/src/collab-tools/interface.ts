@@ -1,7 +1,7 @@
 /**
- * A Bot's interface tools (ADR 0106). Reading is free, even under a hold. A change is checked on the
- * interface as it stands and, by the Bot's permission mode, applied at once (auto, allow all), put on
- * a `ui-edit` card (ask first: applied again on the interface as it is when you allow it) or refused
+ * A Bot's interface tools (ADR 0106; ADR 0117: no stylesheet, and what did not take is said).
+ * Reading is free, even under a hold. A change is checked on the interface as it stands and, by the
+ * Bot's permission mode, applied at once (auto, allow all), put on a `ui-edit` card (ask first: applied again on the interface as it is when you allow it) or refused
  * (read-only). It is a change, not a change to the app's setup: it reaches no tool, endpoint or rule,
  * every window checks the floor after applying it, and every revision can be taken back.
  */
@@ -14,7 +14,7 @@ import {
   INTERFACE_REASON_MAX,
   interfaceChanges,
   UI_FLOORS,
-  UI_HOOKS,
+  type InterfacePatch,
   type InterfaceRecord,
 } from "@real-bot/protocol";
 import type { ToolCtx, ToolResult } from "../collab-tools";
@@ -23,8 +23,6 @@ import { HttpError } from "../errors";
 import { toolFail as fail } from "../tool-result";
 import { changeVerdict } from "./guards";
 
-/** How much of the custom CSS one read shows, so the whole answer stays inside a tool result. */
-const CSS_PAGE = 2500;
 const FOUND_MAX = 30;
 const RECENT_SHOWN = 5;
 const SUMMARY_LINES = 40;
@@ -55,20 +53,18 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
   const record = ctx.store.interfaceRecord();
   const { catalog, reports } = ctx.store.interfaceWindows();
   const profile = record.profile;
-  const from = typeof args.css_from === "number" && Number.isFinite(args.css_from) ? Math.max(0, Math.floor(args.css_from)) : 0;
   const data: Record<string, unknown> = {
     enabled: profile.enabled,
     theme: record.theme,
     locale: record.locale,
     tokens: profile.tokens,
     behaviour: profile.behaviour,
-    css: {
-      length: profile.css.length,
-      from,
-      text: profile.css.slice(from, from + CSS_PAGE),
-      ...(profile.css.length > from + CSS_PAGE ? { more_from: from + CSS_PAGE } : {}),
-    },
     copy: profile.copy,
+    ...(profile.css ? {
+      old_stylesheet: english
+        ? `An earlier version saved ${profile.css.length} characters of custom CSS. The app does not apply it; reset: ["css"] clears it when the user wants.`
+        : `旧版本存下了 ${profile.css.length} 个字的自定义 CSS，应用不会套用它；用户要时用 reset: ["css"] 清掉。`,
+    } : {}),
     behaviour_list: Object.entries(INTERFACE_BEHAVIOUR_SPECS).map(([key, spec]) => ({
       key,
       values: spec.values === "per-kind"
@@ -77,16 +73,13 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
       ...(spec.desktopOnly ? { desktop_only: true } : {}),
       what: english ? spec.en : spec.zh,
     })),
-    hooks: Object.fromEntries(UI_HOOKS.map(([name, zh, enWords]) => [name, english ? enWords : zh])),
     floors: UI_FLOORS,
     windows: reports.map((report) => ({
       surface: report.surface,
       at: report.at,
       applied: report.applied,
       revision_id: report.revision_id,
-      ...(report.unmatched.length ? { unmatched: report.unmatched } : {}),
-      ...(report.dropped ? { dropped: report.dropped } : {}),
-      ...(report.bad_tokens.length ? { bad_tokens: report.bad_tokens } : {}),
+      ...(report.bad_tokens.length ? { not_taken: report.bad_tokens } : {}),
       ...(report.floor_failed.length ? { floor_failed: report.floor_failed } : {}),
     })),
     recent: state.recent.slice(0, RECENT_SHOWN).map((head) => ({
@@ -99,7 +92,7 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
     })),
   };
   if (catalog) data.token_families = tokenFamilies(catalog.tokens.map((token) => token.name));
-  else data.catalog = english ? "No desktop window has said which tokens and words the app has yet." : "还没有桌面窗口报过应用有哪些令牌和文案。";
+  else data.catalog = english ? "No desktop window has said which tokens and words the app has yet; the next desktop window that connects will." : "还没有桌面窗口报过应用有哪些令牌和文案；下一个连上的桌面窗口会报。";
   const find = typeof args.find === "string" ? args.find.trim().toLowerCase() : "";
   if (find && catalog) {
     data.found_tokens = catalog.tokens
@@ -115,21 +108,15 @@ export function describeInterface(ctx: ToolCtx, args: Record<string, unknown>): 
   return { ok: true, data, emitted: [] };
 }
 
-/**
- * Properties that make an element the containing block of `position: fixed` inside it: on a hook
- * around a pane's content they shut a lightbox or a menu that pops up there into the pane
- * (2026-11-05). Named back to the Bot, not refused: on a small hook they are harmless.
- */
-export function cssTraps(css: string): string[] {
-  const found = new Set<string>();
-  const declarations = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const match of declarations.matchAll(/(?:^|[;{\s])(-webkit-backdrop-filter|backdrop-filter|filter|transform|perspective|contain)\s*:\s*([^;}]*)/gi)) {
-    const property = match[1]!.toLowerCase().replace(/^-webkit-/, "");
-    const value = match[2]!.trim().toLowerCase();
-    if (value === "none" || value === "" || (property === "contain" && !/paint|layout|strict|content/.test(value))) continue;
-    found.add(property);
+/** The tokens a change sets to a value, by the profile's names, in any look. */
+function tokensSet(patch: Record<string, unknown>): string[] {
+  const tokens = patch.tokens as InterfacePatch["tokens"] | undefined;
+  if (!tokens || typeof tokens !== "object") return [];
+  const names = new Set<string>();
+  for (const side of [tokens.light, tokens.dark, tokens.both]) {
+    if (side && typeof side === "object") for (const [name, value] of Object.entries(side)) if (value !== null) names.add(name);
   }
-  return [...found];
+  return [...names];
 }
 
 function requireReason(raw: unknown): string {
@@ -162,12 +149,13 @@ export function editInterface(ctx: ToolCtx, args: Record<string, unknown>): Tool
   if (restore !== undefined && (typeof restore !== "string" || Object.keys(patch).length > 0)) {
     return fail("invalid_args", "restore takes a change's id, alone");
   }
-  if (restore === undefined && Object.keys(patch).length === 0) return fail("invalid_args", "say what to change: tokens, behaviour, css, copy, theme, locale, enabled, reset or restore");
+  if (restore === undefined && Object.keys(patch).length === 0) return fail("invalid_args", "say what to change: tokens, behaviour, copy, theme, locale, enabled, reset or restore");
   const current = ctx.store.interfaceRecord();
   let next: InterfaceRecord;
   try {
     next = typeof restore === "string" ? ctx.store.getInterfaceRevision(restore).after : ctx.store.previewInterfacePatch(patch);
   } catch (error) {
+    if (error instanceof HttpError && error.code === "unsupported") return fail("unsupported", error.message);
     if (ctx.approved && error instanceof HttpError && error.status === 422) {
       return fail("conflict", `the interface changed while the card waited and this no longer fits (${error.message}); read describe_interface again`);
     }
@@ -190,19 +178,30 @@ export function editInterface(ctx: ToolCtx, args: Record<string, unknown>): Tool
   const by = { actor: "bot" as const, botId: ctx.botId, turnId: ctx.turnId, approvalId: ctx.approvalId ?? null, messageId: ctx.approvalMessageId ?? null, reason };
   const result = typeof restore === "string" ? ctx.store.restoreInterfaceRevision(restore, by) : ctx.store.changeInterface(patch, by);
   if (!result.revision) return fail("no_change", "the interface already looks like that");
-  const traps = cssTraps(result.state.profile.css);
+  const english = en(ctx);
+  // What the app has no place for changes nothing: said now, not only after the windows report (ADR 0117).
+  const { catalog } = ctx.store.interfaceWindows();
+  const known = new Set(catalog?.tokens.map((token) => token.name) ?? []);
+  const unknown = catalog ? tokensSet(patch).filter((name) => !known.has(name)) : [];
+  const revived = typeof restore === "string" && result.state.profile.css !== "" && current.profile.css === "";
   return {
     ok: true,
     data: {
       revision_id: result.revision.id,
       changes: changes.slice(0, 20).map((change) => clip(change, 160)),
-      applied: en(ctx)
-        ? "Applied in every window. The user can undo it under your reply or in Settings › Interface. Read describe_interface in a few seconds for what the windows found."
-        : "已在所有窗口生效；用户能在你的回复下或「设置 › 界面」撤销。过几秒用 describe_interface 看各窗口的回报。",
-      ...(traps.length ? {
-        warning: en(ctx)
-          ? `The stylesheet sets ${traps.join(", ")}: on a hook that holds a pane's content this shuts pictures and menus that pop up inside it to that pane. For glass content use behaviour.content_glass instead, and drop those rules.`
-          : `样式里写了 ${traps.join("、")}：写在装着窗格内容的钩子上，会把里面弹出的图片和菜单困在那个窗格里。要内容区毛玻璃改用 behaviour.content_glass，并去掉这几条。`,
+      applied: english
+        ? "Saved; every window applies it now. The user can undo it under your reply or in Settings › Interface. Read describe_interface in a few seconds for what did not take."
+        : "已存下，所有窗口马上套用；用户能在你的回复下或「设置 › 界面」撤销。过几秒用 describe_interface 看哪些没生效。",
+      ...(unknown.length ? {
+        not_taken: unknown,
+        warning: english
+          ? `The app has no token named ${unknown.join(", ")}: setting it changes nothing. Look the right one up with describe_interface's find, or tell the user this cannot be changed.`
+          : `应用里没有 ${unknown.join("、")} 这个令牌，设了不会有变化。用 describe_interface 的 find 查对的令牌，或告诉用户这个改不了。`,
+      } : {}),
+      ...(revived ? {
+        note: english
+          ? "This restore brings back custom CSS an earlier version saved; the app does not apply it."
+          : "这次恢复带回了旧版本存下的自定义 CSS，应用不会套用它。",
       } : {}),
     },
     emitted: [],
