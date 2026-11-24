@@ -26,7 +26,7 @@ import { AGENT_CREDENTIALS_REFUSAL, agentRecordDirs } from "./engine/agent/crede
 import { READ_ONLY_REFUSAL } from "./permission-gate";
 import { placeOfCall } from "./claude-code/tool-place";
 import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } from "./engine/agent/drivers/acp";
-import { agyFailure, agyVersionText } from "./engine/agent/drivers/agy";
+import { agyBrainDir, agyFailure, agyHomeDir, agyVersionText } from "./engine/agent/drivers/agy";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, type AppAction, type AppActionName } from "./engine/agent/policy";
 import { RESUME_MARGIN_MS } from "./engine/agent/account-switch";
@@ -177,17 +177,6 @@ export function agyResetOf(windows: readonly AgentUsageWindow[], model: string |
 export function projectAgyOf(store: Store): () => Promise<ResolvedAgent> {
   return () => resolveAgent({ runner: "antigravity", custom: null, setting: store.agentPath("antigravity"), configDir: null });
 }
-
-/** `agy`'s own folder under your home, the one it shares with Gemini CLI: its settings, its skills (the ones it ships with too), every session's notes. */
-export function agyHomeDir(home = homedir()): string {
-  return join(home, ".gemini");
-}
-
-/** Where `agy` keeps a session's own notes and plans (`brain/<session>`), under its default data folder. */
-export function agyBrainDir(session: string, home = homedir()): string {
-  return join(agyHomeDir(home), "antigravity-cli", "brain", session);
-}
-
 
 /** What a call does, as the app's rules count it: by its kind, the files it names and its input (`CommandLine`, `Path`, …). */
 export function agyActionOf(tool: Pick<Tool, "kind" | "title" | "rawInput" | "locations">, cwd: string): AppAction {

@@ -11,7 +11,8 @@ import { PLAN_APPROVAL_KIND, type AgentRun, type AgentSessionList, type AgentUsa
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { mountedAgentMcp } from "./agent-mcp/bridge";
-import { agyBrainDir, agyResetOf, overstepLine } from "./project-runner-agy";
+import { agyBrainDir } from "./engine/agent/drivers/agy";
+import { agyResetOf, overstepLine } from "./project-runner-agy";
 import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";

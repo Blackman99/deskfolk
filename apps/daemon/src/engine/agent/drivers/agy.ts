@@ -19,6 +19,8 @@
  */
 import { spawn } from "node:child_process";
 import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { claudeLaunch } from "../../../claude-code/spawn";
 import { agyServesAcp, agyTooOld } from "../../../agents/agy-version";
 import type { AgentDriver } from "../driver";
@@ -51,6 +53,16 @@ export function agyDriver(deps: AgyDeps = {}): AgentDriver {
       return inner.start(host, first);
     },
   };
+}
+
+/** `agy`'s own folder under your home, the one it shares with Gemini CLI: its settings, its skills (the ones it ships with too), every session's notes. */
+export function agyHomeDir(home = homedir()): string {
+  return join(home, ".gemini");
+}
+
+/** Where `agy` keeps a session's own notes and plans (`brain/<session>`), under its default data folder. */
+export function agyBrainDir(session: string, home = homedir()): string {
+  return join(agyHomeDir(home), "antigravity-cli", "brain", session);
 }
 
 export async function agyVersionText(executable: string, env: Record<string, string>): Promise<string> {
