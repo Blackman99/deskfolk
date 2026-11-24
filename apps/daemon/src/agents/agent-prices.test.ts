@@ -8,8 +8,26 @@ describe("agent prices", () => {
     for (const id of ["gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"]) {
       expect(agentModelPricing(id)).toEqual(flash);
     }
+    const neon = agentModelPricing("gemini-4-neon");
+    expect(neon).toEqual({ input: 3, cached_input: 0.15, output: 15 });
+    for (const id of ["gemini-4-neon-xhigh", "gemini-4-neon-high", "gemini-4-neon-medium", "gemini-4-neon-low"]) {
+      expect(agentModelPricing(id)).toEqual(neon);
+    }
+    for (const id of ["gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-high", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-low"]) {
+      expect(agentModelPricing(id)).toEqual({ input: 1.5, cached_input: 0.075, output: 7.5 });
+    }
+    for (const id of ["gemini-4-carbon-high", "gemini-4-carbon-medium", "gemini-4-carbon-low", "gemini-4-argon-high", "gemini-4-argon-medium", "gemini-4-argon-low"]) {
+      expect(agentModelPricing(id)).toEqual({ input: 2, cached_input: 0.1, output: 10 });
+    }
+    for (const id of ["claude-opus-5-5-high", "claude-opus-5-5-medium", "claude-opus-5-5-low"]) {
+      expect(agentModelPricing(id)).toEqual({ input: 4, cached_input: 0.2, output: 20 });
+    }
+    for (const id of ["claude-sonnet-5-5-high", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-low"]) {
+      expect(agentModelPricing(id)).toEqual({ input: 2, cached_input: 0.1, output: 10 });
+    }
     expect(normalizeAgentModel("claude-opus-4-6-thinking")).toBe("claude-opus-4-6");
     expect(agentModelPricing("claude-opus-4-6-thinking")).toEqual(agentModelPricing("claude-opus-4-6"));
+    expect(agentModelPricing("claude-opus-4-7")).toEqual({ input: 5, cached_input: 0.5, output: 25 });
   });
 
   test("case is ignored and everything else is kept", () => {
@@ -19,6 +37,9 @@ describe("agent prices", () => {
 
   test("unknown or missing models have no price", () => {
     expect(agentModelPricing("gpt-oss-120b-medium")).toBeNull();
+    expect(agentModelPricing("gemini-pro-orchestrator")).toBeNull();
+    expect(agentModelPricing("gemini-pro-orchestrator-neon")).toBeNull();
+    expect(agentModelPricing("gemini-pro-orchestrator-argon")).toBeNull();
     expect(agentModelPricing("nope")).toBeNull();
     expect(agentModelPricing(null)).toBeNull();
     expect(agentModelPricing("")).toBeNull();
@@ -39,5 +60,10 @@ describe("agent prices", () => {
     expect(estimateAgentCost("gpt-5.6-terra", {
       inputTokens: 1_000_000, outputTokens: 100_000, cachedTokens: 400_000,
     })).toBe(24_800_000_000);
+    // gemini-4-neon-xhigh: 200k fresh * $3 + 800k cached * $0.15 + 100k out * $15 per 1M
+    // = 0.60 + 0.12 + 1.50 = $2.22.
+    expect(estimateAgentCost("gemini-4-neon-xhigh", {
+      inputTokens: 1_000_000, outputTokens: 100_000, cachedTokens: 800_000,
+    })).toBe(22_200_000_000);
   });
 });

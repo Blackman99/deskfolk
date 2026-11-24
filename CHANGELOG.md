@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Spend now estimates Antigravity's Gemini 4 and Claude 5.5 models
+
+- The built-in agent price table (`agents/agent-prices.ts`) still held only `gemini-3.8-flash` and Claude 4.6, and did not strip `-xhigh` thinking suffixes, so Antigravity project sessions running on Gemini 4 (`gemini-4-hydrogen`, `gemini-4-neon`, `gemini-4-carbon`, `gemini-4-argon`, including `-xhigh`) or Claude 5.5 (`claude-opus-5-5`, `claude-sonnet-5-5`) recorded tokens with no estimated amount.
+- Added their public API rates (plus `claude-opus-4-7`) and `-xhigh` suffix normalisation, and backfilled existing unpriced project-session rows on store open so past Antigravity calls show estimates in Spend as well. Multi-model orchestrators (`gemini-pro-orchestrator*`) and `gpt-oss-120b-medium` have no single public token rate and stay unpriced.
+
 ### The Usage tab's cards rearrange while a pane divider is dragged
 
 - Dragging the divider between two panes (or a crossing, or a floating tab's edge) changed the Usage tab's width at once, but its cards kept their columns until the divider was let go and only then moved to more or fewer columns, so the page looked as if it had not kept up.

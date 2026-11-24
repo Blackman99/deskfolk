@@ -17,6 +17,7 @@ import {
   type SpendTotals,
 } from "@real-bot/protocol";
 import { basename } from "node:path";
+import { estimateAgentCost } from "../agents/agent-prices";
 import { HttpError } from "../errors";
 import { isUlid, isoNow, ulid } from "../ids";
 import { type CatalogEntry } from "../route-decision";
@@ -767,6 +768,36 @@ export function repriceSpend(ctx: StoreContext, models: readonly Pick<CatalogEnt
       );
       if (estimated !== row.estimated_cost_usd_ticks) update.run(estimated, row.id);
     }
+  }
+}
+
+/**
+ * Backfills estimates on project-session agent rows written before their model entered
+ * `AGENT_PRICES`. Rows that already carry a reported or estimated amount (including Claude Agent's
+ * own estimates and earlier rows priced under previous rates) and Bots' turns stay untouched.
+ */
+export function repriceAgentSpend(ctx: StoreContext): void {
+  const rows = ctx.db.query<
+    Pick<Spend, "id" | "model" | "input_tokens" | "output_tokens" | "cached_tokens">,
+    []
+  >(
+    `SELECT id, model, input_tokens, output_tokens, cached_tokens FROM spend
+     WHERE provider_id IS NULL
+       AND purpose = 'project'
+       AND provider_name IN ('Antigravity', 'Codex', 'Grok')
+       AND model IS NOT NULL
+       AND cost_usd_ticks IS NULL
+       AND estimated_cost_usd_ticks IS NULL`,
+  );
+  const update = ctx.db.query(`UPDATE spend SET estimated_cost_usd_ticks = ? WHERE id = ?`);
+  for (const row of rows.all()) {
+    if (row.input_tokens == null || row.output_tokens == null) continue;
+    const estimated = estimateAgentCost(row.model, {
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      cachedTokens: row.cached_tokens ?? 0,
+    });
+    if (estimated !== null) update.run(estimated, row.id);
   }
 }
 

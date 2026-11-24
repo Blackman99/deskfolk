@@ -4,16 +4,18 @@
  * model's public API rate, even when the session runs on a subscription, the way Claude Code's
  * own estimate is. It is an estimate of what the tokens would cost, not a bill.
  *
- * Left out: gpt-oss-120b (agy's `gpt-oss-120b-medium`). OpenAI lists no price for it, and the
- * hosts that sell it disagree, so a row on it stays unpriced instead of guessed. A model not in
- * the table is also unpriced. Rates are the standard tier; the higher long-context tier (over
- * 272K input tokens for OpenAI) is not modelled.
+ * Left out: gpt-oss-120b (agy's `gpt-oss-120b-medium`) — OpenAI lists no price for it, and the
+ * hosts that sell it disagree — and agy's multi-model orchestrators (`gemini-pro-orchestrator`,
+ * `gemini-pro-orchestrator-neon`, `gemini-pro-orchestrator-argon`), which route dynamically across
+ * models and have no single public API token rate, so rows on them stay unpriced instead of
+ * guessed. A model not in the table is also unpriced. Rates are the standard tier; the higher
+ * long-context tier (over 272K input tokens for OpenAI) is not modelled.
  */
 import type { ModelPricing } from "@real-bot/protocol";
 import { estimateCostUsdTicks } from "../spend-pricing";
 
 /** The day the rates below were read from the vendors' pages. */
-export const AGENT_PRICES_AS_OF = "2026-11-17";
+export const AGENT_PRICES_AS_OF = "2026-11-24";
 
 /** USD per 1,000,000 tokens, keyed by `normalizeAgentModel` ids. */
 export const AGENT_PRICES: Readonly<Record<string, ModelPricing>> = {
@@ -26,10 +28,18 @@ export const AGENT_PRICES: Readonly<Record<string, ModelPricing>> = {
   // https://aistudio.google.com/docs/pricing (read 2026-11-17). This is the rate through
   // 2026-12-31; Google doubles it from 2027-01-01 (1.5 / 0.15 / 7.5), so update then.
   "gemini-3.8-flash": { input: 0.75, cached_input: 0.075, output: 3.75 },
-  // https://platform.claude.com/docs/en/about-claude/pricing (read 2026-11-17)
+  // https://ai.google.dev/gemini-api/docs/pricing (read 2026-11-24)
+  "gemini-4-hydrogen": { input: 1.5, cached_input: 0.075, output: 7.5 },
+  "gemini-4-neon": { input: 3, cached_input: 0.15, output: 15 },
+  // Introductory rate through 2026-11-30; Google doubles it from 2026-12-01 (4 / 0.2 / 20), so update then.
+  "gemini-4-carbon": { input: 2, cached_input: 0.1, output: 10 },
+  "gemini-4-argon": { input: 2, cached_input: 0.1, output: 10 },
+  // https://platform.claude.com/docs/en/about-claude/pricing (read 2026-11-24)
   "claude-sonnet-4-6": { input: 3, cached_input: 0.3, output: 15 },
-  // https://platform.claude.com/docs/en/about-claude/pricing (read 2026-11-17)
   "claude-opus-4-6": { input: 5, cached_input: 0.5, output: 25 },
+  "claude-opus-4-7": { input: 5, cached_input: 0.5, output: 25 },
+  "claude-sonnet-5-5": { input: 2, cached_input: 0.1, output: 10 },
+  "claude-opus-5-5": { input: 4, cached_input: 0.2, output: 20 },
   // https://docs.x.ai/docs/pricing (read 2026-11-18), the rate below 200K prompt tokens. Grok reports
   // most turns' price itself; these are for a turn it leaves out (`usageIsIncomplete`).
   "grok-4.7": { input: 2, cached_input: 0.5, output: 6 },
@@ -45,7 +55,7 @@ export const AGENT_PRICES: Readonly<Record<string, ModelPricing>> = {
  * its public price is for.
  */
 export function normalizeAgentModel(id: string): string {
-  return id.trim().toLowerCase().replace(/-(high|medium|low|thinking)$/, "").replace(/^(grok-[\d.]+)-build$/, "$1");
+  return id.trim().toLowerCase().replace(/-(xhigh|high|medium|low|thinking)$/, "").replace(/^(grok-[\d.]+)-build$/, "$1");
 }
 
 export function agentModelPricing(model: string | null | undefined): ModelPricing | null {

@@ -679,7 +679,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       }
       live.configOptions = Array.isArray(opened?.configOptions) ? opened.configOptions : [];
       live.models = (opened?.models?.availableModels ?? []).flatMap((entry) => (typeof entry.modelId === "string" ? [entry.modelId] : []));
-      model = project.model ?? opened?.models?.currentModelId ?? null;
+      const optionModel = byCategory("model")?.currentValue;
+      model = project.model ?? opened?.models?.currentModelId ?? (typeof optionModel === "string" ? optionModel : null);
       live.mode = opened?.modes?.currentModeId === "plan" ? "plan" : "default";
       await configure({ model: project.model, effort: project.effort, mode: project.mode === "plan" ? "plan" : null });
 

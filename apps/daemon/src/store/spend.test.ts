@@ -508,6 +508,109 @@ describe("spend ledger", () => {
     loaded.mockRestore();
     store.close();
   });
+
+  test("reopening the store backfills estimates on unpriced project-session agent rows only", () => {
+    const dir = mkdtempSync(join(tmpdir(), "spend-agent-reprice-"));
+    try {
+      const dbPath = join(dir, "deskfolk.db");
+      const first = new Store({ filename: dbPath });
+      const writer = first.createBot({ name: "Writer", duties: "write", boundaries: "none" });
+      const project = first.createProjectSession({ agent: "antigravity", dir, configDir: null, locale: "en" });
+
+      // Unpriced Antigravity project row (recorded before the model entered AGENT_PRICES).
+      const unpricedAgy = first.insertSpend({
+        kind: "turn",
+        purpose: "project",
+        sessionId: project.id,
+        botId: null,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Antigravity",
+        model: "gemini-4-neon-xhigh",
+        inputTokens: 1_000_000,
+        cachedTokens: 800_000,
+        outputTokens: 100_000,
+        costUsdTicks: null,
+        estimatedCostUsdTicks: null,
+      });
+      // Unpriced orchestrator row stays null.
+      const orchestrator = first.insertSpend({
+        kind: "turn",
+        purpose: "project",
+        sessionId: project.id,
+        botId: null,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Antigravity",
+        model: "gemini-pro-orchestrator-neon",
+        inputTokens: 100_000,
+        cachedTokens: 0,
+        outputTokens: 10_000,
+        costUsdTicks: null,
+        estimatedCostUsdTicks: null,
+      });
+      // Already-estimated Antigravity row keeps its historical value.
+      const historical = first.insertSpend({
+        kind: "turn",
+        purpose: "project",
+        sessionId: project.id,
+        botId: null,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Antigravity",
+        model: "gemini-4-neon-high",
+        inputTokens: 1_000_000,
+        cachedTokens: 0,
+        outputTokens: 100_000,
+        costUsdTicks: null,
+        estimatedCostUsdTicks: 123_456,
+      });
+      // Grok row with reported cost keeps estimated null.
+      const grokReported = first.insertSpend({
+        kind: "turn",
+        purpose: "project",
+        sessionId: project.id,
+        botId: null,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Grok",
+        model: "grok-4.7",
+        inputTokens: 100_000,
+        cachedTokens: 0,
+        outputTokens: 10_000,
+        costUsdTicks: 999_000,
+        estimatedCostUsdTicks: null,
+      });
+      // Bot turn on Antigravity (purpose is null) is untouched.
+      const botTurn = first.insertSpend({
+        kind: "turn",
+        sessionId: writer.direct_session.id,
+        botId: writer.bot.id,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Antigravity",
+        model: "gemini-4-neon-high",
+        inputTokens: 1_000_000,
+        cachedTokens: 0,
+        outputTokens: 100_000,
+        costUsdTicks: null,
+        estimatedCostUsdTicks: null,
+      });
+      first.close();
+
+      const reopened = new Store({ filename: dbPath });
+      const byId = new Map(reopened.listSpend({}).map((row) => [row.id, row]));
+      expect(byId.get(unpricedAgy.id)?.estimated_cost_usd_ticks).toBe(22_200_000_000);
+      expect(byId.get(orchestrator.id)?.estimated_cost_usd_ticks).toBeNull();
+      expect(byId.get(historical.id)?.estimated_cost_usd_ticks).toBe(123_456);
+      expect(byId.get(grokReported.id)?.cost_usd_ticks).toBe(999_000);
+      expect(byId.get(grokReported.id)?.estimated_cost_usd_ticks).toBeNull();
+      expect(byId.get(botTurn.id)?.estimated_cost_usd_ticks).toBeNull();
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 function insertAt(store: Store, input: SpendInput & { createdAt: string }): void {

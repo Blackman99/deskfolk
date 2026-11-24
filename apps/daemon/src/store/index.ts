@@ -262,7 +262,10 @@ export class Store {
     settings.ensureLegacyProviderRow(this.ctx);
     sessions.ensureFileDropSession(this.ctx);
     // Ledgers from before estimates followed the configured rates still hold what was priced at insert.
-    this.commit(() => spend.repriceSpend(this.ctx, providers.catalogEntries(this.ctx)));
+    this.commit(() => {
+      spend.repriceSpend(this.ctx, providers.catalogEntries(this.ctx));
+      spend.repriceAgentSpend(this.ctx);
+    });
     // The rules plans had before the requirements ledger go into it, once (ADR 0040 P3).
     this.commit(() => planRequirements.importLegacyRules(this.ctx));
     installChangeJournal(this.ctx);
