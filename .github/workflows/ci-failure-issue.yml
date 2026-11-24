@@ -1,0 +1,105 @@
+name: CI failure alert
+
+# Opens or updates a GitHub Issue whenever CI, Windows, or NSH desktop fails on a push to `main`,
+# so a broken `main` is noticed without manually checking the Actions tab.
+# `workflow_run` always executes the version of this workflow on the default branch (`main`);
+# use `workflow_dispatch` with `dry_run: true` to rehearse it manually.
+
+on:
+  workflow_run:
+    workflows: ["CI", "Windows", "NSH desktop"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      workflow_name:
+        description: Workflow name to simulate
+        default: "NSH desktop"
+      run_url:
+        description: Run URL to link
+        default: "https://github.com/Blackman99/deskfolk/actions"
+      dry_run:
+        description: Log what would be done without creating/commenting on an issue
+        type: boolean
+        default: true
+
+permissions:
+  issues: write
+  actions: read
+
+jobs:
+  notify:
+    name: Report main CI failure
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.conclusion == 'failure'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open or update failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isDispatch = context.eventName === 'workflow_dispatch';
+            const dryRun = isDispatch && (context.payload.inputs?.dry_run === true || context.payload.inputs?.dry_run === 'true');
+            const wfName = isDispatch ? (context.payload.inputs?.workflow_name || 'CI') : context.payload.workflow_run.name;
+            const runId = isDispatch ? null : context.payload.workflow_run.id;
+            const runUrl = isDispatch ? (context.payload.inputs?.run_url || '') : context.payload.workflow_run.html_url;
+            const sha = isDispatch ? context.sha : context.payload.workflow_run.head_sha;
+            const shortSha = sha.slice(0, 8);
+            const commitTitle = isDispatch ? '(manual rehearsal)' : (context.payload.workflow_run.head_commit?.message?.split('\n')[0] || '');
+
+            let failedJobs = [];
+            if (runId) {
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+                per_page: 100,
+              });
+              failedJobs = jobs
+                .filter((j) => j.conclusion === 'failure')
+                .map((j) => `- **${j.name}**: ${j.html_url}`);
+            }
+
+            const title = `[CI] ${wfName} failed on main`;
+            const details = [
+              `Workflow **${wfName}** failed on \`main\` at \`${shortSha}\`${commitTitle ? ` (${commitTitle})` : ''}.`,
+              '',
+              `- Run: ${runUrl}`,
+              ...(failedJobs.length ? ['', 'Failed jobs:', ...failedJobs] : []),
+            ].join('\n');
+
+            if (dryRun) {
+              core.info(`[dry-run] Would report issue "${title}":\n${details}`);
+              return;
+            }
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = openIssues.find((issue) => !issue.pull_request && issue.title === title);
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: details,
+              });
+              core.info(`Updated existing issue #${existing.number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: details,
+              });
+              core.info(`Opened issue #${created.data.number}`);
+            }

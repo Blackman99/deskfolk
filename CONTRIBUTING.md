@@ -20,7 +20,7 @@ Deskfolk 处于 **WIP** 阶段。欢迎中文或英文的问题报告、兼容�
 
 ## 开发环境
 
-准备 Node.js `>=22`、pnpm `12.3.4`、Bun `1.4.2`、Rust stable；macOS 上另装 Xcode 命令行工具；Windows 装 MSVC 工具链（Visual Studio Build Tools 勾 "Desktop development with C++"）和 cmake；Linux 装 GTK 4（≥ 4.14）、WebKitGTK 6.0、GStreamer、ALSA、libsecret 的开发包和 cmake（包清单见 `.github/workflows/nsh-desktop.yml` 里 Linux 的 apt 列表）。原生桌面应用（`apps/desktop-nsh`）用 [NSH](https://nsh.dev) 编，不需要 WebView 运行时。已知限制见[开发说明](docs/development.md)。在仓库根目录执行：
+准备 Node.js `>=22`、pnpm `12.3.4`、Bun `1.4.2`、Rust stable；macOS 上另装 Xcode 命令行工具；Windows 装 MSVC 工具链（Visual Studio Build Tools 勾 "Desktop development with C++"）和 cmake；Linux 装 GTK 4（≥ 4.14）、WebKitGTK 6.0、GStreamer、ALSA、libsecret 的开发包和 cmake（包清单见 `scripts/linux-desktop-deps.sh`）。原生桌面应用（`apps/desktop-nsh`）用 [NSH](https://nsh.dev) 编，不需要 WebView 运行时。已知限制见[开发说明](docs/development.md)。在仓库根目录执行：
 
 ```bash
 pnpm install
@@ -43,7 +43,7 @@ cargo test --workspace --manifest-path apps/desktop-nsh/Cargo.toml
 
 原生应用的界面测试在 `apps/desktop-nsh/app` 里跑 `nsh check App.tsx && nsh test`（`nsh` 命令行由 `bun apps/desktop-nsh/scripts/nsh-cli.ts` 按锁定的 NSH 提交编出，不要用 `~/.local/bin/nsh`）。守护进程和终端 helper 由 `apps/desktop-nsh/scripts/build-native.ts --target <triple>` 编进 `apps/desktop-nsh/build/native`，正式版打包（`scripts/package.ts --release`）把它们放进应用；开发版（`pnpm dev`）用从源码起的运行时，不需要先手动编。
 
-改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build，以及 macOS 上原生应用的脚本测试、`cargo test` 和 `nsh check` / `nsh test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上跑协议、守护进程和原生应用的脚本与逻辑测试、helper crate 和守护进程的 stdio 配置通道测试；其中 daemon 测试在 Windows 上只做参考，不让任务变红。原生应用在 Ubuntu 和 Windows 上的构建由 `nsh-desktop.yml` 在推到 `main` 时跑；打 tag 时 `release.yml` 验证并打 Mac、Windows、Linux 的安装包。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
+改落地页时另跑 `pnpm --filter @real-bot/landing build`。GitHub Actions 的 CI 工作流会在 PR 与 `main` 上跑上述检查（含落地页 build，以及 macOS 和 Ubuntu 24.04 上原生应用的 `cargo test` 和 `nsh check` / `nsh test`），不能代替本机 UI 或原生桌面验证。`windows.yml` 也在 PR 与 `main` 上跑，在 `windows-latest` 上跑协议、守护进程和原生应用的脚本与逻辑测试、helper crate 和守护进程的 stdio 配置通道与宿主路径测试；其中完整 daemon 测试在 Windows 上只做参考，不让任务变红。原生应用在 Ubuntu 和 Windows 上的 `.ui` 屏幕测试、构建与冒烟由 `nsh-desktop.yml` 在推到 `main` 时跑；打 tag 时 `release.yml` 验证并打 Mac、Windows、Linux 的安装包。本机可运行 `pnpm hooks:install` 启用轻量 `pre-push` 检查，并在涉及桌面或跨平台路径改动时用 `pnpm land` 先在候选分支跑绿 CI 再快进到 `main`。快照发布与 Pages 见[开发说明](docs/development.md#ci落地页与快照发布)。
 
 - 为行为变更增加相应测试；避免测试依赖个人凭据或付费真实服务。应用的逻辑（`apps/desktop-nsh/app/src/m`）有两种测试：跑 store 的 `*.test.ts` 由 `nsh test` 在应用自己的引擎里跑，其余的 `*.spec.ts` 由 `bun test` 带 happy-dom 跑，都在 `pnpm test` 里，见[开发说明](docs/development.md)。
 - 修改 UI、客户端状态或页面数据时，在运行中的应用或浏览器中完成实际点击、输入、提交和导航验证，覆盖共享该状态的其他界面、错误态和边界情况。

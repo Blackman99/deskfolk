@@ -41,6 +41,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             packages/remote/test/snow -> target
             apps/conpty-helper -> target
@@ -89,10 +90,14 @@ jobs:
         run: pnpm --filter @real-bot/landing build
 
   desktop:
-    name: Desktop unit tests
-    runs-on: macos-latest
+    name: Desktop unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     # A cache miss builds the nsh CLI first (~30 minutes).
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
 
@@ -111,6 +116,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             apps/desktop-nsh -> target
             apps/conpty-helper -> target
@@ -127,6 +133,10 @@ jobs:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/linux-desktop-deps.sh
+
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
@@ -137,7 +147,7 @@ jobs:
           dirname "$nsh" >> "$GITHUB_PATH"
 
       - name: Save the nsh CLI of that commit
-        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        if: steps.nsh-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
@@ -145,14 +155,17 @@ jobs:
 
       # The native app's scripts on macOS (the native helpers' build plan, release notes, and the
       # darwin-only check that a compiled Bun signed with the daemon's entitlements still works).
+      # Linux already runs them in the `test` job above.
       - name: Desktop script tests and typecheck
+        if: runner.os == 'macOS'
         run: pnpm --filter @real-bot/desktop-nsh test && pnpm --filter @real-bot/desktop-nsh typecheck
 
       - name: Native credential fixtures (no Keychain or prompts)
+        if: runner.os == 'macOS'
         run: swift run --package-path apps/runtime-helper RemoteCoreTests
 
-      # The native app's macOS shell (the menu bar, the window's size, the Touch ID and setup
-      # channel paths), its components and its app crate, then its type check and headless tests.
+      # The native app's shell (macOS / GTK 4 on Linux), its components and its app crate, then
+      # its type check and headless tests.
       - name: Native app Rust tests
         working-directory: apps/desktop-nsh
         run: cargo test --workspace
@@ -163,9 +176,11 @@ jobs:
           nsh check App.tsx
           nsh test
 
-      # Linux ships this crate's forkpty backend; its tests drive real shells on macOS too.
+      # Linux already runs both helper crates in the `test` job above.
       - name: Pty helper crate tests
+        if: runner.os == 'macOS'
         run: cargo test --manifest-path apps/conpty-helper/Cargo.toml
 
       - name: Remote screen helper tests
+        if: runner.os == 'macOS'
         run: cargo test --locked --manifest-path apps/rtc-helper/Cargo.toml

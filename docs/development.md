@@ -208,7 +208,7 @@ Claude Agent（[ADR 0061](adr/0061-claude-agent-runner.md)）：找 `claude` 时
 
 刚起步的预览，路子和 Windows 一样：先让它能编、能跑、能打包，缺的如实列出。桌面端是 `apps/desktop-nsh` 的 Linux 外壳（GTK 4，`host/src/gtk.rs`）。只出 x86_64 的 AppImage 和 deb；arm64、rpm、Flatpak、Snap 还没有。
 
-前置（Debian / Ubuntu 的包名，其它发行版找同名的开发包；清单以 `.github/workflows/nsh-desktop.yml` 里 Linux 的 apt 列表为准）：
+前置（Debian / Ubuntu 的包名，其它发行版找同名的开发包；清单以 `scripts/linux-desktop-deps.sh` 为准）：
 
 ```bash
 sudo apt-get install build-essential clang cmake pkg-config libgtk-4-dev libwebkitgtk-6.0-dev \
