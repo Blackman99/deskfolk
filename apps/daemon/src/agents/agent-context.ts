@@ -13,6 +13,25 @@ const cleanModel = (value: unknown): string | null => (typeof value === "string"
 /** Strips bracketed context suffixes (`claude-opus-4-6[1m]` → `claude-opus-4-6`) for key matching. */
 const stripVariant = (name: string): string => name.trim().replace(/\[[^\]]+\]$/, "");
 
+/** Whether two model names refer to the same base model (ignoring `[1m]`-style context suffixes). */
+export function sameModelBase(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = cleanModel(a);
+  const right = cleanModel(b);
+  return left !== null && right !== null && stripVariant(left) === stripVariant(right);
+}
+
+/**
+ * Preserves a previously reported context window limit for the same base model when a later usage
+ * update omits `limit`, without ever carrying one model's window onto a different model.
+ */
+export function carryContextLimit(prev: ProjectContextUsage | null | undefined, next: ProjectContextUsage): ProjectContextUsage {
+  if (next.limit !== null) return next;
+  if (prev?.limit && prev.limit > 0 && (sameModelBase(prev.model, next.model) || (!prev.model && !next.model))) {
+    return { ...next, limit: prev.limit };
+  }
+  return next;
+}
+
 /**
  * Total prompt tokens of one Claude Code `assistant` message (`input_tokens + cache_read + cache_creation`),
  * which reflects the actual context window occupancy of that single API call; null when absent or zero.
@@ -39,6 +58,20 @@ export function claudeContextUsageField(message: unknown): ProjectContextUsage |
 }
 
 /**
+ * Context window size and model from Claude Agent SDK's `getContextUsage({ detail: "summary" })`,
+ * even before the first response (`totalTokens === 0`). Uses `rawMaxTokens` (the window Claude
+ * Code itself measures percentage against), falling back to `maxTokens` when `rawMaxTokens` is absent.
+ */
+export function claudeControlContextWindow(response: unknown): { limit: number | null; model: string | null } {
+  const res = response as { rawMaxTokens?: unknown; maxTokens?: unknown; model?: unknown } | null;
+  if (!res || typeof res !== "object") return { limit: null, model: null };
+  return {
+    limit: posInt(res.rawMaxTokens) ?? posInt(res.maxTokens),
+    model: cleanModel(res.model),
+  };
+}
+
+/**
  * Context usage returned by Claude Agent SDK's `getContextUsage({ detail: "summary" })`.
  * Uses `rawMaxTokens` (the window Claude Code itself measures percentage against), falling back to
  * `maxTokens` when `rawMaxTokens` is absent.
@@ -48,8 +81,7 @@ export function claudeControlContextUsage(response: unknown): ProjectContextUsag
   if (!res || typeof res !== "object") return null;
   const used = nonNegInt(res.totalTokens);
   if (used === null || used <= 0) return null;
-  const limit = posInt(res.rawMaxTokens) ?? posInt(res.maxTokens);
-  const model = cleanModel(res.model);
+  const { limit, model } = claudeControlContextWindow(res);
   return { used, limit, ...(model ? { model } : {}) };
 }
 

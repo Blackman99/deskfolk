@@ -7,6 +7,7 @@ import { Database } from "bun:sqlite";
 import type { AgentReplay, AgentRun, Annotation, ClaudeCodeStatus, ClientEvent, Message, ProjectPathLookup, SessionDetail, ToolFrame } from "@real-bot/protocol";
 import { claudeProjectKey } from "./claude-code/memory-dir";
 import type { ClaudeCommandList } from "./claude-code/commands";
+import type { ClaudeContextWindowProbe } from "./claude-code/context-window";
 import type { ClaudeModelList } from "./claude-code/models";
 import type { ClaudeCodeProbe } from "./claude-code/probe";
 import { ulid } from "./ids";
@@ -87,13 +88,15 @@ function scripted(seen: Seen, step: Step, ownSession = "own-1", preface: (line: 
   };
 }
 
-function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeCommands?: ClaudeCommandList; query?: ProjectQuery; status?: ClaudeCodeStatus } = {}) {
+function start(step: Step, opts: { ownSession?: string; preface?: (line: string) => SDKMessage[]; claudeModels?: ClaudeModelList; claudeContextWindow?: ClaudeContextWindowProbe; claudeCommands?: ClaudeCommandList; query?: ProjectQuery; status?: ClaudeCodeStatus } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "project-session-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: Seen = { options: [], lines: [], closed: 0, models: [], efforts: [], modes: [], verdicts: [], answers: [] };
   const claudeCode: ClaudeCodeProbe = opts.status ? { last: () => opts.status!, current: async () => opts.status!, detect: async () => opts.status! } : probe;
   const api = createLocalApi({ store, token: "project-test", schedule: false, claudeCode, projectQuery: opts.query ?? scripted(seen, step, opts.ownSession, opts.preface),
-    ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}), ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
+    ...(opts.claudeModels ? { claudeModels: opts.claudeModels } : {}),
+    ...(opts.claudeContextWindow ? { claudeContextWindow: opts.claudeContextWindow } : {}),
+    ...(opts.claudeCommands ? { claudeCommands: opts.claudeCommands } : {}) });
   const events: ClientEvent[] = [];
   api.subscribeSync((frame) => { if (frame.type === "event") events.push(frame.payload); });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
@@ -1220,4 +1223,134 @@ test("Stop while Claude Code's questions wait refuses them; a typed line instead
   expect(stopped.body).toMatchObject({ status: "stopped", asks: [] });
   await h.until(() => h.seen.verdicts.filter((verdict) => verdict.name === "AskUserQuestion").length === 2);
   expect(h.seen.verdicts.filter((verdict) => verdict.name === "AskUserQuestion").map((verdict) => verdict.behavior)).toEqual(["allow", "deny"]);
+});
+
+test("live Claude Code run captures rawMaxTokens on init even when totalTokens is 0 and keeps it across stripped [1m] assistant models", async () => {
+  let releaseResult!: () => void;
+  const waitResult = new Promise<void>((r) => (releaseResult = r));
+  const query: ProjectQuery = ({ prompt }) => {
+    const gen = (async function* (): AsyncGenerator<SDKMessage> {
+      yield { type: "system", subtype: "init", session_id: "own-ctx", model: "claude-opus-4-6[1m]", uuid: crypto.randomUUID() } as unknown as SDKMessage;
+      for await (const _ of prompt as AsyncIterable<SDKUserMessage>) {
+        // Give init's getContextUsage a tick to resolve before the first assistant message arrives.
+        await Bun.sleep(10);
+        // Anthropic API omits the [1m] suffix on assistant.message.model.
+        yield {
+          type: "assistant",
+          message: { model: "claude-opus-4-6", content: [{ type: "text", text: "思考中" }], usage: { input_tokens: 1_000, cache_read_input_tokens: 49_000 } },
+          parent_tool_use_id: null,
+          uuid: crypto.randomUUID(),
+        } as unknown as SDKMessage;
+        await waitResult;
+        yield {
+          type: "result",
+          subtype: "success",
+          result: "完成",
+          is_error: false,
+          session_id: "own-ctx",
+          modelUsage: { "claude-opus-4-6[1m]": { inputTokens: 1_000, outputTokens: 100, cacheReadInputTokens: 49_000, cacheCreationInputTokens: 0, contextWindow: 1_000_000, costUSD: 0.1 } },
+          uuid: crypto.randomUUID(),
+        } as unknown as SDKMessage;
+      }
+    })();
+    let calls = 0;
+    return Object.assign(gen, {
+      close: () => {},
+      getContextUsage: async () => {
+        calls += 1;
+        return calls === 1
+          ? { totalTokens: 0, maxTokens: 1_000_000, rawMaxTokens: 1_000_000, model: "claude-opus-4-6[1m]" }
+          : { totalTokens: 50_400, maxTokens: 1_000_000, rawMaxTokens: 1_000_000, model: "claude-opus-4-6[1m]" };
+      },
+    });
+  };
+  const h = start(async () => "", { query });
+  const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir })).body.id;
+  await h.say(id, "开始");
+  // Mid-turn, before result arrives, the assistant message MUST already carry the 1M window (not limit: null).
+  await h.until(() => h.store.projectOf(id)?.context?.used === 50_000);
+  expect(h.store.projectOf(id)?.context).toEqual({ used: 50_000, limit: 1_000_000, model: "claude-opus-4-6" });
+  releaseResult();
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  expect(h.store.projectOf(id)?.context).toEqual({ used: 50_400, limit: 1_000_000, model: "claude-opus-4-6[1m]" });
+});
+
+test("idle Claude Code sessions backfill authoritative context limits without clobbering fresh summaries", async () => {
+  const account = mkdtempSync(join(tmpdir(), "project-ctx-backfill-"));
+  closes.push(() => rmSync(account, { recursive: true, force: true }));
+  const projDir = join(account, "projects", "-work-app");
+  mkdirSync(projDir, { recursive: true });
+  const writeTranscript = (name: string, lines: unknown[]) => {
+    const file = join(projDir, `${name}.jsonl`);
+    writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+    return file;
+  };
+  // Session 1: real Claude Code cost-state without contextWindow (like pre-existing sessions).
+  writeTranscript("sess-1", [
+    { type: "assistant", message: { model: "claude-opus-5-5", usage: { input_tokens: 2, cache_creation_input_tokens: 1_027, cache_read_input_tokens: 271_413 } } },
+    { type: "cost-state", modelUsage: { "claude-opus-5-5": { inputTokens: 248, outputTokens: 1_000, costUSD: 5 } } },
+  ]);
+  // Session 2: same model, should hit the probe cache synchronously via peek().
+  writeTranscript("sess-2", [
+    { type: "assistant", message: { model: "claude-opus-5-5", usage: { input_tokens: 1_000, cache_read_input_tokens: 286_760 } } },
+  ]);
+  // Session 3: older transcript without api-request where used (272k) exceeds the base 200k window -> verifies [1m].
+  writeTranscript("sess-3", [
+    { type: "assistant", message: { model: "claude-opus-4-6", usage: { input_tokens: 442, cache_read_input_tokens: 272_000 } } },
+  ]);
+  // Session 4: already has authoritative getContextUsage summary and an unchanged JSONL file -> must not be clobbered.
+  const f4 = writeTranscript("sess-4", [
+    { type: "assistant", message: { model: "claude-opus-5-5", usage: { input_tokens: 2, cache_creation_input_tokens: 1_409, cache_read_input_tokens: 213_032 } } },
+  ]);
+  const past = new Date(Date.now() - 60_000);
+  utimesSync(f4, past, past);
+
+  const cache = new Map<string, number | null>();
+  const asked: string[] = [];
+  const claudeContextWindow: ClaudeContextWindowProbe = {
+    peek: (configDir, model) => cache.get(`${configDir ?? ""}\0${model}`),
+    windowOf: async (configDir, model) => {
+      asked.push(model);
+      const limit = model === "claude-opus-4-6" ? 200_000 : 1_000_000;
+      cache.set(`${configDir ?? ""}\0${model}`, limit);
+      return limit;
+    },
+  };
+  const h = start(async () => "ok", { claudeContextWindow });
+  h.store.setClaudeCodeConfigDirs([account]);
+
+  const make = async (agentSid: string) => {
+    const id = (await h.call<SessionDetail>("POST", "/v1/project-sessions", { dir: h.dir, config_dir: account })).body.id;
+    h.store.recordProjectAgentSession(id, agentSid);
+    return id;
+  };
+
+  // Session 1 already had limit: null stored; GET /run upgrades it via probe and broadcasts session.upsert.
+  const s1 = await make("sess-1");
+  h.store.recordProjectContext(s1, { used: 272_442, limit: null, model: "claude-opus-5-5" });
+  await h.run(s1);
+  await h.until(() => h.store.projectOf(s1)?.context?.limit === 1_000_000);
+  expect(h.store.projectOf(s1)?.context).toEqual({ used: 272_442, limit: 1_000_000, model: "claude-opus-5-5" });
+  expect(h.events.some((e) => e.event === "session.upsert" && e.id === s1 && e.project_context?.limit === 1_000_000)).toBe(true);
+
+  // Session 2 resolves synchronously from cache without probing again.
+  const s2 = await make("sess-2");
+  await h.run(s2);
+  expect(h.store.projectOf(s2)?.context).toEqual({ used: 287_760, limit: 1_000_000, model: "claude-opus-5-5" });
+  expect(asked).toEqual(["claude-opus-5-5"]);
+
+  // Session 3 exceeds base 200k window -> verifies claude-opus-4-6[1m] instead of recording 200k.
+  const s3 = await make("sess-3");
+  await h.run(s3);
+  await h.until(() => h.store.projectOf(s3)?.context?.limit === 1_000_000);
+  expect(h.store.projectOf(s3)?.context).toEqual({ used: 272_442, limit: 1_000_000, model: "claude-opus-4-6" });
+  expect(asked).toEqual(["claude-opus-5-5", "claude-opus-4-6", "claude-opus-4-6[1m]"]);
+
+  // Session 4 keeps its authoritative live summary (214,963) instead of downgrading to JSONL assistant tokens (214,443).
+  const s4 = await make("sess-4");
+  const run4 = h.store.createAgentRun(s4);
+  h.store.updateAgentRun(run4.id, { status: "completed" });
+  h.store.recordProjectContext(s4, { used: 214_963, limit: 1_000_000, model: "claude-opus-5-5" });
+  await h.run(s4);
+  expect(h.store.projectOf(s4)?.context).toEqual({ used: 214_963, limit: 1_000_000, model: "claude-opus-5-5" });
 });

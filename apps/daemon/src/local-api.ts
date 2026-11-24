@@ -15,6 +15,7 @@ import { projectAgyOf } from "./project-runner-agy";
 import { projectGrokOf } from "./agents/grok-acp";
 import { createGrokSessions } from "./agents/grok-sessions";
 import { createClaudeCommandList } from "./claude-code/commands";
+import { createClaudeContextWindowProbe } from "./claude-code/context-window";
 import { createClaudeModelList } from "./claude-code/models";
 import { HttpError } from "./errors";
 import { emptyResponse, fromError, jsonResponse, matchPath, readBearer, readJson, responseRecord } from "./http";
@@ -76,6 +77,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   };
   const claudeCode = options.claudeCode!;
   options.claudeModels ??= createClaudeModelList({ claudeCode });
+  options.claudeContextWindow ??= createClaudeContextWindowProbe({ claudeCode });
   options.claudeCommands ??= createClaudeCommandList({ claudeCode });
   options.codexCommands ??= createCodexCommandList({ resolve: projectCodexOf(options.store) });
   options.agyCommands ??= createCommandMemory();

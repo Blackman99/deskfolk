@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseProjectContext } from "@real-bot/protocol";
+import { parseProjectContext, type ClaudeCodeStatus } from "@real-bot/protocol";
+import { createClaudeContextWindowProbe } from "../claude-code/context-window";
 import { lastContextUsage } from "../claude-code/model-usage";
 import {
   acpContextUsage,
+  carryContextLimit,
   claudeAssistantPromptTokens,
   claudeContextUsageField,
   claudeControlContextUsage,
+  claudeControlContextWindow,
   claudeModelContextWindow,
   claudeResultContextWindow,
   codexContextUsage,
+  sameModelBase,
 } from "./agent-context";
 import { memoryKeyStore } from "../secrets";
 import { Store } from "../store";
@@ -76,6 +80,41 @@ describe("Claude context extractors", () => {
       rawMaxTokens: 1_000_000,
       maxTokens: 950_000,
     })).toEqual({ used: 162_400, limit: 1_000_000, model: "claude-opus-4-7" });
+
+    // Even before the first API response (totalTokens === 0), rawMaxTokens still yields the window size.
+    expect(claudeControlContextUsage({
+      model: "claude-opus-5-5",
+      totalTokens: 0,
+      rawMaxTokens: 1_000_000,
+      maxTokens: 1_000_000,
+    })).toBeNull();
+    expect(claudeControlContextWindow({
+      model: "claude-opus-5-5",
+      totalTokens: 0,
+      rawMaxTokens: 1_000_000,
+      maxTokens: 1_000_000,
+    })).toEqual({ limit: 1_000_000, model: "claude-opus-5-5" });
+  });
+
+  test("sameModelBase and carryContextLimit preserve limits across [1m] variants without crossing models", () => {
+    expect(sameModelBase("claude-opus-4-6[1m]", "claude-opus-4-6")).toBe(true);
+    expect(sameModelBase("claude-opus-4-6", "claude-sonnet-4-6")).toBe(false);
+    expect(sameModelBase(null, "claude-opus-4-6")).toBe(false);
+
+    expect(carryContextLimit(
+      { used: 50_000, limit: 1_000_000, model: "claude-opus-4-6[1m]" },
+      { used: 62_000, limit: null, model: "claude-opus-4-6" },
+    )).toEqual({ used: 62_000, limit: 1_000_000, model: "claude-opus-4-6" });
+
+    expect(carryContextLimit(
+      { used: 50_000, limit: 1_000_000, model: "claude-opus-4-6" },
+      { used: 12_000, limit: null, model: "claude-sonnet-4-6" },
+    )).toEqual({ used: 12_000, limit: null, model: "claude-sonnet-4-6" });
+
+    expect(carryContextLimit(
+      { used: 50_000, limit: 200_000, model: "claude-opus-4-6" },
+      { used: 62_000, limit: 1_000_000, model: "claude-opus-4-6[1m]" },
+    )).toEqual({ used: 62_000, limit: 1_000_000, model: "claude-opus-4-6[1m]" });
   });
 });
 
@@ -159,8 +198,67 @@ describe("lastContextUsage", () => {
         message: { model: "claude-opus-4-7", usage: { input_tokens: 2000, cache_read_input_tokens: 248_000 } },
       }));
       expect(lastContextUsage(withoutCost)).toEqual({ used: 250_000, limit: null, model: "claude-opus-4-7" });
+
+      // Real Claude Code cost-state omits contextWindow; api-request's context-1m beta preserves [1m] for probing,
+      // and a sidechain model's api-request does not shadow the main model's beta.
+      const with1mBeta = join(dir, "with-1m-beta.jsonl");
+      writeFileSync(with1mBeta, [
+        JSON.stringify({ type: "api-request", params: { model: "claude-opus-4-6", betas: ["claude-code-20250219", "context-1m-2025-08-07"] } }),
+        JSON.stringify({ type: "api-request", params: { model: "claude-haiku-4-5", betas: ["claude-code-20250219"] } }),
+        JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-6", usage: { input_tokens: 100, cache_read_input_tokens: 272_300 } } }),
+        JSON.stringify({ type: "cost-state", modelUsage: { "claude-opus-4-6": { inputTokens: 100, outputTokens: 50, costUSD: 1.2 } } }),
+      ].join("\n"));
+      expect(lastContextUsage(with1mBeta)).toEqual({ used: 272_400, limit: null, model: "claude-opus-4-6[1m]" });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("createClaudeContextWindowProbe", () => {
+  test("caches per account and model, deduplicates concurrent calls, and cools down failures", async () => {
+    let clock = 1_000;
+    let status = { path: "/usr/local/bin/claude", email: "a@example.com", accounts: [] } as unknown as ClaudeCodeStatus;
+    const asked: string[] = [];
+    let nextLimit: number | null = 1_000_000;
+    let fail = false;
+    const probe = createClaudeContextWindowProbe({
+      claudeCode: { last: () => status, current: async () => status, detect: async () => status },
+      now: () => clock,
+      ask: async ({ model }) => {
+        asked.push(model);
+        if (fail) throw new Error("boom");
+        return nextLimit;
+      },
+    });
+
+    expect(probe.peek(null, "claude-opus-5-5")).toBeUndefined();
+    const [first, second] = await Promise.all([
+      probe.windowOf(null, "claude-opus-5-5"),
+      probe.windowOf(null, "claude-opus-5-5"),
+    ]);
+    expect(first).toBe(1_000_000);
+    expect(second).toBe(1_000_000);
+    expect(asked).toEqual(["claude-opus-5-5"]);
+    expect(probe.peek(null, "claude-opus-5-5")).toBe(1_000_000);
+
+    // Account switch invalidates cache.
+    status = { path: "/usr/local/bin/claude", email: "b@example.com", accounts: [] } as unknown as ClaudeCodeStatus;
+    expect(probe.peek(null, "claude-opus-5-5")).toBeUndefined();
+    nextLimit = 200_000;
+    expect(await probe.windowOf(null, "claude-opus-5-5")).toBe(200_000);
+    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5-5"]);
+
+    // Failures cool down briefly rather than spamming spawns or poisoning forever.
+    fail = true;
+    expect(await probe.windowOf(null, "claude-sonnet-5")).toBeNull();
+    expect(probe.peek(null, "claude-sonnet-5")).toBeNull();
+    expect(await probe.windowOf(null, "claude-sonnet-5")).toBeNull();
+    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5-5", "claude-sonnet-5"]);
+    clock += 31_000;
+    fail = false;
+    nextLimit = 1_000_000;
+    expect(await probe.windowOf(null, "claude-sonnet-5")).toBe(1_000_000);
+    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5-5", "claude-sonnet-5", "claude-sonnet-5"]);
   });
 });

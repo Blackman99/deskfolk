@@ -28,7 +28,7 @@ import { claudeLaunch, killsTree } from "./claude-code/spawn";
 import { defaultConfigDir, tildeDir } from "./claude-code/account";
 import { claudeMemoryDirs, claudePlanDirs } from "./claude-code/memory-dir";
 import { carriedTotals, resultTotals, type ModelTotals } from "./claude-code/model-usage";
-import { claudeAssistantPromptTokens, claudeContextUsageField, claudeControlContextUsage, claudeResultContextWindow } from "./agents/agent-context";
+import { carryContextLimit, claudeAssistantPromptTokens, claudeContextUsageField, claudeControlContextUsage, claudeControlContextWindow, claudeResultContextWindow, sameModelBase } from "./agents/agent-context";
 import { findClaudeSessionFile } from "./claude-code/sessions";
 import { inputQueue, LIMIT_ERRORS, SIGNED_OUT_ERRORS, userMessage, zodShape, type AgentToolBridge } from "./engine/agent-runner";
 import { CONSULT_SERVER, CONSULT_TOOL, CONSULT_WAIT_MS, type ConsultDesk } from "./project-consult";
@@ -160,6 +160,8 @@ type Live = {
   lists: boolean;
   /** What Claude Code asks you (`AskUserQuestion`): question cards it waits on. */
   questions: QuestionDesk;
+  /** Re-queries Claude Code's local context summary (e.g. after a mid-run model switch). */
+  refreshContext?: () => void;
 };
 
 const STDERR_KEEP = 8 * 1024;
@@ -679,24 +681,30 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     let contextWindowModel: string | null = project.context?.model ?? null;
     let lastPromptTokens: number | null = null;
     /** Queries Claude Code's local context summary (no API calls) for exact window & occupancy. */
-    const refreshContextSummary = async (): Promise<void> => {
+    const refreshContextSummary = async (preferSummary: boolean): Promise<void> => {
       if (live.stopped || typeof session.getContextUsage !== "function") return;
       try {
         const res = await Promise.race([
           session.getContextUsage({ detail: "summary" }),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000).unref?.()),
         ]);
-        const summary = claudeControlContextUsage(res);
-        if (!summary || live.stopped) return;
-        if (summary.limit !== null) {
-          contextWindow = summary.limit;
-          contextWindowModel = summary.model ?? models.main;
+        if (live.stopped || !res) return;
+        const info = claudeControlContextWindow(res);
+        if (info.limit !== null) {
+          contextWindow = info.limit;
+          contextWindowModel = info.model ?? models.main;
         }
-        store.recordProjectContext(live.sessionId, summary);
+        const summary = claudeControlContextUsage(res);
+        if (summary && (preferSummary || lastPromptTokens === null)) {
+          store.recordProjectContext(live.sessionId, carryContextLimit(store.projectOf(live.sessionId)?.context, summary));
+        } else if (lastPromptTokens !== null && contextWindow !== null) {
+          store.recordProjectContext(live.sessionId, { used: lastPromptTokens, limit: contextWindow, model: models.main });
+        }
       } catch {
         // Older CLI or closing session: result/assistant usage remains recorded.
       }
     };
+    live.refreshContext = () => { void refreshContextSummary(false); };
     try {
       for await (const message of session) {
         if (live.stopped) break;
@@ -706,13 +714,13 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
           if (own && own !== recordedSession) store.recordProjectAgentSession(live.sessionId, own);
           recordedSession = own ?? recordedSession;
           models.main = modelOf({ model: (message as { model?: string }).model }) ?? models.main;
-          if (models.main && contextWindowModel && models.main !== contextWindowModel) {
+          if (models.main && contextWindowModel && !sameModelBase(models.main, contextWindowModel)) {
             contextWindow = null;
             contextWindowModel = models.main;
           }
           live.mode = modeOf(message) ?? live.mode;
           setIdle(live, false);
-          void refreshContextSummary();
+          void refreshContextSummary(false);
           continue;
         }
         if (message.type === "system" && ["task_started", "task_progress", "task_updated", "task_notification", "background_tasks_changed"].includes(message.subtype)) {
@@ -758,7 +766,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
             }
           }
           if (message.parent_tool_use_id) continue;
-          if (models.main && contextWindowModel && models.main !== contextWindowModel) {
+          if (models.main && contextWindowModel && !sameModelBase(models.main, contextWindowModel)) {
             contextWindow = null;
             contextWindowModel = models.main;
           }
@@ -816,7 +824,7 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
             if (lastPromptTokens !== null) {
               store.recordProjectContext(live.sessionId, { used: lastPromptTokens, limit: contextWindow, model: models.main });
             }
-            await refreshContextSummary();
+            await refreshContextSummary(true);
           }
           if (message.subtype !== "success" || message.is_error || failure) {
             failure ??= message.subtype === "success" ? firstLine(message.result ?? "") ?? "error" : message.errors?.[0] ?? message.subtype;
@@ -1045,7 +1053,9 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
       }
       if (!live.query) return;
       // Best effort: a run that ends meanwhile has nothing to switch, and the next one starts on it.
-      if (change.model !== undefined) live.query.setModel?.(change.model ?? undefined).catch(() => {});
+      if (change.model !== undefined) {
+        live.query.setModel?.(change.model ?? undefined).then(() => live.refreshContext?.()).catch(() => {});
+      }
       if (change.effort !== undefined) {
         const effortLevel = change.effort && isClaudeEffort(change.effort) ? change.effort : null;
         live.query.applyFlagSettings?.({ effortLevel }).catch(() => {});

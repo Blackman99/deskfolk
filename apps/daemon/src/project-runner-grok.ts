@@ -21,7 +21,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { estimateAgentCost } from "./agents/agent-prices";
-import { acpContextUsage } from "./agents/agent-context";
+import { acpContextUsage, carryContextLimit } from "./agents/agent-context";
 import { tildeDir } from "./claude-code/account";
 import { shellQuote } from "./agents/status";
 import { gateChange, inMemoryDir } from "./claude-code/policy";
@@ -529,7 +529,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
         const ctxTokens = num("contextTokens");
         const reportedWindow = num("contextWindow") || num("modelContextWindow") || null;
         if (ctxTokens > 0) {
-          store.recordProjectContext(live.sessionId, { used: ctxTokens, limit: reportedWindow, model: used ?? model });
+          store.recordProjectContext(live.sessionId, carryContextLimit(store.projectOf(live.sessionId)?.context, { used: ctxTokens, limit: reportedWindow, model: used ?? model }));
         }
       }
       const reported = typeof usage.costUsdTicks === "number" && usage.costIsPartial !== true ? usage.costUsdTicks : null;
@@ -602,7 +602,7 @@ export function createGrokProjectRunner(deps: GrokProjectDeps): ProjectRunner {
           const ctx = acpContextUsage(u, model);
           if (ctx) {
             sawUsageUpdate = true;
-            store.recordProjectContext(live.sessionId, ctx);
+            store.recordProjectContext(live.sessionId, carryContextLimit(store.projectOf(live.sessionId)?.context, ctx));
           }
           return;
         }

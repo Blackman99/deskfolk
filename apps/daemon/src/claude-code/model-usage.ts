@@ -78,13 +78,16 @@ export function carriedTotals(file: string): Map<string, ModelTotals> | null {
 
 /**
  * The latest main-thread context occupancy from a Claude Code session JSONL file, so existing or
- * imported sessions show accurate context usage before their next run. Reads both the latest
- * non-sidechain `assistant` message's prompt tokens and the latest `cost-state` entry's reported
- * `contextWindow` for that model; never guesses a window size when `cost-state` has none.
+ * imported sessions show accurate context usage before their next run. Reads the latest
+ * non-sidechain `assistant` message's prompt tokens, any `cost-state` entry's reported
+ * `contextWindow` for that model, and any matching `api-request` beta header (`context-1m-*`) so
+ * 1M-variant requests stay distinguishable when `cost-state` omits `contextWindow`.
  */
 export function lastContextUsage(file: string): ProjectContextUsage | null {
   let assistant: { used: number; model: string | null } | null = null;
   let costModelUsage: unknown = null;
+  let costLimit: number | null = null;
+  const apiRequest1m = new Map<string, boolean>();
   const direct = scanJsonlBack<ProjectContextUsage>(file, (line) => {
     if (!assistant && line.includes('"assistant"')) {
       try {
@@ -102,26 +105,59 @@ export function lastContextUsage(file: string): ProjectContextUsage | null {
         // ignore malformed line
       }
     }
-    if (!costModelUsage && line.includes('"cost-state"')) {
+    if (costLimit === null && line.includes('"cost-state"')) {
       try {
         const entry = JSON.parse(line) as { type?: unknown; modelUsage?: unknown };
         if (entry.type === "cost-state" && entry.modelUsage && typeof entry.modelUsage === "object") {
-          costModelUsage = entry.modelUsage;
+          costModelUsage ??= entry.modelUsage;
+          if (assistant) {
+            const found = claudeModelContextWindow(entry.modelUsage, assistant.model);
+            if (found !== null) costLimit = found;
+          }
         }
       } catch {
         // ignore malformed line
       }
     }
-    if (assistant && costModelUsage) {
-      const limit = claudeModelContextWindow(costModelUsage, assistant.model);
-      return { used: assistant.used, limit, ...(assistant.model ? { model: assistant.model } : {}) };
+    if (line.includes('"api-request"')) {
+      try {
+        const entry = JSON.parse(line) as { type?: unknown; params?: { model?: unknown; betas?: unknown } };
+        if (entry.type === "api-request" && typeof entry.params?.model === "string" && entry.params.model.trim()) {
+          const reqModel = entry.params.model.trim();
+          if (!apiRequest1m.has(reqModel)) {
+            const betas = Array.isArray(entry.params.betas) ? entry.params.betas : [];
+            apiRequest1m.set(reqModel, betas.some((b) => typeof b === "string" && /^context-1m-/i.test(b)));
+          }
+        }
+      } catch {
+        // ignore malformed line
+      }
+    }
+    if (assistant) {
+      if (costLimit === null && costModelUsage) {
+        costLimit = claudeModelContextWindow(costModelUsage, assistant.model);
+      }
+      if (costLimit !== null) {
+        return { used: assistant.used, limit: costLimit, ...(assistant.model ? { model: assistant.model } : {}) };
+      }
+      // Once we have seen both cost-state (if any) and the matching api-request right beside the
+      // last assistant message, we have all facts this transcript carries.
+      if (costModelUsage && (!assistant.model || apiRequest1m.has(assistant.model))) {
+        const model = assistant.model && !/\[[^\]]+\]$/.test(assistant.model) && apiRequest1m.get(assistant.model)
+          ? `${assistant.model}[1m]`
+          : assistant.model;
+        return { used: assistant.used, limit: null, ...(model ? { model } : {}) };
+      }
     }
     return null;
   });
   if (direct) return direct;
   if (!assistant) return null;
-  const { used, model } = assistant as { used: number; model: string | null };
-  const limit = costModelUsage ? claudeModelContextWindow(costModelUsage, model) : null;
+  const { used, model: rawModel } = assistant as { used: number; model: string | null };
+  const limit = costLimit ?? (costModelUsage ? claudeModelContextWindow(costModelUsage, rawModel) : null);
+  const model = limit === null && rawModel && !/\[[^\]]+\]$/.test(rawModel) && apiRequest1m.get(rawModel)
+    ? `${rawModel}[1m]`
+    : rawModel;
   return { used, limit, ...(model ? { model } : {}) };
 }
 

@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
 import { agyServesAcp, agyTooOld } from "./agents/agy-version";
 import { estimateAgentCost } from "./agents/agent-prices";
-import { acpContextUsage } from "./agents/agent-context";
+import { acpContextUsage, carryContextLimit } from "./agents/agent-context";
 import { initializeAgy } from "./agents/agy-acp";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { inMemoryDir, type AgentDecision } from "./claude-code/policy";
@@ -557,7 +557,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
           return;
         case "usage_update": {
           const ctx = acpContextUsage(u, model);
-          if (ctx) store.recordProjectContext(live.sessionId, ctx);
+          if (ctx) store.recordProjectContext(live.sessionId, carryContextLimit(store.projectOf(live.sessionId)?.context, ctx));
           return;
         }
       }

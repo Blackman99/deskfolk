@@ -20,7 +20,7 @@ import { isAgentEffort, PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRun
 import daemonPackage from "../package.json";
 import { askSkills, codexBuiltinOf, type CodexBuiltin, type CodexSkill } from "./agents/codex-commands";
 import { estimateAgentCost } from "./agents/agent-prices";
-import { codexContextUsage } from "./agents/agent-context";
+import { carryContextLimit, codexContextUsage } from "./agents/agent-context";
 import { agentAnnotations, type AnnotationCropBytes } from "./annotation-context";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { placeOfCall } from "./claude-code/tool-place";
@@ -607,7 +607,7 @@ export function createCodexProjectRunner(deps: CodexProjectDeps): ProjectRunner 
       const usage = (p.tokenUsage ?? {}) as { total?: Record<string, number>; last?: Record<string, number>; modelContextWindow?: number | null };
       if (!agentOf(p)) {
         const ctx = codexContextUsage(p.tokenUsage, model);
-        if (ctx) store.recordProjectContext(live.sessionId, ctx);
+        if (ctx) store.recordProjectContext(live.sessionId, carryContextLimit(store.projectOf(live.sessionId)?.context, ctx));
       }
       if (!usage.last || typeof p.turnId !== "string" || !ours.has(p.turnId)) return;
       const thread = typeof p.threadId === "string" ? p.threadId : "";

@@ -1,5 +1,5 @@
 import { AGENT_KINDS, CONSULT_MEMBERS_MAX, isAgentEffort, isAgentModelName, isProjectAgent, isProjectAgentMode, parseConsultSetting, PROJECT_AGENT_CAPS, PROJECT_AGENTS, type ProjectConsultSetting, type AgentReplay, type AgentTaskDetail, type CreateProjectSessionRequest, type ProjectAgent, type ProjectAgentMode } from "@real-bot/protocol";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessions, ImportedSession } from "../../agents/agent-sessions";
@@ -17,6 +17,7 @@ import { readGrokReplay, grokSubagentTrail } from "../../agents/grok-replay";
 import { readOutputTail, readSubagentTrail } from "../../claude-code/task-detail";
 import { carryClaudeSession, claudeSessionRoots, findClaudeSessionFile } from "../../claude-code/sessions";
 import { lastContextUsage } from "../../claude-code/model-usage";
+import { sameModelBase } from "../../agents/agent-context";
 import { HttpError } from "../../errors";
 import { jsonResponse, matchPath } from "../../http";
 import { sessionUpsertFields } from "../../session-events";
@@ -45,6 +46,122 @@ export async function readImportOf(sessions: AgentSessions, body: Record<string,
 /** Every agent is handled by name: one a switch here does not know is a gap in this file, never another agent's. */
 function unknownAgent(agent: never): never {
   throw new HttpError(500, "internal", `no route handles project sessions of ${String(agent)}`);
+}
+
+/** Picks the Claude model specifier to query for a session's authoritative context window. */
+function claudeWindowModel(baseModel: string | null | undefined, configured: string | null | undefined): string | null {
+  const model = baseModel?.trim() || null;
+  const picked = configured?.trim() || null;
+  if (!model) return picked;
+  if (/\[[^\]]+\]$/.test(model) || !picked) return model;
+  const suffix = picked.match(/(\[[^\]]+\])$/)?.[1];
+  if (!suffix) return model;
+  const pickedBase = picked.slice(0, -suffix.length).toLowerCase();
+  if (sameModelBase(model, picked) || (pickedBase.length > 0 && model.toLowerCase().includes(pickedBase))) {
+    return `${model}${suffix}`;
+  }
+  return model;
+}
+
+/** Asks Claude Code for the authoritative window size, verifying `[1m]` when usage already exceeds the base window. */
+async function resolveClaudeWindow(
+  probe: NonNullable<RouteCtx["options"]["claudeContextWindow"]>,
+  configDir: string | null,
+  probeModel: string,
+  used: number,
+): Promise<number | null> {
+  const limit = await probe.windowOf(configDir, probeModel);
+  if (limit !== null && limit >= used) return limit;
+  if (limit !== null && limit < used && !/\[[^\]]+\]$/.test(probeModel)) {
+    const extended = await probe.windowOf(configDir, `${probeModel}[1m]`);
+    if (extended !== null && extended >= used) return extended;
+    return null;
+  }
+  return limit;
+}
+
+/**
+ * Backfills or refreshes context usage for an idle Claude Code project session from its session
+ * JSONL and Claude Code's authoritative context-window probe, without clobbering an already-recorded
+ * live summary whose transcript has not changed since the last run.
+ */
+function backfillClaudeContext(
+  ctx: RouteCtx,
+  sessionId: string,
+  project: NonNullable<ReturnType<RouteCtx["store"]["projectOf"]>>,
+  latest: ReturnType<RouteCtx["store"]["latestAgentRun"]>,
+): void {
+  const { store, options } = ctx;
+  const agentSid = project.agentSession ?? project.source;
+  const file = agentSid
+    ? (() => {
+        const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
+        const root = roots.find((entry) => entry.configDir === project.configDir) ?? roots[0]!;
+        return findClaudeSessionFile(root, agentSid);
+      })()
+    : null;
+  if (project.context && project.context.limit !== null) {
+    if (!file) return;
+    if (latest?.updated_at) {
+      try {
+        const updatedMs = Date.parse(latest.updated_at);
+        if (!Number.isNaN(updatedMs) && statSync(file).mtimeMs <= updatedMs + 5_000) return;
+      } catch {
+        return;
+      }
+    }
+  }
+  const fromFile = file ? lastContextUsage(file) : null;
+  const base = fromFile ?? (project.context && project.context.used > 0 && project.context.limit === null ? project.context : null);
+  if (!base) return;
+
+  let limit = base.limit;
+  if (limit === null && project.context?.limit && sameModelBase(project.context.model, base.model)) {
+    limit = project.context.limit;
+  }
+  const probeModel = claudeWindowModel(base.model, project.model);
+  if (limit === null && probeModel && options.claudeContextWindow) {
+    const probe = options.claudeContextWindow;
+    const probeAsync = () => {
+      void resolveClaudeWindow(probe, project.configDir, probeModel, base.used).then((resolved) => {
+        try {
+          const current = store.projectOf(sessionId);
+          const nowRun = store.latestAgentRun(sessionId);
+          const isLive = nowRun && (nowRun.status === "running" || nowRun.status === "waiting_approval");
+          if (!current || isLive || (current.context && current.context.limit !== null)) return;
+          if (resolved !== null || !current.context) {
+            store.recordProjectContext(sessionId, { used: base.used, limit: resolved, ...(base.model ? { model: base.model } : {}) });
+          }
+        } catch {
+          // Store closed or session deleted while probing.
+        }
+      });
+    };
+    const cached = probe.peek(project.configDir, probeModel);
+    if (cached === undefined) {
+      probeAsync();
+      return;
+    }
+    if (cached === null) {
+      limit = null;
+    } else if (cached >= base.used) {
+      limit = cached;
+    } else if (!/\[[^\]]+\]$/.test(probeModel)) {
+      const ext = probe.peek(project.configDir, `${probeModel}[1m]`);
+      if (ext === undefined) {
+        probeAsync();
+        return;
+      }
+      limit = ext !== null && ext >= base.used ? ext : null;
+    }
+  }
+  if (!project.context || base.used !== project.context.used || limit !== project.context.limit || (base.model ?? null) !== (project.context.model ?? null)) {
+    store.recordProjectContext(sessionId, {
+      used: base.used,
+      limit,
+      ...(base.model ? { model: base.model } : {}),
+    });
+  }
 }
 
 /** Local API routes: project sessions (ADR 0095) and their agent's runs. */
@@ -105,21 +222,10 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
   if (params && method === "GET") {
     const project = store.projectOf(params.id!);
     if (!project) throw new HttpError(404, "not_found", "not a project session");
-    // Backfill or refresh context usage from Claude Code's session file when no run is currently active.
     const latest = store.latestAgentRun(params.id!);
     const live = latest && (latest.status === "running" || latest.status === "waiting_approval");
-    if (!live && project.agent === "claude_code" && (project.agentSession || project.source)) {
-      const roots = claudeSessionRoots(store.claudeCodeConfigDirs());
-      const root = roots.find((entry) => entry.configDir === project.configDir) ?? roots[0]!;
-      const file = findClaudeSessionFile(root, (project.agentSession ?? project.source)!);
-      const usage = file ? lastContextUsage(file) : null;
-      if (usage && (!project.context || usage.used !== project.context.used || (usage.limit !== null && usage.limit !== project.context.limit))) {
-        store.recordProjectContext(params.id!, {
-          used: usage.used,
-          limit: usage.limit ?? (project.context?.model === usage.model ? project.context?.limit ?? null : null),
-          ...(usage.model ? { model: usage.model } : {}),
-        });
-      }
+    if (!live && project.agent === "claude_code") {
+      backfillClaudeContext(ctx, params.id!, project, latest);
     }
     return jsonResponse({ run: latest }, 200, null);
   }

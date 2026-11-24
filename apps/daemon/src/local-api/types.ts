@@ -4,6 +4,7 @@ import type { Ablation } from "../ablation";
 import type { ClaudeCodeProbe } from "../claude-code/probe";
 import type { ClaudeUsageProbe } from "../claude-code/usage";
 import type { ClaudeCommandList } from "../claude-code/commands";
+import type { ClaudeContextWindowProbe } from "../claude-code/context-window";
 import type { ClaudeModelList } from "../claude-code/models";
 import type { CompletionsClient } from "../completions";
 import type { AgentQuery } from "../engine/agent-runner";
@@ -92,6 +93,8 @@ export type LocalApiOptions = {
   claudeUsage?: ClaudeUsageProbe;
   /** Each Claude account's models, as Claude Code's `/model` lists them (ADR 0095). */
   claudeModels?: ClaudeModelList;
+  /** Authoritative context window size per Claude account and model, via `getContextUsage`. */
+  claudeContextWindow?: ClaudeContextWindowProbe;
   /** The slash commands Claude Code offers an account in a directory (ADR 0098). */
   claudeCommands?: ClaudeCommandList;
   /** What typing `/` offers in a Codex session: the commands the app carries out and the directory's skills (ADR 0099). */
