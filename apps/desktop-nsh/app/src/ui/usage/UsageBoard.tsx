@@ -20,7 +20,6 @@ import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 import { UsageBar } from "./UsageBar";
 import { UsageGauge } from "./UsageGauge";
-import { settled } from "../workbench/drag-settle";
 
 /** The narrowest an account card gets; as many columns as fit, an agent's accounts side by side. */
 const CARD_MIN = 360;
@@ -74,8 +73,10 @@ export function UsageBoard(props: {
 }) {
   const width = signal(0);
   // Kept while they say the same: the bands are made again when either changes, and the width moves
-  // by the pixel while a divider is dragged.
-  const columns = settled(() => boardColumns(width()));
+  // by the pixel while a divider is dragged. The columns follow the width as it moves and do not wait
+  // for the divider to be let go (`drag-settle.ts`): the same cards wrapping only at the release read
+  // as a page that did not answer, and what a crossing makes again here is bars and text.
+  const columns = computed(() => boardColumns(width()));
   const split = computed(() => usageSplit(props.agents));
   const name = (agent: UsageAgent) => (agent.runner === "claude_code" ? "Claude" : agent.label);
   const today = (agent: UsageAgent) => copy().usage.today(String(agent.today.turns), usageTokenText(agent.today.tokens));
@@ -143,7 +144,7 @@ export function UsageBoard(props: {
             whose zero basis split the band evenly, a short card's row lending a tall one room it then
             overflowed. Only a band beside a taller one has room over, and it has one row to take it. */}
         {chunk(agent.accounts, span).map((accounts) => (
-          <View class="grow flex-row gap-[12px]">
+          <View testID="usage-board-cards" class="grow flex-row gap-[12px]">
             {accounts.map((account) => card(agent, account))}
             {Array.from({ length: span - accounts.length }, () => (
               <View class="flex-1 basis-0" />
@@ -160,7 +161,7 @@ export function UsageBoard(props: {
         <Text testID="usage-board-empty" class="text-[13px] leading-[20px] text-ink-muted">{copy().usage.empty}</Text>
       </If>
       <Each of={agentRows(split().plans, columns())} key={(row) => row.map(key).join("|")}>
-        {(row) => <View class="flex-row gap-[12px] items-stretch min-w-0">{() => row().map((agent) => band(agent))}</View>}
+        {(row) => <View testID="usage-board-row" class="flex-row gap-[12px] items-stretch min-w-0">{() => row().map((agent) => band(agent))}</View>}
       </Each>
       <If when={split().todayOnly.length > 0}>
         <View testID="usage-today-only" class="gap-[10px] pt-[20px] border-t border-line">

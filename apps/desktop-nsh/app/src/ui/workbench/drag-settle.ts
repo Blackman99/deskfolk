@@ -1,10 +1,14 @@
 /**
- * A pane's layout that switches at a width (wide or narrow, docked, how many columns) holds while a
- * divider, a crossing or a floating pane's edge is in hand, and takes its new shape once it is let
- * go. Each switch builds a part of the pane anew (a task map's whole scene, the message box's
- * editor), and a drag that wandered across the line did that on every crossing; the panes themselves
- * still take their new size with the pointer. The messenger's `dragGate` waits the same way for a
- * pane's measuring; this is the part that changes what is drawn.
+ * A pane's layout that switches at a width (wide or narrow, docked) holds while a divider, a
+ * crossing or a floating pane's edge is in hand, and takes its new shape once it is let go. Each
+ * switch builds a part of the pane anew (a task map's whole scene, the message box's editor), and a
+ * drag that wandered across the line did that on every crossing; the panes themselves still take
+ * their new size with the pointer. The messenger's `dragGate` waits the same way for a pane's
+ * measuring; this is the part that changes what is drawn.
+ *
+ * Not for a page that only wraps the cards it already shows into more or fewer columns (the usage
+ * board): held, it looks like a page that does not answer the drag, and its cards are cheap to make
+ * again.
  */
 import { computed, signal } from "nsh";
 

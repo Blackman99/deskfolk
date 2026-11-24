@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The Usage tab's cards rearrange while a pane divider is dragged
+
+- Dragging the divider between two panes (or a crossing, or a floating tab's edge) changed the Usage tab's width at once, but its cards kept their columns until the divider was let go and only then moved to more or fewer columns, so the page looked as if it had not kept up.
+- The cards now go to another number of columns as soon as the tab is wide or narrow enough, with the divider still in hand. Pages that change their structure at a width (the task map, the message box, Spend) still switch at the release, as before: rebuilding those mid-drag made the drag stutter.
+
 ### Usage now shows Antigravity's subscription tier
 
 - Antigravity's card in the Usage tab, the floating usage widget and the menu bar showed its model-group windows without its subscription tier (`plan` was always null, so the card read "Default account"), because `agy -p "/quota"` and `/credits` do not include the plan name.

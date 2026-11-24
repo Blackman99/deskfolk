@@ -14,6 +14,7 @@ import { UsagePage } from "../src/ui/usage/UsagePage";
 import { UsageRing } from "../src/ui/usage/UsageRing";
 import { UsageTab } from "../src/ui/usage/UsageTab";
 import { UsageWidget } from "../src/ui/usage/UsageWidget";
+import { paneResize } from "../src/ui/workbench/drag-settle";
 
 const checked_at = "2026-10-10T08:00:00.000Z";
 const inAnHour = () => new Date(Date.now() + 65 * 60_000).toISOString();
@@ -96,6 +97,9 @@ export default function Usage() {
                 >
                   none
                 </Button>
+                {/* A divider in hand, as the workbench's sashes say it: the board is not among what waits for the release. */}
+                <Button testID="resize-begin" onPress={() => paneResize.begin()}>hold</Button>
+                <Button testID="resize-end" onPress={() => paneResize.end()}>release</Button>
               </View>
             </View>
           }

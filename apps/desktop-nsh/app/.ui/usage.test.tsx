@@ -31,6 +31,31 @@ test("the tab lays out a card per account, each window a bar, today-only agents 
   expect(app.shows("id:usage-checked")).toBe(true);
 });
 
+test("the cards go to more or fewer columns as the width moves under a divider in hand, not at the release", async () => {
+  // The board is the window less the story's side column and the tab's padding (268 points):
+  // 1132 holds three columns of cards, 832 two, 632 one.
+  const app = await open({ width: 1400, height: 760 });
+  const rows = () => app.count("id:usage-board-row");
+  const codexRows = () => app.count("id:usage-agent-codex >> id:usage-board-cards");
+  // Three columns: Claude's card and Codex's two share a row.
+  await app.waitUntil(() => rows() === 1);
+  expect(codexRows()).toBe(1);
+  await app.press("id:resize-begin");
+  // Two: Codex takes a row of its own, its accounts still side by side.
+  await app.setViewport(1100, 760);
+  await app.waitUntil(() => rows() === 2);
+  expect(codexRows()).toBe(1);
+  // One: Codex's accounts stack.
+  await app.setViewport(900, 760);
+  await app.waitUntil(() => codexRows() === 2);
+  // And back out while still held.
+  await app.setViewport(1400, 760);
+  await app.waitUntil(() => rows() === 1);
+  await app.press("id:resize-end");
+  expect(rows()).toBe(1);
+  expect(codexRows()).toBe(1);
+});
+
 test("Refresh asks again and the bar brings a hidden ball back", async () => {
   const app = await open();
   await app.press("id:place-default");
