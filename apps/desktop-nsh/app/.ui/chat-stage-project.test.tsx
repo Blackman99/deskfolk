@@ -397,18 +397,21 @@ test("a project session's composer shows context window usage when reported and 
 
   await app.press("id:story-context-normal");
   await app.waitFor("id:project-context", { timeout: 5_000 });
+  expect(app.shows("id:project-context-ring")).toBe(true);
   expect(app.texts()).toContain("34%");
   expect(app.shows("label:上下文占用：68k / 200k tokens（34%）")).toBe(true);
   const normalColor = app.spanStyle("id:project-context >> text:34%").color;
 
   await app.press("id:story-context-high");
   await app.waitUntil(() => app.texts().includes("92%"), { timeout: 5_000 });
+  expect(app.shows("id:project-context-ring")).toBe(true);
   expect(app.shows("label:上下文占用：184k / 200k tokens（92%）")).toBe(true);
   const dangerColor = app.spanStyle("id:project-context >> text:92%").color;
   expect(dangerColor).not.toBe(normalColor);
 
   await app.press("id:story-context-nolimit");
   await app.waitUntil(() => app.texts().includes("42.3k"), { timeout: 5_000 });
+  expect(app.shows("id:project-context-ring")).toBe(true);
   expect(app.shows("label:上下文占用：42.3k tokens")).toBe(true);
 
   await app.press("id:story-context-clear");

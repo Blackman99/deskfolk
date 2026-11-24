@@ -1,8 +1,9 @@
 /**
  * Context window usage indicator in a project session's composer toolbar: draws a small ring
  * showing how full the model's context window is (with percentage beside it when room allows),
- * or just the formatted token count when the model's window size is unknown. Hidden until the
- * session has reported usage, and cleared when the session is cleared or started over.
+ * or a dashed ring with the formatted token count when the model's window size is unknown.
+ * Hidden until the session has reported usage, and cleared when the session is cleared or
+ * started over.
  */
 import { Canvas, Text, token, View } from "nsh";
 import type { ProjectContextUsage } from "@real-bot/protocol";
@@ -16,7 +17,7 @@ const TEXT_TONE = { normal: "text-ink-muted", warn: "text-warn-text", danger: "t
 
 export function ProjectContextPill(props: {
   context: ProjectContextUsage | null | undefined;
-  /** Narrow composer width: keep the ring alone when a window limit is known. */
+  /** Narrow composer width: keep the ring alone. */
   compact?: boolean;
 }) {
   const t = () => copy();
@@ -54,26 +55,25 @@ export function ProjectContextPill(props: {
         accessibilityLabel={label()}
         class="select-none shrink-0 flex-row items-center gap-[5px] h-[28px] px-[6px] rounded-full"
       >
-        <If when={percent() !== null}>
-          <Canvas
-            accessible={false}
-            style={{ width: 16, height: 16 }}
-            draw={(cx) => {
-              const p = percent();
-              if (p === null) return;
-              drawRing(cx, {
-                box: 16,
-                view: 16,
-                radius: 6,
-                width: 2,
-                used: usageUsed(p),
-                color: levelColor(level(), "ink-secondary"),
-                track: token("line"),
-              });
-            }}
-          />
-        </If>
-        <If when={!props.compact || percent() === null}>
+        <Canvas
+          testID="project-context-ring"
+          accessible={false}
+          style={{ width: 16, height: 16 }}
+          draw={(cx) => {
+            const p = percent();
+            drawRing(cx, {
+              box: 16,
+              view: 24,
+              radius: 9,
+              width: 3,
+              used: p !== null ? usageUsed(p) : null,
+              color: levelColor(level(), "ink-secondary"),
+              track: token("line"),
+              dashed: p === null,
+            });
+          }}
+        />
+        <If when={!props.compact}>
           <Text testID="project-context-text" class={`text-[12px] font-medium tabular-nums ${TEXT_TONE[level()]}`}>
             {shortText()}
           </Text>
