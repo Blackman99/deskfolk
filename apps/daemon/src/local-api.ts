@@ -288,6 +288,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     ...(options.projectCodex ? { resolveCodex: options.projectCodex } : {}),
     ...(options.projectAgy ? { resolveAgy: options.projectAgy } : {}),
     ...(options.projectAgyVersion ? { agyVersion: options.projectAgyVersion } : {}),
+    ...(options.projectAgyQuota ? { agyQuota: options.projectAgyQuota } : {}),
     ...(options.projectGrok ? { resolveGrok: options.projectGrok } : {}),
     ...(options.projectGrokHoldMs !== undefined ? { grokHoldMs: options.projectGrokHoldMs } : {}),
     ...(options.projectGrokBilling ? { grokBilling: options.projectGrokBilling } : {}),

@@ -14,8 +14,9 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type Message, type ToolFrame } from "@real-bot/protocol";
+import { PLAN_APPROVAL_KIND, type AgentRunApproval, type AgentRunToolInfo, type AgentTask, type AgentUsageWindow, type Message, type ToolFrame } from "@real-bot/protocol";
 import { agyServesAcp, agyTooOld } from "./agents/agy-version";
+import { agyQuotaWindows } from "./agents/usage";
 import { estimateAgentCost } from "./agents/agent-prices";
 import { acpContextUsage, carryContextLimit } from "./agents/agent-context";
 import { initializeAgy } from "./agents/agy-acp";
@@ -28,12 +29,15 @@ import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } 
 import { agyFailure, agyVersionText } from "./engine/agent/drivers/agy";
 import { rpcPeer, type RpcPeer } from "./engine/agent/jsonrpc";
 import { absoluteFrom, decideAction, type AppAction, type AppActionName } from "./engine/agent/policy";
+import { RESUME_MARGIN_MS } from "./engine/agent/account-switch";
 import { agentTrace } from "./engine/agent/trace";
 import { HttpError } from "./errors";
 import { acpCommandsOf, createCommandMemory, frameOf, lineBlocks, spawnRecorded, takeNext, type Block, type CommandMemory, type Queued } from "./project-acp";
 import { nodePathHost } from "./workspace-paths";
 import { questionDesk, type AgentAnswer, type AgentQuestion, type QuestionDesk } from "./project-asks";
+import { continueNote, outOfUsageLine } from "./project-limits";
 import { clip, COMPACTING, firstLine, slashCommandOf, targetText, type ProjectRunner } from "./project-runner";
+import { lineTime, pickUpDetail } from "./prompts/transcript-copy";
 import { CONSULT_SERVER, CONSULT_TOOL, type ConsultDesk } from "./project-consult";
 import type { Store } from "./store";
 
@@ -51,6 +55,8 @@ export type AgyProjectDeps = {
   settleMs?: number;
   /** The commands `agy` offered in a directory, as its runs heard them (`GET …/commands` reads these). */
   commands?: CommandMemory;
+  /** `agy -p "/quota"`'s windows, asked when a prompt fails (ADR 0110); a test brings its stand-in. */
+  quota?: (executable: string, env: Record<string, string>) => Promise<AgentUsageWindow[]>;
 };
 
 type Answer = "allow" | "deny" | "revise";
@@ -101,6 +107,8 @@ type Live = {
   mode: "default" | "plan";
   /** What `agy` asks you (`ask_question`, sent as `elicitation/create`): question cards it waits on. */
   questions: QuestionDesk;
+  /** Your line the prompt under way answers, until it is answered: what a run out of usage quotes when it picks up. */
+  inTurn: string[];
 };
 
 const ACTIVITY_MAX = 160;
@@ -141,6 +149,28 @@ function stopReason(decision: AgentDecision, en: boolean): string {
   if (decision.reason === AGENT_CREDENTIALS_REFUSAL) return en ? "your agents' own settings and credentials are off limits" : "本机 Agent 自己的设置和凭据碰不得";
   if (decision.reason === READ_ONLY_REFUSAL) return en ? "the permission mode is read-only" : "权限模式是只读";
   return decision.reason;
+}
+
+/** Words of a `/quota` group's name that name no model family ("Claude and GPT models"). */
+const GROUP_FILLER = new Set(["and", "model", "models"]);
+
+/**
+ * When a session on `model` can go on, by `agy -p "/quota"` (ADR 0110): `agy` limits each group of
+ * models on its own ("Gemini Models", "Claude and GPT models"), a five-hour and a weekly window each.
+ * The session's group is the one whose name holds the model's family (`gemini-3.8-flash-high` is
+ * Gemini's); with a window of it used up, it goes on once the last of those resets. Null when no
+ * window of its group is used up, or the model is unknown or in no group: then it was not the plan's
+ * limit that stopped it, whatever `agy` said.
+ */
+export function agyResetOf(windows: readonly AgentUsageWindow[], model: string | null, now = Date.now()): number | null {
+  const family = model?.toLowerCase().split(/[^a-z0-9]+/).find(Boolean);
+  if (!family) return null;
+  const words = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word && !GROUP_FILLER.has(word));
+  const ends = windows
+    .filter((window) => window.model && words(window.model).includes(family) && window.percent >= 100)
+    .map((window) => (window.resets_at ? Date.parse(window.resets_at) : Number.NaN))
+    .filter((at) => Number.isFinite(at) && at > now);
+  return ends.length > 0 ? Math.max(...ends) : null;
 }
 
 /** The `agy` a project session starts, found as a Bot's is: the path you set in Settings, or the one on this computer. */
@@ -296,7 +326,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     const fresh: Live = {
       runId: run.id, sessionId, queue: [lineOf()], waiting: [], said: "", stopped: false, closing: false,
       done: new Promise<void>((resolve) => { finish = resolve; }), abort: new AbortController(), rpc: null, acpSession: null,
-      prompting: false, wake: null, tasks: new Map(), outputs: new Map(), idle: false, configOptions: [], models: [], mode: "default",
+      prompting: false, wake: null, tasks: new Map(), outputs: new Map(), idle: false, configOptions: [], models: [], mode: "default", inTurn: [],
       questions: questionDesk(store, sessionId, (open) => {
         if (!fresh.stopped) update(run.id, { asks: open, status: open.length > 0 || fresh.waiting.length > 0 ? "waiting_approval" : "running" });
       }),
@@ -653,6 +683,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
         overstep = null;
         plan = null;
         if (line.command === "compact") update(live.runId, { activity: COMPACTING[en ? "en" : "zh"] });
+        live.inTurn = line.messageId ? [line.messageId] : [];
         live.prompting = true;
         let result: { stopReason?: string; usage?: Record<string, number> } | null = null;
         try {
@@ -694,6 +725,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
           }
         }
         if (live.tasks.size > 0) publishTasks(live);
+        live.inTurn = [];
         if (reply) postLine(live.sessionId, "bot", reply);
         else if (line.command) postLine(live.sessionId, "system", commandRan(line.command, en));
         live.said = "";
@@ -776,8 +808,43 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       postLine(live.sessionId, "system", failure);
       return;
     }
-    if (failure) return fail(live, failure);
+    if (failure) {
+      // Whatever `agy` said, its own `/quota` tells whether the plan's limit stopped it (ADR 0110).
+      // A consultant's run only fails: its asker is told, and it is not picked up later (ADR 0116).
+      const back = project.parentId ? null : await (deps.quota ?? agyQuotaWindows)(resolved.executable, resolved.env)
+        .then((windows) => agyResetOf(windows, model))
+        .catch(() => null);
+      if (live.stopped) return;
+      if (back !== null) return outOfUsage(live, back);
+      return fail(live, failure);
+    }
     update(live.runId, { status: "completed", activity: null, partial: null, approval: null, idle: false });
+  }
+
+  /**
+   * The run's prompt was turned away by the plan's limit on its group of models (ADR 0110): with no
+   * accounts of `agy`'s to move to, the line says when it picks up, and it does then, told what was
+   * left unanswered.
+   */
+  function outOfUsage(live: Live, back: number): void {
+    const run = store.getAgentRun(live.runId);
+    if (!["running", "waiting_approval"].includes(run.status)) return;
+    const en = locale() === "en";
+    const unanswered = [...live.inTurn, ...live.queue.flatMap((line) => (line.messageId ? [line.messageId] : []))];
+    const reset = en ? `resets ${lineTime(back, "en")}` : `${lineTime(back, "zh")} 重置`;
+    fail(live, outOfUsageLine(locale(), pickUpDetail(locale(), reset, back), "Antigravity"));
+    store.addProjectResume({ session_id: live.sessionId, run_id: live.runId, at: back + RESUME_MARGIN_MS, lines: unanswered });
+  }
+
+  /** Your lines by id, those still there. */
+  function messagesOf(ids: readonly string[]): Message[] {
+    return ids.flatMap((id) => {
+      try {
+        return [store.getMessage(id)];
+      } catch {
+        return [];
+      }
+    });
   }
 
   function liveRun(runId: string): Live | null {
@@ -799,8 +866,16 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
 
   return {
     heard,
-    resumeAfterLimits() {
-      // `agy` says no reset time: a run its plan's limit stopped says so and waits for you.
+    resumeAfterLimits(now = new Date()) {
+      for (const due of store.projectResumes()) {
+        if (due.at > now.getTime()) break;
+        const project = store.projectOf(due.session_id);
+        if (!project || project.agent !== "antigravity") continue;
+        store.dropProjectResume(due.session_id);
+        // You spoke since, or a run is going: the session has moved on.
+        if (lives.has(due.session_id) || store.latestAgentRun(due.session_id)?.id !== due.run_id) continue;
+        startRun(due.session_id, () => ({ blocks: [{ type: "text", text: continueNote(locale(), "reset", messagesOf(due.lines), "Antigravity") }], command: null, messageId: null }));
+      }
     },
     answerAsk(sessionId, askId, input) {
       const live = lives.get(sessionId);

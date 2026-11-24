@@ -258,6 +258,14 @@ export function readAgyCredits(out: string): string | null {
   return value && Number(value) > 0 ? value : null;
 }
 
+/**
+ * `agy -p "/quota"`'s windows, asked of an `agy` already known to answer it itself (a project
+ * session's runs need 1.5 or later anyway): what an Antigravity session out of usage picks up by.
+ */
+export async function agyQuotaWindows(executable: string, env: Record<string, string>): Promise<AgentUsageWindow[]> {
+  return readAgyQuota((await runQuiet(executable, ["-p", "/quota"], env)).out);
+}
+
 async function askAgyQuota(env: Record<string, string>, executable: string): Promise<Asked> {
   const version = await runQuiet(executable, ["--version"], env);
   if (!agyAnswersQuota(version.out)) throw new Error(`agy ${version.out.trim() || "of an unknown version"} would send /quota to the model; update it to 1.1.11 or later`);

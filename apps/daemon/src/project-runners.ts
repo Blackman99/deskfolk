@@ -5,7 +5,7 @@
  * an answer, a Stop or a change to the runner of the session's agent. Every agent has a runner of
  * its own: no session falls through to another agent's.
  */
-import type { ProjectAgent } from "@real-bot/protocol";
+import type { AgentUsageWindow, ProjectAgent } from "@real-bot/protocol";
 import type { ResolvedAgent } from "./agents/runtime";
 import type { CommandMemory } from "./project-acp";
 import { createAgyProjectRunner } from "./project-runner-agy";
@@ -18,9 +18,10 @@ import { createProjectRunner, type ProjectRunner, type ProjectRunnerDeps } from 
 export type ProjectRunnersDeps = ProjectRunnerDeps & {
   /** The Codex a Codex session's run starts; a test brings its stand-in. */
   resolveCodex?: () => Promise<ResolvedAgent>;
-  /** The `agy` an Antigravity session's run starts (ADR 0111), and its version; a test brings stand-ins. */
+  /** The `agy` an Antigravity session's run starts (ADR 0111), its version and its `/quota`; a test brings stand-ins. */
   resolveAgy?: () => Promise<ResolvedAgent>;
   agyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;
+  agyQuota?: (executable: string, env: Record<string, string>) => Promise<AgentUsageWindow[]>;
   /** The commands `agy` offered in each directory, kept for the `/` list. */
   agyCommands?: CommandMemory;
   /** The Grok a Grok session's run starts on an account (ADR 0115), how long a call waits on a card, its billing, and its `/` commands; a test brings stand-ins. */
@@ -46,6 +47,7 @@ export function createProjectRunners(deps: ProjectRunnersDeps): ProjectRunner {
     antigravity: createAgyProjectRunner({
       store, consult, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveAgy ? { resolve: deps.resolveAgy } : {}),
       ...(deps.agyVersion ? { version: deps.agyVersion } : {}), ...(deps.agyCommands ? { commands: deps.agyCommands } : {}),
+      ...(deps.agyQuota ? { quota: deps.agyQuota } : {}),
     }),
     grok: createGrokProjectRunner({
       store, consult, onTool: deps.onTool, ...(deps.settleMs !== undefined ? { settleMs: deps.settleMs } : {}), ...(deps.resolveGrok ? { resolve: deps.resolveGrok } : {}),

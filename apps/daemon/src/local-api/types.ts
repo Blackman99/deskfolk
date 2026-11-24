@@ -103,9 +103,10 @@ export type LocalApiOptions = {
   agentSessions?: import("../agents/agent-sessions").AgentSessions;
   /** The commands `agy` offered in each directory, as its project sessions' runs heard them (ADR 0111). */
   agyCommands?: import("../project-acp").CommandMemory;
-  /** Project sessions' `agy` (ADR 0111) and its `--version`; a test's stand-ins. */
+  /** Project sessions' `agy` (ADR 0111), its `--version` and its `/quota` windows; a test's stand-ins. */
   projectAgy?: () => Promise<import("../agents/runtime").ResolvedAgent>;
   projectAgyVersion?: (executable: string, env: Record<string, string>) => Promise<string>;
+  projectAgyQuota?: (executable: string, env: Record<string, string>) => Promise<import("@real-bot/protocol").AgentUsageWindow[]>;
   /** The commands Grok offered in each directory, as its project sessions' runs and `/` lists heard them (ADR 0115). */
   grokCommands?: import("../project-acp").CommandMemory;
   /** Project sessions' Grok on an account (ADR 0115), how long a call waits on a card before Grok is told it waits, and its billing; a test's stand-ins. */

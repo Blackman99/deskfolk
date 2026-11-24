@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### Antigravity 项目会话额度用完，也到点自己接着做
+
+- Claude Code、Codex 和 Grok 的项目会话额度用完后都会到点自己接着做，Antigravity 会话停下后只能等你。现在一轮因 agy 的失败结束时，应用问一次 agy 自己的 `/quota`（只读，不经过模型，和用量挂件问的是同一个）：会话的模型所在那一组（「Gemini Models」，或「Claude and GPT models」）有窗口用完了，失败行就写明什么时候自动接着做（「Antigravity 的用量额度用完了（11/24 17:00 重置，到时自动接着做）」），到那一组用完的窗口里最晚的重置时间过一分钟自己开一轮接着做，带上你还没得到回复的话。
+- 那一组还有余量、或者认不出模型属于哪一组，照旧是普通失败。重置之前你说过话就不再接着做；被请来当参谋的 agy 只失败。应用里没有 agy 的账号，所以不换账号。
+
 ### Antigravity 项目会话出错时，那句错误只出现一次
 
 - Antigravity 项目会话里 agy 自己出了错（比如 `agent executor error: expected pending tool step at index 138, got status CORTEX_STEP_STATUS_CANCELED`），会话里会出现两行一样的话：一行「⚠ …」像是它说的，下面一行「Antigravity 出错停下了：…」。现在只留后面那行，和 Bot 里一样。

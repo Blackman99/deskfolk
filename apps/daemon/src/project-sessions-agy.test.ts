@@ -7,11 +7,11 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLAN_APPROVAL_KIND, type AgentRun, type AgentSessionList, type ClaudeCodeCommandList, type SessionDetail, type ToolFrame } from "@real-bot/protocol";
+import { PLAN_APPROVAL_KIND, type AgentRun, type AgentSessionList, type AgentUsageWindow, type ClaudeCodeCommandList, type SessionDetail, type ToolFrame } from "@real-bot/protocol";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { mountedAgentMcp } from "./agent-mcp/bridge";
-import { agyBrainDir, overstepLine } from "./project-runner-agy";
+import { agyBrainDir, agyResetOf, overstepLine } from "./project-runner-agy";
 import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
@@ -23,15 +23,21 @@ afterEach(async () => { while (closes.length) await closes.pop()!(); });
 type Script = Record<string, unknown> & { prompts: unknown[][] };
 type Entry = Record<string, unknown> & { method?: string; params?: Record<string, unknown>; notification?: string; asked?: string; answer?: { outcome?: { optionId?: string } }; argv?: string[] };
 
-function start(scripts: Script[], opts: { version?: string } = {}) {
+function start(scripts: Script[], opts: { version?: string; quota?: AgentUsageWindow[] } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "agy-project-")));
   const logDir = realpathSync(mkdtempSync(join(tmpdir(), "agy-project-log-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   let runs = 0;
+  let quotaAsks = 0;
   const frames: ToolFrame[] = [];
   const api = createLocalApi({
     store, token: "agy-test", schedule: false, projectSettleMs: 60,
     projectAgyVersion: async () => opts.version ?? "1.5.10",
+    // `agy -p "/quota"` as a failed prompt asks it: no window used up unless the test says so.
+    projectAgyQuota: async () => {
+      quotaAsks += 1;
+      return opts.quota ?? [];
+    },
     projectAgy: async () => {
       const index = runs++;
       return {
@@ -83,7 +89,7 @@ function start(scripts: Script[], opts: { version?: string } = {}) {
   const sent = (index: number, method: string) => log(index).filter((entry) => entry.method === method && entry.params).map((entry) => entry.params!);
   const lines = (sessionId: string) => store.db
     .query<{ kind: string; author: string; body: string }, [string]>(`SELECT kind, author, body FROM messages WHERE session_id = ? ORDER BY message_seq`).all(sessionId);
-  return { store, api, dir, frames, call, open, say, run, until, settled, log, sent, lines };
+  return { store, api, dir, frames, call, open, say, run, until, settled, log, sent, lines, quotaAsks: () => quotaAsks };
 }
 
 test("an Antigravity session: your own agy in its directory with the app's consult tool only; later lines resume its session", async () => {
@@ -312,6 +318,94 @@ test("agy's own failure lines fail the run; Stop keeps what it had said; an agy 
   await old.say(oldId, "hi");
   await old.settled(oldId);
   expect(old.lines(oldId).at(-1)?.body).toContain("1.5.4");
+});
+
+/** One `/quota` window as `readAgyQuota` gives it. */
+const window = (model: string, minutes: number, percent: number, at: number): AgentUsageWindow => ({ model, minutes, percent, resets_at: new Date(at).toISOString() });
+
+test("the session's group of models used up by /quota: it picks up once the last of its used-up windows resets, a past one or another group's aside", () => {
+  const now = Date.parse("2026-11-23T10:00:00Z");
+  const fiveHours = now + 3 * 3_600_000;
+  const week = now + 4 * 86_400_000;
+  const windows = [
+    window("Gemini Models", 300, 100, fiveHours),
+    window("Gemini Models", 10_080, 100, week),
+    window("Claude and GPT models", 300, 100, now + 3_600_000),
+    window("Claude and GPT models", 10_080, 20, week),
+  ];
+  expect(agyResetOf(windows, "gemini-3.8-flash-high", now)).toBe(week);
+  expect(agyResetOf(windows, "claude-opus-5-5-high", now)).toBe(now + 3_600_000);
+  expect(agyResetOf(windows, "gpt-oss-120b-medium", now)).toBe(now + 3_600_000);
+  // A window with room left, one already reset, an unknown model or one in no group: not the plan's limit.
+  expect(agyResetOf([window("Gemini Models", 300, 95, fiveHours)], "gemini-3.8-flash-high", now)).toBeNull();
+  expect(agyResetOf([window("Gemini Models", 300, 100, now - 1000)], "gemini-3.8-flash-high", now)).toBeNull();
+  expect(agyResetOf(windows, null, now)).toBeNull();
+  expect(agyResetOf(windows, "llama-4", now)).toBeNull();
+});
+
+test("a prompt agy fails with the group used up: the line says when it picks up, and it does then on the same session, your line quoted", async () => {
+  const end = Date.now() + 3_600_000;
+  const h = start(
+    [{ prompts: [[{ say: "\n⚠ Agent execution terminated due to error.\n" }]] }, { prompts: [[{ say: "back at it" }]] }],
+    { quota: [window("Gemini Models", 300, 100, end), window("Claude and GPT models", 300, 0, end)] },
+  );
+  const id = await h.open();
+  await h.say(id, "keep going");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  const said = h.lines(id).at(-1)!;
+  expect(said.kind).toBe("system");
+  expect(said.body).toStartWith("Antigravity 出错停下了：Antigravity 的用量额度用完了（");
+  expect(said.body).toContain("自动接着做");
+  expect(h.store.projectResumes().map((row) => row.session_id)).toEqual([id]);
+  // Not yet: the reset has not passed.
+  h.api.projects.resumeAfterLimits?.(new Date(end - 60_000));
+  expect(h.store.projectResumes().map((row) => row.session_id)).toEqual([id]);
+  h.api.projects.resumeAfterLimits?.(new Date(end + 120_000));
+  await h.until(() => h.lines(id).some((line) => line.body === "back at it"));
+  expect(h.store.projectResumes()).toEqual([]);
+  expect(h.sent(1, "session/resume")[0]).toMatchObject({ sessionId: "agy-session-1" });
+  const prompt = JSON.stringify(h.sent(1, "session/prompt")[0]?.prompt);
+  expect(prompt).toContain("Antigravity 账号的用量额度用完被拒了");
+  expect(prompt).toContain("keep going");
+});
+
+test("a failure with the group's quota left, or only another group used up, stops as before and picks up nothing", async () => {
+  const end = Date.now() + 3_600_000;
+  const h = start([{ prompts: [[{ say: "⚠ Agent execution terminated due to error." }]] }], {
+    quota: [window("Claude and GPT models", 300, 100, end), window("Gemini Models", 300, 40, end)],
+  });
+  const id = await h.open();
+  await h.say(id, "go");
+  await h.settled(id);
+  expect(h.lines(id).at(-1)?.body).toBe("Antigravity 出错停下了：Agent execution terminated due to error.");
+  expect(h.quotaAsks()).toBe(1);
+  expect(h.store.projectResumes()).toEqual([]);
+});
+
+test("a line of yours before the reset lets the pickup go; a consultant out of usage only fails", async () => {
+  const end = Date.now() + 3_600_000;
+  const quota = [window("Gemini Models", 300, 100, end)];
+  const h = start([{ prompts: [[{ say: "⚠ Agent execution terminated due to error." }]] }, { prompts: [[{ say: "ok then" }]] }], { quota });
+  const id = await h.open();
+  await h.say(id, "go");
+  await h.settled(id);
+  expect(h.store.projectResumes().map((row) => row.session_id)).toEqual([id]);
+  await h.say(id, "never mind");
+  await h.until(async () => (await h.run(id))?.status === "completed");
+  h.api.projects.resumeAfterLimits?.(new Date(end + 120_000));
+  await Bun.sleep(50);
+  expect(h.store.projectResumes()).toEqual([]);
+  expect(h.log(2)).toEqual([]);
+
+  const c = start([{ prompts: [[{ say: "⚠ Agent execution terminated due to error." }]] }], { quota });
+  const parent = await c.open();
+  const consultant = c.store.createConsultantSession({ parentId: parent, agent: "antigravity", model: null, effort: null, name: "参谋 · Antigravity" }).id;
+  await c.say(consultant, "what do you think?");
+  await c.settled(consultant);
+  expect((await c.run(consultant))?.status).toBe("failed");
+  expect(c.quotaAsks()).toBe(0);
+  expect(c.store.projectResumes()).toEqual([]);
 });
 
 test("/compact goes to agy as it is and says it ran", async () => {

@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An Antigravity project session out of usage picks up at the reset
+
+- Claude Code, Codex and Grok project sessions already picked up by themselves once a usage limit reset; an Antigravity session stopped and waited for you. Now, when a run ends on agy's failure, the app asks agy's own `/quota` once (read-only, no model call, the same ask as the usage widget's). If a window of the group the session's model belongs to ("Gemini Models", or "Claude and GPT models") is used up, the failure line says when it picks up ("Antigravity usage limit reached (resets 11/24, 05:00 PM; it picks up by itself then)"), and a minute after the latest reset among that group's used-up windows a run starts that goes on, quoting your lines it had not answered.
+- With quota left in that group, or a model it cannot place, the run fails as before. A line of yours before the reset lets the pickup go; an agy asked in as a consultant only fails. agy has no accounts in the app, so nothing moves to another one.
+
 ### An Antigravity project session's error shows once
 
 - When agy itself failed in an Antigravity project session (for example `agent executor error: expected pending tool step at index 138, got status CORTEX_STEP_STATUS_CANCELED`), the session showed the same words twice: a "⚠ …" line as if agy had said it, then "Antigravity stopped: …". Now only the second line is kept, as in a Bot.
