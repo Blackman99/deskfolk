@@ -46,6 +46,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: |
             apps/conpty-helper -> target
             apps/rtc-helper -> target
@@ -55,6 +56,10 @@ jobs:
 
       # Every check after the install runs even when an earlier one failed, so one run shows all
       # of what is still broken on Windows; the job still goes red if any of them failed.
+      - name: Daemon host paths on Windows (8.3 short profile names)
+        if: success() || failure()
+        working-directory: apps/daemon
+        run: bun test src/host-paths-cross.test.ts
       - name: Protocol tests
         if: success() || failure()
         run: pnpm --filter @real-bot/protocol test

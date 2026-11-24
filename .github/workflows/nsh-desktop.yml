@@ -30,8 +30,8 @@ jobs:
   desktop:
     name: NSH desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # A cache miss builds the nsh CLI first (~30 minutes).
-    timeout-minutes: 120
+    # A cache miss builds the nsh CLI first (~30 minutes); build + smoke also run after `.ui`.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +57,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
           workspaces: apps/desktop-nsh -> target
 
       - name: The pinned NSH commit
@@ -75,23 +76,20 @@ jobs:
 
       - name: Install system libraries (Linux)
         if: runner.os == 'Linux'
-        # GStreamer: NSH's Linux platform plays media with it (as upstream's own Linux CI installs).
-        run: >-
-          sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config xvfb dbus-x11
-          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-          libasound2-dev libwebkitgtk-6.0-dev
+        run: bash scripts/linux-desktop-deps.sh xvfb dbus-x11
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build nsh at the pinned commit
+        id: nsh-cli
         run: |
           set -o pipefail
           nsh="$(bun apps/desktop-nsh/scripts/nsh-cli.ts | tail -1)"
           dirname "$nsh" >> "$GITHUB_PATH"
 
       - name: Save the nsh CLI of that commit
-        if: steps.nsh-cache.outputs.cache-hit != 'true'
+        if: steps.nsh-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
@@ -134,14 +132,18 @@ jobs:
       - name: Screen tests against an isolated runtime
         run: bun apps/desktop-nsh/scripts/ui-tests.ts
 
+      # Run the shell build, smoke and phone page e2e even if `.ui` failed above so one run shows
+      # every failure instead of masking build/smoke regressions behind a screen test.
       - name: Build the shell and the bundle
+        id: build-shell
+        if: (success() || failure()) && steps.nsh-cli.outcome == 'success'
         working-directory: apps/desktop-nsh
         run: |
           cargo build -p deskfolk-nsh
           (cd app && nsh build App.tsx --out ../build/app)
 
       - name: Windows binary imports (no web view)
-        if: runner.os == 'Windows'
+        if: (success() || failure()) && runner.os == 'Windows' && steps.build-shell.outcome == 'success'
         shell: pwsh
         run: |
           $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match "Hostx64\\x64" } | Select-Object -First 1
@@ -149,15 +151,15 @@ jobs:
 
       # The HTML preview's web view (WebKitGTK 6) is linked on Linux; Windows has none.
       - name: Linux binary libraries
-        if: runner.os == 'Linux'
+        if: (success() || failure()) && runner.os == 'Linux' && steps.build-shell.outcome == 'success'
         run: ldd apps/desktop-nsh/target/debug/deskfolk-nsh | grep -iE "webkit|gtk|javascriptcore" || true
 
       - name: Smoke (Linux, under Xvfb)
-        if: runner.os == 'Linux'
+        if: (success() || failure()) && runner.os == 'Linux' && steps.build-shell.outcome == 'success'
         run: dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" bun apps/desktop-nsh/scripts/ci-smoke.ts apps/desktop-nsh/target/debug/deskfolk-nsh apps/desktop-nsh/build/app/bundle.js --timeout 180
 
       - name: Smoke (Windows)
-        if: runner.os == 'Windows'
+        if: (success() || failure()) && runner.os == 'Windows' && steps.build-shell.outcome == 'success'
         run: bun apps/desktop-nsh/scripts/ci-smoke.ts apps/desktop-nsh/target/debug/deskfolk-nsh.exe apps/desktop-nsh/build/app/bundle.js --timeout 180
 
       # The phone's page against a relay and a runtime of its own on this runner: a Linux runtime's
@@ -165,7 +167,7 @@ jobs:
       # conversation over the relay, a reload still enrolled). The page is NSH's web package, built
       # for wasm32 with clang and llvm-ar.
       - name: Phone page end to end (Linux)
-        if: runner.os == 'Linux'
+        if: (success() || failure()) && runner.os == 'Linux' && steps.nsh-cli.outcome == 'success'
         run: |
           rustup target add wasm32-unknown-unknown
           sudo apt-get install -y llvm

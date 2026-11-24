@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Fast pre-push guard for pushes to `main`.
+# Install once per clone with: pnpm hooks:install
+# Bypass in an emergency with: git push --no-verify
+set -euo pipefail
+
+# Only gate pushes targeting `refs/heads/main`; candidate branches (`land/*`, feature branches) push freely.
+pushing_main=0
+remote_sha=""
+local_sha=""
+while read -r lref lsha rref rsha; do
+  if [[ "$rref" == "refs/heads/main" ]]; then
+    pushing_main=1
+    local_sha="$lsha"
+    remote_sha="$rsha"
+  fi
+done
+
+if [[ "$pushing_main" -eq 0 || "$local_sha" == "0000000000000000000000000000000000000000" ]]; then
+  exit 0
+fi
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+if [[ -n "$remote_sha" && "$remote_sha" != "0000000000000000000000000000000000000000" ]] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+  changed="$(git diff --name-only "$remote_sha..$local_sha")"
+else
+  changed="$(git diff-tree --no-commit-id --name-only -r "$local_sha")"
+fi
+
+if [[ -z "$changed" ]]; then
+  exit 0
+fi
+
+echo "[pre-push] Checking changes going to main..."
+
+bun scripts/line-budget.ts
+
+touched() {
+  printf '%s\n' "$changed" | grep -qE "$1"
+}
+
+if touched '^packages/protocol/'; then
+  pnpm --filter @real-bot/protocol typecheck
+fi
+if touched '^packages/remote/'; then
+  pnpm --filter @real-bot/remote typecheck
+fi
+if touched '^apps/relay/'; then
+  pnpm --filter @real-bot/relay typecheck
+fi
+if touched '^(apps/daemon/|packages/protocol/)'; then
+  pnpm --filter @real-bot/daemon typecheck
+fi
+if touched '^(apps/desktop-nsh/|packages/protocol/|packages/remote/)'; then
+  pnpm --filter @real-bot/desktop-nsh test
+  pnpm --filter @real-bot/desktop-nsh typecheck
+fi
+if touched '^apps/landing/'; then
+  pnpm --filter @real-bot/landing typecheck
+fi
+
+# Run `nsh check` and `nsh test` when app UI changed AND the pinned nsh CLI is already cached locally.
+# Never trigger a ~30-minute nsh CLI build inside a git hook.
+if touched '^apps/desktop-nsh/app/'; then
+  if nsh_bin="$(bun apps/desktop-nsh/scripts/nsh-cli.ts --check 2>/dev/null | tail -n 1)" && [[ -n "$nsh_bin" && -x "$nsh_bin" ]]; then
+    echo "[pre-push] Running nsh check & nsh test..."
+    (cd apps/desktop-nsh/app && "$nsh_bin" check App.tsx && "$nsh_bin" test)
+  else
+    echo "[pre-push] Skipping nsh check/test (pinned nsh CLI is not built in cache yet)."
+  fi
+fi
+
+if touched '^(apps/desktop-nsh/|apps/daemon/|packages/protocol/|\.github/workflows/|scripts/linux-desktop-deps\.sh)'; then
+  echo "[pre-push] Tip: run \`pnpm land\` to verify Linux & Windows CI on a candidate branch before advancing main."
+fi

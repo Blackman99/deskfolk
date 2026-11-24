@@ -378,10 +378,7 @@ jobs:
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
 
       - name: Install system libraries
-        run: >-
-          sudo apt-get update && sudo apt-get install -y libgtk-4-dev clang pkg-config
-          libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-          libwebkitgtk-6.0-dev libsecret-1-dev libasound2-dev dpkg-dev desktop-file-utils xvfb dbus-x11 xauth
+        run: bash scripts/linux-desktop-deps.sh libsecret-1-dev dpkg-dev desktop-file-utils xvfb dbus-x11 xauth
 
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
