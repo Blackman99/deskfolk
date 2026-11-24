@@ -2,7 +2,7 @@ import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { posix, win32 } from "node:path";
 import { HttpError } from "./errors";
-import { classifyPath, hostPathRoot, isAbsoluteHostPath, isWithinPath, type PathHost } from "./workspace-paths";
+import { classifyPath, hostPathRoot, isAbsoluteHostPath, isWithinPath, nodePathHost, sameFile, type PathHost } from "./workspace-paths";
 
 export const HOST_LIST_LIMIT = 500;
 const SKIP_NAMES = new Set(["node_modules"]);
@@ -43,7 +43,7 @@ export function resolveHostPath(input: string, fs: HostFs = {}): string {
 function assertHostReadable(abs: string, fs: HostFs = {}): string {
   const platform = platformOf(fs);
   const resolved = hostAbs(abs, platform);
-  if (isForeignHome(resolved, currentHome(fs), platform)) {
+  if (isForeignHome(resolved, currentHome(fs), platform, fs.paths)) {
     throw new HttpError(403, "host_permission", permissionMessage(platform));
   }
   let st;
@@ -63,7 +63,7 @@ function assertHostReadable(abs: string, fs: HostFs = {}): string {
 export function locateHostFile(input: string, fs: HostFs = {}): string {
   const platform = platformOf(fs);
   const resolved = resolveHostPath(input, fs);
-  if (isForeignHome(resolved, currentHome(fs), platform)) {
+  if (isForeignHome(resolved, currentHome(fs), platform, fs.paths)) {
     throw new HttpError(403, "host_permission", permissionMessage(platform));
   }
   let st;
@@ -105,7 +105,7 @@ export function listHostDir(input: string, fs: HostFs = {}, opts: { dotted?: boo
     } catch {
       continue;
     }
-    if (isForeignHome(childAbs, home, platform)) continue;
+    if (isForeignHome(childAbs, home, platform, fs.paths)) continue;
     let kind: "file" | "dir" = "file";
     try {
       if ((fs.stat ?? statSync)(childAbs).isDirectory()) kind = "dir";
@@ -127,8 +127,13 @@ export function listHostDir(input: string, fs: HostFs = {}, opts: { dotted?: boo
  * Another user's home folder, which the picker never shows: `/Users/<name>` on a Mac, and on
  * Windows any folder beside the user's own profile (`C:\Users\<name>`) except Public.
  */
-export function isForeignHome(abs: string, home: string, platform: NodeJS.Platform = process.platform): boolean {
-  if (platform === "win32") return isForeignWindowsProfile(abs, home);
+export function isForeignHome(
+  abs: string,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+  paths?: PathHost,
+): boolean {
+  if (platform === "win32") return isForeignWindowsProfile(abs, home, paths);
   const users = "/Users/";
   if (abs === "/Users" || abs === "/Users/") return false;
   if (!abs.startsWith(users)) return false;
@@ -137,7 +142,7 @@ export function isForeignHome(abs: string, home: string, platform: NodeJS.Platfo
   return name !== posix.basename(hostAbs(home, platform));
 }
 
-function isForeignWindowsProfile(abs: string, home: string): boolean {
+function isForeignWindowsProfile(abs: string, home: string, paths?: PathHost): boolean {
   const profile = hostAbs(home, "win32");
   const users = win32.dirname(profile);
   // A profile straight under a drive or share root has no folder of profiles beside it.
@@ -145,7 +150,12 @@ function isForeignWindowsProfile(abs: string, home: string): boolean {
   if (!isWithinPath(users, abs, "win32")) return false;
   const name = abs.slice(users.length).split(/[\\/]/).filter(Boolean)[0] ?? "";
   if (!name || name.toLowerCase() === "public") return false;
-  return name.toLowerCase() !== win32.basename(profile).toLowerCase();
+  if (name.toLowerCase() === win32.basename(profile).toLowerCase()) return false;
+  // Windows 8.3 short names (e.g. `RUNNER~1` for `runneradmin` in `%TEMP%`) spell the current
+  // user's own profile differently; ask the file system whether both name the same folder.
+  const host = paths ?? (process.platform === "win32" ? nodePathHost : undefined);
+  if (host && sameFile(host, win32.join(users, name), profile)) return false;
+  return true;
 }
 
 function skipName(name: string, dotted: boolean): boolean {

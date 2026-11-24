@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Windows: files under `%TEMP%` open when the username uses an 8.3 short name
+
+- On Windows accounts whose username is longer than 8 characters (or contains spaces), `%TEMP%` and some tools spell the profile folder with an 8.3 short name (such as `C:\Users\RUNNER~1\…`). Opening or listing a cited file or project directory under that spelling used to fail with "file not found" / access denied because the host-path check compared only the folder name against `homedir()`. It now checks the file system identity when the names differ, so your own profile's short-name spelling is accepted while other users' profiles stay denied.
+
 ### An Antigravity project session out of usage picks up at the reset
 
 - Claude Code, Codex and Grok project sessions already picked up by themselves once a usage limit reset; an Antigravity session stopped and waited for you. Now, when a run ends on agy's failure, the app asks agy's own `/quota` once (read-only, no model call, the same ask as the usage widget's). If a window of the group the session's model belongs to ("Gemini Models", or "Claude and GPT models") is used up, the failure line says when it picks up ("Antigravity usage limit reached (resets 11/24, 05:00 PM; it picks up by itself then)"), and a minute after the latest reset among that group's used-up windows a run starts that goes on, quoting your lines it had not answered.
