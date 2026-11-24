@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "nsh/test";
 import { copyFor } from "../src/m/copy.ts";
-import { openStory, seeded } from "./fixture";
+import { joinHostPath, openStory, seeded } from "./fixture";
 
 type App = Awaited<ReturnType<typeof openStory>>;
 
@@ -193,7 +193,7 @@ test("a file from elsewhere opened in a project session has the project's tree b
   await app.waitUntil(() => has(app, "Elsewhere"), { timeout: LOAD_MS });
   // One file, and not the project's: the tree is the project's all the same, listed from its top.
   await app.waitFor("id:artifact-tree-column");
-  const src = `${seeded.projectDir}/src`;
+  const src = joinHostPath(seeded.projectDir, "src")!;
   await app.waitFor(`id:artifact-tree-row:${src}`, { timeout: LOAD_MS });
   expect(app.shows(`id:artifact-tree-row:${seeded.elsewhere}`)).toBe(false);
   // It is not saved or annotated as the project's: a note on it reaches nobody.
@@ -201,7 +201,7 @@ test("a file from elsewhere opened in a project session has the project's tree b
   expect(app.texts()).not.toContain(t.annotationNoAgentLine);
   // A row of the tree opens the project's file in its place, now found in the tree and editable.
   await app.press(`id:artifact-tree-row:${src}`);
-  const main = `${src}/main.py`;
+  const main = joinHostPath(seeded.projectDir, "src/main.py")!;
   await app.waitFor(`id:artifact-tree-row:${main}`, { timeout: LOAD_MS });
   await app.press(`id:artifact-tree-row:${main}`);
   await app.waitUntil(() => log(app).includes(`project-select:${main}`));

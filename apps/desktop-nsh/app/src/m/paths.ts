@@ -58,3 +58,21 @@ export function baseName(path: string): string {
   const at = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
   return at >= 0 ? trimmed.slice(at + 1) : trimmed;
 }
+
+/**
+ * Formats a host absolute path as a `file:` URL that `pathOfFileUri` round-trips on every OS:
+ * POSIX `/a/b c` → `file:///a/b%20c`, Windows `C:\a\b c` → `file:///C:/a/b%20c` (keeping the drive
+ * colon unencoded), UNC `\\server\share\a` → `file://server/share/a`.
+ */
+export function fileUriOfHostPath(path: string): string {
+  if (WINDOWS_DRIVE_ABSOLUTE.test(path)) {
+    const drive = path.slice(0, 2);
+    const rest = path.slice(2).split(/[\\/]+/).filter(Boolean).map(encodeURIComponent).join("/");
+    return `file:///${drive}/${rest}`;
+  }
+  if (path.startsWith("\\\\")) {
+    const [host, ...rest] = path.slice(2).split(/[\\/]+/).filter(Boolean);
+    return `file://${host ?? ""}/${rest.map(encodeURIComponent).join("/")}`;
+  }
+  return `file://${path.split("/").map(encodeURIComponent).join("/")}`;
+}

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { baseName, hostSeparator, isAbsoluteHostPath, isWindowsHostPath, joinHostPath } from "./paths.ts";
+import { baseName, fileUriOfHostPath, hostSeparator, isAbsoluteHostPath, isWindowsHostPath, joinHostPath } from "./paths.ts";
 
 test("isWindowsHostPath knows a drive letter and a UNC share from a POSIX path", () => {
   expect(isWindowsHostPath("C:\\Users\\me\\ws")).toBe(true);
@@ -48,4 +48,12 @@ test("baseName splits on either separator", () => {
   expect(baseName("a.ts")).toBe("a.ts");
   expect(baseName("/Users/me/ws/")).toBe("ws");
   expect(baseName("")).toBe("");
+});
+
+test("fileUriOfHostPath formats POSIX, Windows drive and UNC paths without encoding the drive colon", () => {
+  expect(fileUriOfHostPath("/Users/me/Desktop/周报 draft.docx")).toBe("file:///Users/me/Desktop/%E5%91%A8%E6%8A%A5%20draft.docx");
+  expect(fileUriOfHostPath("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\deskfolk\\notes.md")).toBe("file:///C:/Users/RUNNER~1/AppData/Local/Temp/deskfolk/notes.md");
+  expect(fileUriOfHostPath("C:\\Users\\me\\Desktop\\周报 draft.docx")).toBe("file:///C:/Users/me/Desktop/%E5%91%A8%E6%8A%A5%20draft.docx");
+  expect(fileUriOfHostPath("D:\\")).toBe("file:///D:/");
+  expect(fileUriOfHostPath("\\\\server\\share\\a b.txt")).toBe("file://server/share/a%20b.txt");
 });

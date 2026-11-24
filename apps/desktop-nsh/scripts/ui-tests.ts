@@ -17,6 +17,8 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { createServer } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { AGENT_KINDS, type AgentStatus } from "@real-bot/protocol";
+import { AGENT_LAUNCH } from "../../daemon/src/agents/registry";
 import { ptyHelperPath } from "../../daemon/src/pty";
 import { startRuntime } from "../../daemon/src/runtime";
 import { memoryKeyStore } from "../../daemon/src/secrets";
@@ -50,14 +52,36 @@ async function freePort(): Promise<number> {
 
 const dataDir = mkdtempSync(join(tmpdir(), "deskfolk-nsh-ui-"));
 const workspace = join(dataDir, "workspace");
+const workspaceAlt = join(dataDir, "workspace-alt");
 mkdirSync(workspace, { recursive: true });
+mkdirSync(workspaceAlt, { recursive: true });
 const port = await freePort();
+// Isolate agent probing from whatever CLIs happen to be installed on the developer's machine so
+// local runs see the same "not installed" state as a clean CI runner.
+const isolatedAgentDescribe = async (runner: keyof typeof AGENT_LAUNCH, custom: { id: string; name: string } | null): Promise<AgentStatus> => ({
+  runner,
+  custom_id: custom?.id ?? null,
+  label: runner === "custom" && custom ? custom.name : AGENT_KINDS[runner].label,
+  path: null,
+  source: null,
+  version: null,
+  logged_in: null,
+  auth: null,
+  login_command: AGENT_LAUNCH[runner].login,
+  models: [],
+  default_model: null,
+  proxy: null,
+  proxy_source: null,
+  checked_at: new Date().toISOString(),
+  error: "not found",
+});
 const handle = await startRuntime({
   dataDir,
   bind: `127.0.0.1:${port}`,
   endpointKey: memoryKeyStore(),
   schedule: false,
   supervisor: "none",
+  agentDescribe: isolatedAgentDescribe,
 });
 
 async function api(method: string, path: string, body?: unknown): Promise<unknown> {
@@ -112,6 +136,7 @@ try {
     editorDirect: editor.direct_session.id,
     group: group.id,
     workspace,
+    workspaceAlt,
     projectDir,
     elsewhere,
     pty: hasPtyHelper(),

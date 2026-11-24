@@ -72,6 +72,8 @@ export type RuntimeOptions = {
   agentQuery?: import("./engine/agent-runner").AgentQuery;
   /** The same for a project session's Claude Code (ADR 0095): a live check's stand-in. `main.ts` never sets it. */
   projectQuery?: import("./project-runner").ProjectQuery;
+  /** A test fixture's stand-in for probing installed local agents (ADR 0079), so screen tests do not depend on the host's PATH. `main.ts` never sets it. */
+  agentDescribe?: import("./agents/status").AgentProbeDeps["describe"];
 };
 
 export type RuntimeHandle = {
@@ -329,6 +331,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<RuntimeHand
       ablation: options.ablation,
       agentQuery: options.agentQuery,
       ...(options.projectQuery ? { projectQuery: options.projectQuery } : {}),
+      ...(options.agentDescribe ? { agentDescribe: options.agentDescribe } : {}),
       installedApp,
       log: bootLog,
       // Before the scheduler's first tick, a line for each job the restart cut off where you will

@@ -3,7 +3,11 @@
  * shell answers the commands the runtime asks first.
  */
 import { open, type OpenOptions } from "nsh/test";
+import { folderOfPath } from "../src/m/overlays/artifact-tree";
+import { fileUriOfHostPath, joinHostPath } from "../src/m/paths";
 import fixture from "./.fixture.json";
+
+export { fileUriOfHostPath as fileUri, folderOfPath, joinHostPath };
 
 export const seeded = fixture as {
   origin: string;
@@ -12,6 +16,8 @@ export const seeded = fixture as {
   editorDirect: string;
   group: string;
   workspace: string;
+  /** A second real directory on this host, for tests that switch the workspace folder. */
+  workspaceAlt: string;
   /** A directory outside the workspace holding `src/main.py`, for a project session a test makes. */
   projectDir: string;
   /** A Markdown file in neither the workspace nor `projectDir`, as an agent may cite from `~/Downloads`. */

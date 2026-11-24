@@ -334,6 +334,7 @@ test("the consultant pill sits beside Plan for every agent; its menu lists the m
 
 test("adding a consultant is a pick of agent, model and level; the first one turns the switch on, and the menu stops offering at three", async () => {
   const app = await project();
+  await app.press("id:story-agents");
   await app.press("id:project-consult");
   await app.waitFor("id:consult-add", { timeout: 5_000 });
   // Nothing to ask yet: the switch cannot go on.
@@ -355,6 +356,7 @@ test("adding a consultant is a pick of agent, model and level; the first one tur
 
 test("a press outside the consultant menu puts it away; a pick in its add picker does not", async () => {
   const app = await project();
+  await app.press("id:story-agents");
   await app.press("id:project-consult");
   await app.waitFor("id:consult-menu", { timeout: 5_000 });
   // Plan, beside it, is outside the menu.
