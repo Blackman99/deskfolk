@@ -103,15 +103,9 @@ export function isAgentOwnReadable(abs: string, home: string, platform: NodeJS.P
  */
 export function touchesAgentCredentials(command: string, home: string, platform: NodeJS.Platform = process.platform, configDirs: string[] = []): boolean {
   const win = platform === "win32";
-  const sep = win ? "[\\\\/]+" : "/+";
-  const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
-  const homes = win
-    ? ["~", "\\$HOME", "\\$\\{HOME\\}", "%USERPROFILE%", "\\$env:USERPROFILE", "\\$\\{env:USERPROFILE\\}", "%HOMEDRIVE%%HOMEPATH%", spelled(home)]
-    : ["~", "\\$HOME", "\\$\\{HOME\\}", escapeRegExp(home)];
-  if (win) {
-    const drive = /^([A-Za-z]):[\\/](.*)$/s.exec(home);
-    if (drive) homes.push(`[\\\\/]${drive[1]}[\\\\/]+${spelled(drive[2]!)}`);
-  }
+  const sep = sepOf(win);
+  const spelled = (path: string) => spelledPath(path, win);
+  const homes = homeSpellings(home, platform);
   const own = AGENT_OWN_READABLE.map((entry) => `(?!${spelled(entry)}(?:[\\\\/]|$))`).join("");
   const entries = AGENT_HOME_ENTRIES.map((entry) => spelled(entry)).join("|");
   const names = new RegExp(`(?:${homes.join("|")})${sep}${own}(?:${entries})(?![A-Za-z0-9_-])`, win ? "i" : "");
@@ -127,8 +121,40 @@ export function touchesAgentCredentials(command: string, home: string, platform:
  */
 export function namesDir(command: string, dir: string, home: string, platform: NodeJS.Platform, sparingBundled = false): boolean {
   const win = platform === "win32";
-  const sep = win ? "[\\\\/]+" : "/+";
-  const spelled = (path: string) => path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sep);
+  const sep = sepOf(win);
+  // `sparingBundled`: `<dir>/bundled` (Grok's shipped skills in an account's GROK_HOME) is not named.
+  const own = sparingBundled ? `(?!${sep}bundled(?![A-Za-z0-9._-]))` : "";
+  return new RegExp(`(?:${dirSpellings(dir, home, platform).join("|")})(?![A-Za-z0-9._-])${own}`, win ? "i" : "").test(command);
+}
+
+/** What separates a path's parts in a command, as a pattern: either slash on Windows, any number of them. */
+function sepOf(win: boolean): string {
+  return win ? "[\\\\/]+" : "/+";
+}
+
+/** A path's parts as a pattern, whatever separates them. */
+function spelledPath(path: string, win: boolean): string {
+  return path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).map(escapeRegExp).join(sepOf(win));
+}
+
+/** How a command may spell your home folder, as patterns: `~`, `$HOME`, spelled out; on Windows `%USERPROFILE%` and the like, and Git Bash's `/c/Users/…`. */
+function homeSpellings(home: string, platform: NodeJS.Platform): string[] {
+  const win = platform === "win32";
+  const homes = win
+    ? ["~", "\\$HOME", "\\$\\{HOME\\}", "%USERPROFILE%", "\\$env:USERPROFILE", "\\$\\{env:USERPROFILE\\}", "%HOMEDRIVE%%HOMEPATH%", spelledPath(home, win)]
+    : ["~", "\\$HOME", "\\$\\{HOME\\}", escapeRegExp(home)];
+  if (win) {
+    const drive = /^([A-Za-z]):[\\/](.*)$/s.exec(home);
+    if (drive) homes.push(`[\\\\/]${drive[1]}[\\\\/]+${spelledPath(drive[2]!, win)}`);
+  }
+  return homes;
+}
+
+/** How a command may spell `dir`, as patterns: spelled out, and under your home folder through `~`, `$HOME` and the like. */
+function dirSpellings(dir: string, home: string, platform: NodeJS.Platform): string[] {
+  const win = platform === "win32";
+  const sep = sepOf(win);
+  const spelled = (path: string) => spelledPath(path, win);
   const prefixes: string[] = [];
   if (!win) prefixes.push(`/${spelled(dir)}`);
   else if (/^\\\\/.test(dir)) prefixes.push(`[\\\\/]{2}${spelled(dir)}`);
@@ -144,9 +170,7 @@ export function namesDir(command: string, dir: string, home: string, platform: N
       : ["~", "\\$HOME", "\\$\\{HOME\\}"];
     for (const spelling of homes) prefixes.push(`${spelling}${sep}${rel}`);
   }
-  // `sparingBundled`: `<dir>/bundled` (Grok's shipped skills in an account's GROK_HOME) is not named.
-  const own = sparingBundled ? `(?!${sep}bundled(?![A-Za-z0-9._-]))` : "";
-  return new RegExp(`(?:${prefixes.join("|")})(?![A-Za-z0-9._-])${own}`, win ? "i" : "").test(command);
+  return prefixes;
 }
 
 /** A `..` as a path's own part: `../x`, `cd ..`, `cd ..;`, `(cd ..)`, `"..")`; not `...`, nor `1..9`. */
