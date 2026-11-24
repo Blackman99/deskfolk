@@ -4,7 +4,8 @@
  * windows themselves, none of them through a model call or spending anything: Codex's app-server
  * (`account/rateLimits/read`), Grok's ACP extension `_x.ai/billing` (no session opened), and
  * `agy -p "/quota"`, a read-only slash command `agy` answers itself from 1.1.11 (before that it went
- * to the model as a prompt, so an older `agy` is not asked). The others report none, and show what
+ * to the model as a prompt, so an older `agy` is not asked), plus its subscription tier from
+ * `agy acp` (`_meta.antigravity.tier` on `session/resume`, from 1.5.4). The others report none, and show what
  * this app's own records hold of them today instead: never a percentage an agent did not give. Claude's
  * own stays `GET /v1/claude-usage` (ADR 0061); `GET /v1/usage` puts the two together (ADR 0080).
  */
@@ -15,7 +16,8 @@ import { claudeLaunch } from "../claude-code/spawn";
 import { rpcPeer } from "../engine/agent/jsonrpc";
 import type { Store } from "../store";
 import daemonPackage from "../../package.json";
-import { agyAtLeast, AGY_QUOTA_SINCE } from "./agy-version";
+import { withAgyAcp } from "./agy-acp";
+import { agyAtLeast, agyServesAcp, AGY_QUOTA_SINCE } from "./agy-version";
 import { resolveAgent } from "./runtime";
 import type { OtherRunner } from "./status";
 
@@ -105,8 +107,8 @@ export function createAgentUsageProbe(deps: {
   askCodex?: (env: Record<string, string>, executable: string) => Promise<Asked>;
   /** A test's stand-in for asking Grok (its ACP launch arguments come with it). */
   askGrok?: (env: Record<string, string>, executable: string, args: string[]) => Promise<Asked>;
-  /** A test's stand-in for asking Antigravity. */
-  askAntigravity?: (env: Record<string, string>, executable: string) => Promise<Asked>;
+  /** A test's stand-in for asking Antigravity (its ACP launch arguments come with it). */
+  askAntigravity?: (env: Record<string, string>, executable: string, args: string[]) => Promise<Asked>;
 }): AgentUsageProbe {
   const { store } = deps;
   const cache = new Map<string, { usage: AgentUsage; at: number }>();
@@ -139,7 +141,7 @@ export function createAgentUsageProbe(deps: {
             ? await (deps.askCodex ?? askCodexLimits)(resolved.env, resolved.executable)
             : runner === "grok"
               ? await (deps.askGrok ?? askGrokBilling)(resolved.env, resolved.executable, resolved.args)
-              : await (deps.askAntigravity ?? askAgyQuota)(resolved.env, resolved.executable);
+              : await (deps.askAntigravity ?? askAgyQuota)(resolved.env, resolved.executable, resolved.args);
           Object.assign(usage, asked, { available: asked.windows.length > 0, reason: asked.windows.length > 0 ? null : "no_plan" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -259,6 +261,44 @@ export function readAgyCredits(out: string): string | null {
 }
 
 /**
+ * The subscription tier `agy acp` attaches to `session/resume`, `session/load` and `session/new`
+ * (`_meta.antigravity.tier.name`, e.g. `Google AI Ultra`, `Google AI Pro`, `Gemini Enterprise Plus`).
+ */
+export function readAgyTier(answer: unknown): string | null {
+  const meta = (answer as { _meta?: { antigravity?: { tier?: { name?: unknown } } } } | null)?._meta;
+  const name = meta?.antigravity?.tier?.name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+/**
+ * Asks `agy acp` for the signed-in account's subscription tier without creating a new session on
+ * disk: resumes an existing session (`session/resume` does not replay history or modify the
+ * session file), reads `_meta.antigravity.tier.name`, and closes it right away. Returns null when
+ * `agy` does not advertise tier metadata, has no sessions yet, or cannot answer.
+ */
+export async function askAgyTier(env: Record<string, string>, executable: string, args: string[] = ["acp"]): Promise<string | null> {
+  return withAgyAcp({ executable, args, env }, tmpdir(), async (rpc, caps) => {
+    if (!caps.tier || !caps.list || !caps.resume) return null;
+    const page = await rpc.request<{ sessions?: Array<{ sessionId?: unknown; updatedAt?: unknown }> }>("session/list", {}, ASK_TIMEOUT_MS);
+    const sessions = (page?.sessions ?? []).filter((session): session is { sessionId: string; updatedAt?: string | null } => typeof session?.sessionId === "string" && session.sessionId.length > 0);
+    if (sessions.length === 0) return null;
+    // Try the oldest sessions first: least likely to be active in a terminal or another run.
+    const ordered = [...sessions].sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
+    for (const session of ordered.slice(0, 3)) {
+      try {
+        const resumed = await rpc.request("session/resume", { sessionId: session.sessionId, cwd: tmpdir(), mcpServers: [] }, ASK_TIMEOUT_MS);
+        await rpc.request("session/close", { sessionId: session.sessionId }, 5_000).catch(() => undefined);
+        const tier = readAgyTier(resumed);
+        if (tier) return tier;
+      } catch {
+        // try another session in case an old one is unreadable
+      }
+    }
+    return null;
+  }, ASK_TIMEOUT_MS);
+}
+
+/**
  * `agy -p "/quota"`'s windows, asked of an `agy` already known to answer it itself (a project
  * session's runs need 1.5 or later anyway): what an Antigravity session out of usage picks up by.
  */
@@ -266,16 +306,17 @@ export async function agyQuotaWindows(executable: string, env: Record<string, st
   return readAgyQuota((await runQuiet(executable, ["-p", "/quota"], env)).out);
 }
 
-async function askAgyQuota(env: Record<string, string>, executable: string): Promise<Asked> {
+async function askAgyQuota(env: Record<string, string>, executable: string, args: string[] = ["acp"]): Promise<Asked> {
   const version = await runQuiet(executable, ["--version"], env);
   if (!agyAnswersQuota(version.out)) throw new Error(`agy ${version.out.trim() || "of an unknown version"} would send /quota to the model; update it to 1.1.11 or later`);
-  const [quota, credits] = await Promise.all([
+  const [quota, credits, plan] = await Promise.all([
     runQuiet(executable, ["-p", "/quota"], env),
     runQuiet(executable, ["-p", "/credits"], env).then((answer) => readAgyCredits(answer.out)).catch(() => null),
+    agyServesAcp(version.out) ? askAgyTier(env, executable, args).catch(() => null) : Promise.resolve(null),
   ]);
   const windows = readAgyQuota(quota.out);
   if (windows.length === 0) throw new Error((quota.err || quota.out).trim().slice(0, 300) || "agy gave no quota");
-  return { plan: null, windows, credits };
+  return { plan, windows, credits };
 }
 
 /** Runs one of the agent's own commands in a scratch directory and gives back what it printed. */

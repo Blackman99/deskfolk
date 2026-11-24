@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+### 用量里现在显示 Antigravity 的订阅级别
+
+- 用量标签页、悬浮挂件和菜单栏里的 Antigravity 之前只显示模型组额度窗口，订阅级别一直是空的（`plan: null`），卡片顶上只写「默认账号」，因为 `agy -p "/quota"` 和 `/credits` 不返回订阅档位。
+- 现在用量探针在查 `/quota` 和 `/credits` 的同时，对 1.5.4 及以上的 `agy` 并行经 `agy acp` 读一次订阅级别（`_meta.antigravity.tier.name`，如 `Google AI Ultra`、`Google AI Pro`、`Gemini Enterprise Plus`）：仅对已有会话调 `session/resume` 后立刻 `session/close`，不新建会话、不写磁盘、不花额度；读不到或还没有任何会话时保持为空，不影响额度窗口展示。
+
 ### Antigravity 项目会话不再因为用自己的文件夹被停下
 
 - 在 Antigravity 项目会话里问「用量里看不到 antigravity 的订阅级别」，agy 第一步去读它自带的技能说明（`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`），这一轮就被停下，说本机 Agent 自己的设置和凭据碰不得。一天之内这是第五次：前几次都只是在「整个 Agent 文件夹都算凭据」上再开一个口子，下一种碰法总会漏。

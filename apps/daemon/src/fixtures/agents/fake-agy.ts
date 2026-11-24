@@ -25,7 +25,9 @@ type Question = { question: string; options: string[]; multi?: boolean };
 type Step = { say: string } | { tool: Call } | { ask: Call } | { wait: number } | { hang: true } | { question: Question[] };
 type Kept = { sessionId: string; cwd: string; title: string; updatedAt: string; history: Array<{ user?: string; agent?: string; tool?: Call }> };
 type Script = {
-  caps?: { resume?: boolean; load?: boolean; list?: boolean };
+  caps?: { resume?: boolean; load?: boolean; list?: boolean; tier?: boolean };
+  /** Subscription tier metadata returned in `_meta.antigravity.tier` on session open/resume/load. */
+  tier?: { name: string; id?: string; upgradeUri?: string };
   sessions?: Kept[];
   commands?: Array<{ name: string; description: string }>;
   models?: string[];
@@ -63,6 +65,7 @@ const sessionAnswer = (sessionId: string) => ({
   sessionId, configOptions: configOptions(),
   models: { availableModels: models.map((modelId) => ({ modelId, name: modelId })), currentModelId: models[0] },
   modes: { currentModeId: "default", availableModes: [{ id: "default" }, { id: "plan" }] },
+  ...(script.tier ? { _meta: { antigravity: { tier: script.tier } } } : {}),
 });
 const offerCommands = () => setTimeout(() => update({ sessionUpdate: "available_commands_update", availableCommands: script.commands ?? [] }), 5);
 
@@ -135,7 +138,8 @@ rpc.onRequest(async (method, params) => {
       if (caps.resume !== false) session.resume = {};
       if (caps.load !== false) session.load = {};
       if (caps.list !== false) session.list = {};
-      return { protocolVersion: 1, agentCapabilities: { loadSession: caps.load !== false, promptCapabilities: { image: true }, sessionCapabilities: session }, authMethods: [] };
+      const meta = caps.tier || script.tier ? { _meta: { antigravity: { tier: caps.tier ?? Boolean(script.tier) } } } : {};
+      return { protocolVersion: 1, agentCapabilities: { loadSession: caps.load !== false, promptCapabilities: { image: true }, sessionCapabilities: session, ...meta }, authMethods: [] };
     }
     case "session/new": {
       opened = `agy-session-${++seq}`;

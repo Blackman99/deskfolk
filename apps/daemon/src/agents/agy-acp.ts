@@ -11,8 +11,8 @@ import type { ResolvedAgent } from "./runtime";
 
 export const AGY_ASK_TIMEOUT_MS = 30_000;
 
-/** What `initialize` answers that the app reads: whether sessions can be listed, loaded and resumed. */
-export type AgyCapabilities = { list: boolean; load: boolean; resume: boolean; image: boolean };
+/** What `initialize` answers that the app reads: whether sessions can be listed, loaded and resumed, and whether tier metadata is offered. */
+export type AgyCapabilities = { list: boolean; load: boolean; resume: boolean; image: boolean; tier: boolean };
 
 /**
  * The protocol's handshake. The client offers no file system and no terminal: `agy` uses its own
@@ -20,18 +20,31 @@ export type AgyCapabilities = { list: boolean; load: boolean; resume: boolean; i
  * offers forms (`elicitation`): `agy` then asks its questions (`ask_question`) as one, a card each.
  */
 export async function initializeAgy(rpc: RpcPeer, timeoutMs = AGY_ASK_TIMEOUT_MS): Promise<AgyCapabilities> {
-  const answer = await rpc.request<{ agentCapabilities?: { loadSession?: boolean; sessionCapabilities?: Record<string, unknown>; promptCapabilities?: { image?: boolean } } }>("initialize", {
+  const answer = await rpc.request<{
+    agentCapabilities?: {
+      loadSession?: boolean;
+      sessionCapabilities?: Record<string, unknown>;
+      promptCapabilities?: { image?: boolean };
+      _meta?: { antigravity?: { tier?: unknown } };
+    };
+  }>("initialize", {
     protocolVersion: 1,
     clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false, elicitation: { form: {} } },
     clientInfo: { name: "deskfolk", title: "Deskfolk", version: typeof daemonPackage.version === "string" ? daemonPackage.version : "dev" },
   }, timeoutMs);
   const caps = answer?.agentCapabilities ?? {};
   const session = caps.sessionCapabilities ?? {};
-  return { list: "list" in session, load: caps.loadSession === true || "load" in session, resume: "resume" in session, image: caps.promptCapabilities?.image === true };
+  return {
+    list: "list" in session,
+    load: caps.loadSession === true || "load" in session,
+    resume: "resume" in session,
+    image: caps.promptCapabilities?.image === true,
+    tier: caps._meta?.antigravity?.tier === true,
+  };
 }
 
 /** Starts `agy acp` in `dir`, initializes it, runs `ask` on it, and ends it, however `ask` ends. */
-export async function withAgyAcp<T>(agy: Extract<ResolvedAgent, { ok: true }>, dir: string, ask: (rpc: RpcPeer, caps: AgyCapabilities) => Promise<T>, timeoutMs = AGY_ASK_TIMEOUT_MS): Promise<T> {
+export async function withAgyAcp<T>(agy: Pick<Extract<ResolvedAgent, { ok: true }>, "executable" | "args" | "env">, dir: string, ask: (rpc: RpcPeer, caps: AgyCapabilities) => Promise<T>, timeoutMs = AGY_ASK_TIMEOUT_MS): Promise<T> {
   const launch = claudeLaunch(agy.executable, agy.args, agy.env);
   const child = spawn(launch.command, launch.args, { cwd: dir, env: agy.env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true, windowsVerbatimArguments: launch.verbatim });
   const rpc = rpcPeer(child.stdout, child.stdin, { jsonrpc: true });

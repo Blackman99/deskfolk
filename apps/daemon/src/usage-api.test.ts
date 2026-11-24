@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import type { AgentStatus, AgentUsageResponse, ClaudeCodeStatus, ClaudeUsage, UsageResponse } from "@real-bot/protocol";
-import { accountsInUse, accountsShown, agyAnswersQuota, connectedAccounts, createAgentUsageProbe, readAgyCredits, readAgyQuota, readGrokBilling, type AgentUsageProbe } from "./agents/usage";
+import { accountsInUse, accountsShown, agyAnswersQuota, askAgyTier, connectedAccounts, createAgentUsageProbe, readAgyCredits, readAgyQuota, readAgyTier, readGrokBilling, type AgentUsageProbe } from "./agents/usage";
 import type { ClaudeUsageProbe } from "./claude-code/usage";
 import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
@@ -213,18 +213,65 @@ test("Antigravity's /quota lines read as one window per model group and length; 
   expect(["1.3.3", "1.1.11", "1.1.10", "0.9.0", "2.0.0", "nonsense"].map(agyAnswersQuota)).toEqual([true, true, false, false, true, false]);
 });
 
-test("Antigravity's windows keep their model group through the one route", async () => {
+test("Antigravity's windows and subscription tier keep through the one route", async () => {
+  expect(readAgyTier({ _meta: { antigravity: { tier: { name: "  Google AI Ultra  ", id: "g1-ultra-lite-tier" } } } })).toBe("Google AI Ultra");
+  expect([readAgyTier(null), readAgyTier({}), readAgyTier({ _meta: { antigravity: { tier: { name: "   ", id: "x" } } } })]).toEqual([null, null, null]);
   const store = new Store({ endpointKey: memoryKeyStore() });
   try {
     const probe = createAgentUsageProbe({
       store,
       connected: async () => [{ runner: "antigravity", customId: null, configDir: null }],
-      askAntigravity: async () => ({ plan: null, windows: [{ minutes: 300, model: "Gemini Models", percent: 3, resets_at: null }], credits: null }),
+      askAntigravity: async () => ({ plan: "Google AI Ultra", windows: [{ minutes: 300, model: "Gemini Models", percent: 3, resets_at: null }], credits: null }),
     });
     const [item] = (await probe.current()).items;
-    if (item!.reason !== "missing") expect(item).toMatchObject({ available: true, windows: [{ minutes: 300, model: "Gemini Models", percent: 3 }] });
+    if (item!.reason !== "missing") expect(item).toMatchObject({ available: true, plan: "Google AI Ultra", windows: [{ minutes: 300, model: "Gemini Models", percent: 3 }] });
   } finally {
     store.close();
   }
+});
+
+test("askAgyTier reads the subscription tier via session/resume without opening a new session", async () => {
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const fakeAgy = join(import.meta.dir, "fixtures/agents/fake-agy.ts");
+  const runFake = async (script: Record<string, unknown>) => {
+    const dir = mkdtempSync(join(tmpdir(), "agy-tier-"));
+    const logPath = join(dir, "log.jsonl");
+    try {
+      const env = { ...process.env, FAKE_AGY_SCRIPT: JSON.stringify(script), FAKE_AGY_LOG: logPath } as Record<string, string>;
+      const tier = await askAgyTier(env, process.execPath, [fakeAgy]);
+      const calls = readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { method?: string; params?: Record<string, unknown> }).filter((entry) => entry.method);
+      return { tier, calls };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  // Resumes the oldest session (skipping an unreadable one) and closes it; never calls session/new.
+  const ok = await runFake({
+    tier: { name: "Google AI Ultra", id: "g1-ultra-lite-tier" },
+    gone: ["old-broken"],
+    sessions: [
+      { sessionId: "newest", cwd: "/tmp", title: "new", updatedAt: "2026-11-24T00:00:00Z", history: [] },
+      { sessionId: "old-broken", cwd: "/tmp", title: "broken", updatedAt: "2026-10-01T00:00:00Z", history: [] },
+      { sessionId: "old-ok", cwd: "/tmp", title: "ok", updatedAt: "2026-10-10T00:00:00Z", history: [] },
+    ],
+    prompts: [],
+  });
+  expect(ok.tier).toBe("Google AI Ultra");
+  expect(ok.calls.map((c) => c.method)).toEqual(["initialize", "session/list", "session/resume", "session/resume", "session/close"]);
+  expect(ok.calls[2]!.params?.sessionId).toBe("old-broken");
+  expect(ok.calls[3]!.params?.sessionId).toBe("old-ok");
+  expect(ok.calls[4]!.params?.sessionId).toBe("old-ok");
+
+  // Without tier capability, stops right after initialize.
+  const noCap = await runFake({ caps: { tier: false }, sessions: [{ sessionId: "s1", cwd: "/tmp", title: "t", updatedAt: "2026-10-10T00:00:00Z", history: [] }], prompts: [] });
+  expect(noCap.tier).toBeNull();
+  expect(noCap.calls.map((c) => c.method)).toEqual(["initialize"]);
+
+  // With no existing sessions, returns null and never creates a new session.
+  const empty = await runFake({ tier: { name: "Google AI Pro" }, sessions: [], prompts: [] });
+  expect(empty.tier).toBeNull();
+  expect(empty.calls.map((c) => c.method)).toEqual(["initialize", "session/list"]);
 });
 

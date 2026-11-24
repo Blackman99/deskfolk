@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Usage now shows Antigravity's subscription tier
+
+- Antigravity's card in the Usage tab, the floating usage widget and the menu bar showed its model-group windows without its subscription tier (`plan` was always null, so the card read "Default account"), because `agy -p "/quota"` and `/credits` do not include the plan name.
+- Alongside `/quota` and `/credits`, the usage probe now asks `agy acp` (1.5.4 and later) for `_meta.antigravity.tier.name` (such as `Google AI Ultra`, `Google AI Pro`, `Gemini Enterprise Plus`) by resuming an existing session and closing it right away — no model call, no quota spent, and no new session written to disk. When `agy` does not advertise tier metadata or has no sessions yet, the plan stays empty and the quota windows still show as before.
+
 ### An Antigravity project session is no longer stopped for using its own folder
 
 - Asked why the usage did not show Antigravity's plan tier, an Antigravity project session first read the guide agy ships with (`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`), and the turn was stopped: your agents' own settings and credentials are off limits. That was the fifth time in one day. Each fix before only opened one more gap in "an agent's whole folder counts as credentials", and the next way of touching it was missed.
