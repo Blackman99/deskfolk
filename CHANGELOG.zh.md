@@ -6,6 +6,14 @@
 
 ## Unreleased
 
+### Antigravity 项目会话不再因为用自己的文件夹被停下
+
+- 在 Antigravity 项目会话里问「用量里看不到 antigravity 的订阅级别」，agy 第一步去读它自带的技能说明（`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`），这一轮就被停下，说本机 Agent 自己的设置和凭据碰不得。一天之内这是第五次：前几次都只是在「整个 Agent 文件夹都算凭据」上再开一个口子，下一种碰法总会漏。
+- 现在 agy 自己的文件夹（`~/.gemini`）整个算它自己的，和在它终端里一样：自带的和你装的技能、它的 `settings.json`、MCP 配置、别的会话的笔记、日志，还有它自己的登录文件，读直接读，改和命令按权限模式走。
+- 别家 Agent 的文件夹（`~/.claude`、`~/.codex`、`~/.grok`…）它读得到，技能、指令文件、会话记录都行。碰不得的只有里面的登录文件和设置文件，按文件名认（`.credentials.json`、`auth.json`、`settings.json`、`config.toml`、`~/.claude.json`、MCP 配置这类），还有钥匙串；它的文件工具也不能往别家的文件夹里写。碰了这些才停下这一轮。
+- 只改了 Antigravity：它不先问，应用只能在它做完之后停下这一轮，拦不住那一步。Codex、Grok 和 Claude Code 是动手前被拒、接着干，它们和 Bot 都没变。
+- 查过的：这台电脑上最近 79 个 agy 会话的 3066 步工具调用，旧规则会停 7 步（全是它在用自己的文件夹），新规则 0 步。把上面那句原话发给真的 agy（加了一句只调查、不改文件）：它列了自己的目录、看了自己的设置和登录文件、跑了 `/quota`，160 秒答完，没有被停；同样的请求在旧代码上照样停在截图里那句话。
+
 ### Antigravity 项目会话额度用完，也到点自己接着做
 
 - Claude Code、Codex 和 Grok 的项目会话额度用完后都会到点自己接着做，Antigravity 会话停下后只能等你。现在一轮因 agy 的失败结束时，应用问一次 agy 自己的 `/quota`（只读，不经过模型，和用量挂件问的是同一个）：会话的模型所在那一组（「Gemini Models」，或「Claude and GPT models」）有窗口用完了，失败行就写明什么时候自动接着做（「Antigravity 的用量额度用完了（11/24 17:00 重置，到时自动接着做）」），到那一组用完的窗口里最晚的重置时间过一分钟自己开一轮接着做，带上你还没得到回复的话。

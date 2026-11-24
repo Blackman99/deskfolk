@@ -346,19 +346,164 @@ function shellQuoting(command: string): { inside: boolean[]; escaped: boolean[];
   return { inside, escaped, literal: (i) => !marks[i] && (inside[i] || escaped[i]) };
 }
 
+/** What may come before a file's name where a command writes one: its start, a blank, a slash, a quote, `=`, `(`, `,` or `:`. */
+const NAME_START = String.raw`(?:^|[\s/\\'"\x60=(,:])`;
+
+/**
+ * What signs an agent in, by its file's name: Claude Code's `.credentials.json` (and a name starting
+ * `.cred`, as a glob for it would), Codex's and Grok's `auth.json`, Gemini's `oauth_creds.json` and
+ * `.env`, any `*token*.json`.
+ */
+const SIGN_IN_NAMES = String.raw`\.cred[\w*?[\]-]*(?:\.json)?|credentials\.json|auth\.json|oauth_creds\.json|[\w.-]*tokens?[\w.-]*\.json|\.env`;
+
+/**
+ * How an agent is set up, by its file's name: Claude Code's `settings*.json` and `~/.claude.json`,
+ * Codex's `config.toml` (a profile's `<name>.config.toml` too), Gemini's `settings.json` and
+ * `google_accounts.json`, Grok's `user-settings.json`.
+ */
+const SETTINGS_NAMES = String.raw`google_accounts\.json|(?:user-)?settings(?:\.[\w-]+)?\.json|(?:[\w-]+\.)?config\.(?:toml|json)|\.claude\.json`;
+
+/**
+ * More of each, read only as the whole name of a file in an agent's folder ({@link isAgentSecretPath}),
+ * never wherever a command writes one: OpenCode's `mcp-auth.json`; the MCP servers an agent starts
+ * (`mcp_config.json`, `.mcp.json`: their keys sit in them), its hooks, OpenCode's `opencode.json`,
+ * a managed or remote settings file, a backup of `~/.claude.json`. A project has files by these
+ * names too.
+ */
+const MORE_SIGN_IN_NAMES = String.raw`[\w-]+[-_.]auth\.json`;
+const MORE_SETTINGS_NAMES = String.raw`\.?mcp[\w.-]*\.json|hooks\.json|opencode\.jsonc?|[\w-]+-settings(?:\.[\w-]+)?\.json|\.claude\.json\.[\w.-]+`;
+
 /**
  * Where your agents keep their sign-in and settings, by file name, wherever a command names one: what
- * a command that builds its own paths on an agent's folder may not also name. Claude Code's
- * `.credentials.json` and `settings*.json`, `~/.claude.json`; Codex's `auth.json` and `config.toml`
- * (a profile's `<name>.config.toml` too); Gemini's `oauth_creds.json`, `google_accounts.json`,
- * `.env` and `settings.json`; Grok's `auth.json` and `user-settings.json`; any `*token*.json`; a name
- * starting `.cred`, as a glob for the credentials file would.
+ * a command that builds its own paths on an agent's folder may not also name ({@link SIGN_IN_NAMES},
+ * {@link SETTINGS_NAMES}).
  */
-const SETTINGS_FILE = new RegExp(String.raw`(?:^|[\s/\\'"\x60=(,:])(?:\.cred[\w*?[\]-]*(?:\.json)?|credentials\.json|auth\.json|oauth_creds\.json|google_accounts\.json|(?:user-)?settings(?:\.[\w-]+)?\.json|(?:[\w-]+\.)?config\.(?:toml|json)|\.claude\.json|[\w.-]*tokens?[\w.-]*\.json|\.env)(?![\w.-])`);
+const SETTINGS_FILE = new RegExp(String.raw`${NAME_START}(?:${SIGN_IN_NAMES}|${SETTINGS_NAMES})(?![\w.-])`);
 
 /** Whether a command names one of your agents' sign-in or settings files by its name ({@link SETTINGS_FILE}). */
 export function namesAgentSettingsFile(command: string): boolean {
   return SETTINGS_FILE.test(command);
+}
+
+/** Such a file's name, whole, sign-in or settings. Any case: the disk does not tell them apart everywhere. */
+const SECRET_FILE = new RegExp(`^(?:${SIGN_IN_NAMES}|${MORE_SIGN_IN_NAMES}|${SETTINGS_NAMES}|${MORE_SETTINGS_NAMES})$`, "i");
+
+/** A path's last part, as a file's name. */
+function nameOf(path: string, win: boolean): string {
+  return path.split(win ? /[\\/]+/ : /\/+/).filter(Boolean).at(-1) ?? "";
+}
+
+/**
+ * A file that signs one of your agents in or sets it up, for a session to which the agents' folders
+ * are otherwise open (one with `ownAgentDirs`, ADR 0111 addendum 2026-11-24): a path in the
+ * keychains; or one in another agent's folder (an account folder you listed too) under a sign-in or
+ * settings file's name ({@link SIGN_IN_NAMES}, {@link SETTINGS_NAMES}). Nothing else there is: its
+ * skills, what it remembers, its records, notes and logs, the folder itself; nor anything among the
+ * skills Grok ships with, as ever ({@link isAgentCredentialPath}). And nothing at all in the folders
+ * of the session's own agent (`ownDirs`), which are its own as in its terminal: the skills it ships
+ * with, its settings, the file that signs it in.
+ */
+export function isAgentSecretPath(abs: string, home: string, platform: NodeJS.Platform, configDirs: string[], ownDirs: string[]): boolean {
+  if (!isAbsoluteHostPath(abs, platform)) return false;
+  const win = platform === "win32";
+  const norm = win ? win32.normalize(abs) : posix.resolve(abs);
+  if (isKeychainPath(norm, home, platform)) return true;
+  if (ownDirs.some((dir) => isWithinPath(dir, norm, platform))) return false;
+  return isAgentCredentialPath(norm, home, platform, configDirs) && SECRET_FILE.test(nameOf(norm, win));
+}
+
+/** Where a command names one of your agents' folders: from `at` up to `end`, and the path it names there. */
+type FolderMention = {
+  at: number;
+  end: number;
+  /** The path as written, `..` taken out. */
+  abs: string;
+  /** Whether the path goes on from the folder with a slash (`<folder>/x`), not with a glob on the folder's own name (`.claude` and a `*` after it). */
+  direct: boolean;
+};
+
+/**
+ * Each place a command names one of your agents' folders or something in one — `~/.claude`,
+ * `$HOME/.codex/x`, an account folder you listed, spelled as {@link homeSpellings} and
+ * {@link dirSpellings} have it — with the rest of that path, up to where the shell word or its
+ * quote ends.
+ */
+function agentFolderMentions(command: string, home: string, platform: NodeJS.Platform, configDirs: string[]): FolderMention[] {
+  const win = platform === "win32";
+  const p = win ? win32 : posix;
+  const rest = String.raw`([^\s'"\x60;|&<>()]*)`;
+  const flags = win ? "gi" : "g";
+  const out: FolderMention[] = [];
+  const add = (at: number, length: number, base: string, tail: string) => {
+    // What ends a sentence or a list is no part of the path: `~/.codex/auth.json,`.
+    const path = tail.replace(/[.,:\]}]+$/, "");
+    const direct = path === "" || (win ? /^[\\/]/ : /^\//).test(path);
+    out.push({ at, end: at + length, abs: direct ? p.join(base, path) : p.normalize(`${base}${path}`), direct });
+  };
+  // The longer name first: `.claude.json` is not `.claude` and a `.json` after it.
+  const entries = [...AGENT_HOME_ENTRIES].sort((a, b) => b.length - a.length);
+  const named = new RegExp(`(?:${homeSpellings(home, platform).join("|")})${sepOf(win)}(${entries.map((entry) => spelledPath(entry, win)).join("|")})(?![A-Za-z0-9_-])${rest}`, flags);
+  for (const match of command.matchAll(named)) {
+    const written = match[1]!.split(win ? /[\\/]+/ : /\/+/).join("/");
+    const entry = entries.find((one) => (win ? one.toLowerCase() === written.toLowerCase() : one === written)) ?? written;
+    add(match.index ?? 0, match[0].length, p.join(home, ...entry.split("/")), match[2] ?? "");
+  }
+  for (const dir of configDirs) {
+    const listed = new RegExp(`(?:${dirSpellings(dir, home, platform).join("|")})(?![A-Za-z0-9._-])${rest}`, flags);
+    for (const match of command.matchAll(listed)) add(match.index ?? 0, match[0].length, dir, match[1] ?? "");
+  }
+  return out;
+}
+
+/**
+ * Whether a command names a file that signs another of your agents in or sets it up
+ * ({@link isAgentSecretPath}), for a session to which the agents' folders are otherwise open. One
+ * of three: it asks the keychain for a secret; or a path it writes into an agent's folder is such a
+ * file, as written or where its links lead (`real`); or it works from inside another agent's folder
+ * or builds its own paths on one — a `cd` there, the folder in a variable, a loop or a `$(…)`, or
+ * handed as a string to a program — and writes such a file's name anywhere
+ * ({@link namesAgentSettingsFile}, as for any command that builds its own paths), since what it
+ * reaches cannot be read off it. A whole path by itself — `ls ~/.claude/skills`,
+ * `rg x ~/.claude/skills apps/x/config.json` — builds nothing, and a name elsewhere in the command
+ * is some other file's.
+ *
+ * Nothing counts in the folders that are the session's own: its agent's (`ownDirs`) and the ones
+ * open to it (`open`: its notes and plans). Whatever is built there is its own business; a path
+ * that climbs out of them as written is judged where it lands. In the folders it only reads
+ * (`read`: your agents' records) no file is a secret, but a path built on them counts as built. On
+ * Windows every mention of another agent's folder counts as built: its shells' quoting is not read.
+ */
+export function namesAgentSecret(
+  command: string, home: string, platform: NodeJS.Platform, configDirs: string[], ownDirs: string[],
+  folders: { open: (abs: string) => boolean; read: (abs: string) => boolean; real: (abs: string) => string | null },
+): boolean {
+  if (asksKeychainForSecret(command, platform)) return true;
+  const mentions = agentFolderMentions(command, home, platform, configDirs);
+  if (mentions.length === 0) return false;
+  const win = platform === "win32";
+  const secret = (abs: string) => !folders.open(abs) && !folders.read(abs) && isAgentSecretPath(abs, home, platform, configDirs, ownDirs);
+  let built = false;
+  for (const mention of mentions) {
+    const real = folders.real(mention.abs);
+    if (secret(mention.abs) || (real !== null && secret(real))) return true;
+    // A glob on the folder's own name (`.claude` with a `*` after it, then `/settings.json`) names every account's at once.
+    if (!mention.direct && SECRET_FILE.test(nameOf(mention.abs, win))) return true;
+    if (folders.open(mention.abs) || ownDirs.some((dir) => isWithinPath(dir, mention.abs, platform))) continue;
+    if (win || !isWholeWord(command, mention, win) || leavesFrom(command, mention.at, mention.end, win)) built = true;
+  }
+  return built && namesAgentSettingsFile(command);
+}
+
+/**
+ * Whether a mention is a whole shell word by itself, so the shell hands exactly that path on: bare,
+ * or in double quotes of its own (`"$HOME/.codex/x"`; not `"~/…"`, which no shell expands and so
+ * is a string for the program to build on).
+ */
+function isWholeWord(command: string, mention: FolderMention, win: boolean): boolean {
+  const [from, to] = wordAround(command, mention.at, mention.end, win);
+  const word = command.slice(from, to);
+  const text = command.slice(mention.at, mention.end);
+  return word === text || (word === `"${text}"` && !text.startsWith("~"));
 }
 
 /** One folder name's shell glob as a regular expression: a leading dot is matched only by a glob that starts with one. */

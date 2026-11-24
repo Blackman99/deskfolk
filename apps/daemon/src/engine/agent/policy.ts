@@ -9,11 +9,11 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { posix } from "node:path";
 import { recursiveSearchGuard, searchGuardMessage } from "../../search-guard";
-import { classifyPath, classifyShell, nodePathHost, type PathHost } from "../../workspace-paths";
+import { classifyPath, classifyShell, isWithinPath, nodePathHost, type PathHost } from "../../workspace-paths";
 import type { PermissionMode } from "@real-bot/protocol";
 import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, namesAgentSettingsFile, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
+import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, isAgentSecretPath, namesAgentSecret, namesAgentSettingsFile, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -57,6 +57,16 @@ export type ActionContext = {
    * (`namesOnlyWhatOpens`).
    */
   readableDirs?: string[];
+  /**
+   * Set for a project session whose agent cannot be made to ask first (Antigravity, ADR 0111
+   * addendum 2026-11-24): the folders of that agent itself. Its calls are checked as they run, so a
+   * refusal here stops the turn and holds nothing back. For such a session its own agent's folders
+   * are its own, as in its terminal, and your other agents' folders are read as any folder outside
+   * the workspace: only what signs one of them in or sets it up is off limits, file by file
+   * (`isAgentSecretPath`, `namesAgentSecret`). A file written into another agent's folder is still
+   * refused: that changes how the other is set up.
+   */
+  ownAgentDirs?: string[];
   /** The folders in a folder, links to folders too; this machine's disk when absent. */
   foldersIn?: (dir: string) => string[];
 };
@@ -100,12 +110,22 @@ function namesOnlyWhatOpens(command: string, ctx: ActionContext, host: PathHost,
   return !(built && namesAgentSettingsFile(command));
 }
 
+/** Where a path leads through its links, when it is there; null when it is not. */
+function realOf(path: string, host: PathHost): string | null {
+  try {
+    return host.realpath(path);
+  } catch {
+    return null;
+  }
+}
+
 /** What to do with one call. `effect` calls also pass the app's effect gate before they run. */
 export function decideAction(action: AppAction, ctx: ActionContext): AgentDecision {
   const host = ctx.host ?? nodePathHost;
   const platform = host.platform;
   const home = ctx.home ?? host.homedir();
   const configDirs = ctx.configDirs ?? [];
+  const own = ctx.ownAgentDirs;
   const appName = action.appName;
   if (ctx.mode === "readonly" && !["read_file", "list_dir", "web"].includes(appName)) {
     return { kind: "deny", reason: "this is a read-only turn (a stop holds this work): look and answer, nothing else" };
@@ -113,9 +133,14 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   if (action.background) return { kind: "deny", reason: "background tasks are not available here: run it in the foreground and wait for it" };
   if (appName === "shell") {
     const command = action.command ?? "";
-    if (touchesAgentCredentials(command, home, platform, configDirs) && !namesOnlyWhatOpens(command, ctx, host, home, configDirs)) {
-      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
-    }
+    const refused = own
+      ? namesAgentSecret(command, home, platform, configDirs, own, {
+        open: (abs) => inMemoryDir(abs, ctx.openDirs ?? [], host),
+        read: (abs) => inMemoryDir(abs, ctx.readableDirs ?? [], host),
+        real: (abs) => realOf(abs, host),
+      })
+      : touchesAgentCredentials(command, home, platform, configDirs) && !namesOnlyWhatOpens(command, ctx, host, home, configDirs);
+    if (refused) return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     const classified = classifyShell(ctx.workspace, command, action.cwd, host, platform === "win32" ? "bash" : undefined);
@@ -132,9 +157,15 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
     const spellings = [abs, ...(platform === "win32" ? [gitBashToWindows(raw)].filter((path): path is string => path !== null) : [])];
     const open = spellings.every((path) => inMemoryDir(path, ctx.openDirs ?? [], host))
       || (!writes && spellings.every((path) => inMemoryDir(path, ctx.readableDirs ?? [], host)));
-    if (!open && spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs))) {
-      return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
-    }
+    // Every agent's folder is shut, or (`ownAgentDirs`) only the files that sign one in or set it up, and writing into another's.
+    const shut = own
+      ? spellings.some((path) => {
+        const real = realOf(path, host);
+        if (isAgentSecretPath(path, home, platform, configDirs, own) || (real !== null && isAgentSecretPath(real, home, platform, configDirs, own))) return true;
+        return writes && isAgentCredentialPath(path, home, platform, configDirs) && !own.some((dir) => isWithinPath(dir, path, platform));
+      })
+      : spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs));
+    if (!open && shut) return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
     if (platform === "win32" && /^[\\/](?![\\/])/.test(raw)) {
       return { kind: "deny", reason: `${raw} is not a Windows path: name files with their drive (C:\\…). The workspace root is ${ctx.workspace} and this call's directory is ${action.cwd}.` };
     }

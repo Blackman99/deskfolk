@@ -127,3 +127,73 @@ Decision 3 keeps credentials off limits with agy's own brain folder as the one e
 一轮因 agy 的失败结束时，应用问一次 agy 自己的 `/quota`；会话的模型那一组有窗口用完，就像 Codex、Grok 会话那样到点自己接着做，引用你还没得到回复的话。agy 没有账号可换（见「以后」的「不做」），所以只有到点这一半。细节见 [ADR 0110 补记第 6 条](0110-out-of-usage-another-account-or-the-reset.md)。实现：`project-runner-agy.ts`（`agyResetOf`、`outOfUsage`、`resumeAfterLimits`）、`agents/usage.ts`（`agyQuotaWindows`）；测试在 `project-sessions-agy.test.ts`。
 
 When a run ends on agy's failure, the app asks agy's own `/quota` once; with a window of the session model's group used up, it picks up at the reset by itself, as Codex and Grok sessions do, quoting your lines it had not answered. agy has no accounts to move to (see Not doing under Later), so only that half applies. Details in [ADR 0110, item 6 of the addendum](0110-out-of-usage-another-account-or-the-reset.md). Implementation: `project-runner-agy.ts` (`agyResetOf`, `outOfUsage`, `resumeAfterLimits`), `agents/usage.ts` (`agyQuotaWindows`); tests in `project-sessions-agy.test.ts`.
+
+## 补记 2026-11-24：它自己的文件夹是它自己的，别家的按文件拦 / Addendum 2026-11-24: its own folder is its own, another agent's is judged file by file
+
+2026-11-23 夜里（23:38）你在 real-bot 的 Antigravity 项目会话里说「用量里看不到 gemini 订阅的级别」「是 antigravity 的级别」。agy 第一步去读它自带的技能说明（`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`），这一轮被停下，说本机 Agent 自己的设置和凭据碰不得。一天之内这是第五次。前四次（命令里点名 brain 文件夹，读 Claude Code 的会话记录三次）每次都是在「整个 Agent 文件夹默认关着」上再开一个口子，下一种碰法总会漏。你说要彻底解决，不要再出现。
+
+先看了它实际怎么用这些文件夹，两份材料：
+
+- 这台电脑上最近 79 个 agy 会话（终端里的也算）的 3066 步工具调用，按项目会话、自动模式过了一遍规则。171 步点名了某个 Agent 的文件夹；被拦的 7 步全是 agy 在用它自己的文件夹：读自带的技能和它的参考文件、列自己的目录、`cat` 自己的 `settings.json`、在 `builtin/` 里搜索。
+- 把你那两句原话发给隔离运行时里的真 agy（见下面的验证）。第一版改法是「它自己的文件夹放开，登录文件还拦着」：它读完自带的技能、跑了 `agy --help` 和 `/quota`，下一步就是 `cat ~/.gemini/oauth_creds.json`，想从它自己的登录文件里找订阅级别，这一轮又停在同一句话上。所以它自己的登录文件也不能拦，否则你问的这个问题它就查不下去。
+
+决定 3 的「凭据仍然碰不到」改成下面这样。只改 Antigravity：只有它是拦不住、只能事后停下这一轮的，停下也挡不住那一步；Codex、Grok 和 Claude Code 是动手前被拒、接着干，它们的规则不动。
+
+1. **它自己的文件夹是它自己的，和在它终端里一样。** `~/.gemini`（agy 和 Gemini CLI 共用）里的东西，读直接读，改和命令按权限模式走，和项目外任何地方一样：自带的和你装的技能、`settings.json`、MCP 配置、别的会话的笔记、日志，登录文件（`oauth_creds.json`）也在内。这个会话自己的 brain 文件夹照旧每种模式下都能写。
+2. **别家 Agent 的文件夹读得到，只有登录文件和设置文件碰不得，按文件名认。** 登录文件：`.credentials.json`、`auth.json`（`mcp-auth.json` 这样的也算）、`oauth_creds.json`、`.env`、`*token*.json`。设置文件：`settings*.json`、`config.toml`、`~/.claude.json` 和它的备份、`user-settings.json`、`google_accounts.json`、MCP 服务器的配置（`mcp_config.json`、`.mcp.json`，密钥就写在里面）、`hooks.json`、`opencode.json`。别的都读得到：技能、指令文件、会话记录、笔记、日志、文件夹本身。Grok 自带的技能（`bundled`）照旧整个读得到。钥匙串照旧谁的都不行。
+3. **别家 Agent 的文件夹，文件工具写不进。** 什么模式都拒：那是在改别家怎么工作（它的技能、指令、记录）。命令分不出读写，照旧按权限模式走。
+4. **命令怎样算点名了别家的这类文件。** 两种：
+   - 命令写出的、落在别家文件夹里的路径，本身就是登录或设置文件：照写出来的算，把 `..` 化简之后算（从它自己的文件夹爬出去的，按落到哪算），顺着链接指到的也算；文件夹名带通配符的（`~/.claude*/settings.json`）也算。
+   - 命令在别家的文件夹里面干活、或在它上面自己拼路径（`cd` 进去，放进变量、循环或 `$(…)`，当字符串交给程序），同时整条命令里写了这样的文件名。拼出来的路径看不到落在哪。这里认的文件名是昨天那张表（`namesAgentSettingsFile`），不含 `hooks.json`、`.mcp.json` 这几个项目里也常有的名字。
+
+   只是一条完整的路径不算拼（`ls ~/.claude/skills`、`rg x ~/.claude/skills apps/x/config.json`），命令别处出现的文件名是别的文件。在它自己的文件夹里怎么拼都不算。Windows 上不读引号：点名了别家的文件夹，又写了这类文件名，就算。
+5. **文件工具和命令用同一个判断**（`isAgentSecretPath`）。这次被停的是文件工具那一支，前四次修的都是命令那一支。
+
+仍然停下这一轮的：读或写别家 Agent 的登录文件、设置文件；用文件工具往别家的文件夹里写；向钥匙串要密钥；权限模式本来就要先问或不许的（改动先问、只读）。那一行里的「本机 Agent 自己的设置和凭据碰不得」现在说的是别家的登录和设置。
+
+取舍：
+- agy 读得到它自己的登录文件和设置，里面的令牌和密钥模型也就看得到，和你在它终端里让它看一样。应用原来也挡不住：它不先问，那一步在停下之前就执行了。它的回复落在应用的库里，它要是把令牌贴进回复，就留在对话里。
+- 规则只认写出来的名字。`grep -r token ~/.codex`、`cat ~/.codex/*.json`、`find ~/.codex -name auth.json`、`cd ~/.gemini && cat ../.codex/auth.json` 这样不写全路径的读法拦不住，把整个文件夹拷走（`cp -R ~/.codex /tmp/x`）也拦不住，和 `Path.home() / ".codex"` 一样，原来也拦不住。对 agy 拦下来本来就挡不住那一步，所以这里宁可少拦错。
+- 文件名表有猜的成分：ZCode 的登录文件叫什么没查过，靠通用的名字兜着。
+- Bot 不变。Codex、Grok、Claude Code 的项目会话不变，它们用的文件名表也是原来那张（`namesAgentSettingsFile`）；要不要也改成这样，等你说。
+
+验证：
+- 语料那 3066 步：旧规则拦 7 步，新规则拦 0 步。昨天被停的三条命令和它们的十种变体，按新规则也都放行。
+- 隔离运行时（工作树的代码，自己的端口和数据目录）里的真 agy，自动模式：让它读自带的技能、列自己的目录、看自己 `settings.json` 的键，22 秒正常结束；同一句话在旧代码上被拦，那一行和你截图里的一样。
+- 你那两句原话（后面加了一句只调查、不改文件、不动进程），在一份单独检出的仓库里，模型 `gemini-3.8-flash-low`：31 步，其中列了 `~/.gemini` 和 `antigravity-cli`、看了自己的 `settings.json` 和 `oauth_creds.json`、跑了两次 `agy -p "/quota"`，160 秒答完，没有被停。你平时用的默认模型没有跑，省着它的额度。
+
+实现：`engine/agent/credentials.ts`（`isAgentSecretPath`、`namesAgentSecret`、`agentFolderMentions` 和文件名表；`homeSpellings`、`dirSpellings` 是先单独抽出来的）、`engine/agent/policy.ts`（`ActionContext.ownAgentDirs`）、`project-runner-agy.ts`（`agyHomeDir`）；测试在 `engine/agent/policy.test.ts`、`engine/agent/credentials.test.ts` 和 `project-sessions-agy.test.ts`。
+
+Late on 2026-11-23 (23:38), in an Antigravity project session on real-bot, you said the usage did not show the Gemini plan's tier, then that you meant Antigravity's. agy's first step was to read the guide it ships with (`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`), and the turn was stopped: your agents' own settings and credentials are off limits. That was the fifth time in one day. Each of the four before (a command naming its brain folder, Claude Code's session records three times) opened one more gap in "an agent's whole folder is shut", and the next way of touching it was always missed. You asked for it to be solved for good.
+
+First, how it uses these folders in practice, from two sources:
+
+- The 3066 tool calls of the 79 most recent agy sessions on this computer (its terminal sessions too), run through the rules as a project session in auto mode. 171 named an agent's folder. The 7 that were stopped were all agy using its own folder: reading the skill it ships with and that skill's reference files, listing its own directory, a `cat` of its own `settings.json`, a search in `builtin/`.
+- Your own two lines, sent to a real agy in an isolated runtime (see Checked below). The first version of the change opened its own folder and kept its sign-in files shut: it read the skill it ships with, ran `agy --help` and `/quota`, and its next step was `cat ~/.gemini/oauth_creds.json`, looking for the tier in its own sign-in file. The turn stopped on the same line again. So its own sign-in file cannot be shut either, or it cannot follow the very question you asked.
+
+Decision 3's "credentials stay off limits" now reads as below. For Antigravity only: it is the one agent that cannot be held back, only stopped after the fact, and the stop does not undo the step. Codex, Grok and Claude Code are refused before they act and carry on; their rules are as they were.
+
+1. **Its own folder is its own, as in its terminal.** What is in `~/.gemini` (shared by agy and Gemini CLI) is read freely, and changed or named in commands by the permission mode, as anywhere outside the project: the skills it ships with and yours, `settings.json`, its MCP config, other sessions' notes, logs, and the sign-in file too (`oauth_creds.json`). The session's own brain folder can still be written in every mode.
+2. **Another agent's folder can be read; only its sign-in and settings files are off limits, known by name.** Sign-in: `.credentials.json`, `auth.json` (`mcp-auth.json` and the like too), `oauth_creds.json`, `.env`, `*token*.json`. Settings: `settings*.json`, `config.toml`, `~/.claude.json` and its backups, `user-settings.json`, `google_accounts.json`, the MCP servers' config (`mcp_config.json`, `.mcp.json`: their keys sit in it), `hooks.json`, `opencode.json`. Everything else is read: skills, instruction files, session records, notes, logs, the folder itself. The skills Grok ships with (`bundled`) are read whole, as before. The keychains stay shut, whoever's secret it is.
+3. **Another agent's folder is not written with a file tool.** Refused in every mode: that changes how the other one works (its skills, instructions, records). A command cannot be told apart as a read or a write, so it goes by the permission mode as before.
+4. **When a command names such a file of another agent's.** Two ways:
+   - A path it writes into another agent's folder is a sign-in or settings file: as written, with `..` resolved (one that climbs out of its own folder is judged where it lands), or where its links lead; so is one through a glob on the folder's name (`~/.claude*/settings.json`).
+   - It works from inside another agent's folder or builds its own paths on one (a `cd` there, the folder in a variable, a loop or a `$(…)`, or handed as a string to a program), and writes such a file's name anywhere. What a built path reaches cannot be read off it. The names read here are yesterday's list (`namesAgentSettingsFile`), without `hooks.json`, `.mcp.json` and the few others a project often has too.
+
+   A whole path by itself builds nothing (`ls ~/.claude/skills`, `rg x ~/.claude/skills apps/x/config.json`), and a name elsewhere in the command is some other file's. Nothing built in its own folder counts. On Windows the quoting is not read: another agent's folder named, and such a name written, counts.
+5. **File tools and commands share one check** (`isAgentSecretPath`). This stop came from the file-tool side; the four fixes before were all on the command side.
+
+What still stops the turn: reading or writing another agent's sign-in or settings file; writing into another agent's folder with a file tool; asking the keychain for a secret; and what the permission mode asks about or refuses anyway (ask first, read-only). The line's "your agents' own settings and credentials are off limits" is now about the other agents' sign-in and settings.
+
+Trade-offs:
+- agy reads its own sign-in file and settings, so the model sees the tokens and keys in them, as when you ask it to look in its terminal. The app never held that back: agy does not ask first, and the step had run before the stop. Its replies are kept in the app's database, so a token it pastes into a reply stays in the conversation.
+- The rules know a name only where it is written. `grep -r token ~/.codex`, `cat ~/.codex/*.json`, `find ~/.codex -name auth.json` and `cd ~/.gemini && cat ../.codex/auth.json` are not stopped, nor is a copy of the whole folder (`cp -R ~/.codex /tmp/x`), as `Path.home() / ".codex"` never was. A stop never held agy's step back anyway, so here a missed stop is preferred to a wrong one.
+- The name lists are part guess: ZCode's sign-in file was never looked up, and only the common names cover it.
+- Bots are unchanged. Codex, Grok and Claude Code project sessions are unchanged, on the same name list as before (`namesAgentSettingsFile`); whether they should go this way too is yours to say.
+
+Checked:
+- The 3066 calls: the old rules stop 7, the new ones 0. Yesterday's three stopped commands and ten variants of them pass the new rules too.
+- A real agy in an isolated runtime (the worktree's code, its own port and data folder), auto mode: told to read the skill it ships with, list its own directory and name the keys of its own `settings.json`, the run ended by itself in 22 seconds; the same request on the old code was stopped, with the line in your screenshot.
+- Your own two lines (with a third asking it only to look, to change no file and touch no process), in a separate checkout of the repository, on `gemini-3.8-flash-low`: 31 calls, among them a listing of `~/.gemini` and `antigravity-cli`, its own `settings.json` and `oauth_creds.json`, and `agy -p "/quota"` twice; it answered in 160 seconds without a stop. The default model you usually run was not used, to spare its quota.
+
+Implementation: `engine/agent/credentials.ts` (`isAgentSecretPath`, `namesAgentSecret`, `agentFolderMentions` and the name lists; `homeSpellings` and `dirSpellings` were pulled out first, by themselves), `engine/agent/policy.ts` (`ActionContext.ownAgentDirs`), `project-runner-agy.ts` (`agyHomeDir`); tests in `engine/agent/policy.test.ts`, `engine/agent/credentials.test.ts` and `project-sessions-agy.test.ts`.

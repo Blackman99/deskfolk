@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### An Antigravity project session is no longer stopped for using its own folder
+
+- Asked why the usage did not show Antigravity's plan tier, an Antigravity project session first read the guide agy ships with (`~/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md`), and the turn was stopped: your agents' own settings and credentials are off limits. That was the fifth time in one day. Each fix before only opened one more gap in "an agent's whole folder counts as credentials", and the next way of touching it was missed.
+- Now agy's own folder (`~/.gemini`) is wholly its own, as in its terminal: the skills it ships with and yours, its `settings.json`, its MCP config, other sessions' notes, logs, and its own sign-in file are read freely, and changed or named in commands by the permission mode.
+- Your other agents' folders (`~/.claude`, `~/.codex`, `~/.grok`…) can be read: skills, instruction files, session records. Only the sign-in and settings files in them are off limits, known by name (`.credentials.json`, `auth.json`, `settings.json`, `config.toml`, `~/.claude.json`, an MCP config and the like), and the keychains; its file tools write nothing into another agent's folder. Only touching one of these stops the turn.
+- Antigravity only: it does not ask first, so the app can only stop the turn after the step, which does not undo it. Codex, Grok and Claude Code are refused before they act and carry on; they and Bots are unchanged.
+- Checked: of the 3066 tool calls of the 79 most recent agy sessions on this computer, the old rules stop 7 (all of them agy using its own folder) and the new ones none. Sent the question above (with a line asking it only to look), a real agy listed its own directory, read its own settings and sign-in file, ran `/quota`, and answered in 160 seconds without a stop; the same request on the old code still stops on the line in the screenshot.
+
 ### An Antigravity project session out of usage picks up at the reset
 
 - Claude Code, Codex and Grok project sessions already picked up by themselves once a usage limit reset; an Antigravity session stopped and waited for you. Now, when a run ends on agy's failure, the app asks agy's own `/quota` once (read-only, no model call, the same ask as the usage widget's). If a window of the group the session's model belongs to ("Gemini Models", or "Claude and GPT models") is used up, the failure line says when it picks up ("Antigravity usage limit reached (resets 11/24, 05:00 PM; it picks up by itself then)"), and a minute after the latest reset among that group's used-up windows a run starts that goes on, quoting your lines it had not answered.

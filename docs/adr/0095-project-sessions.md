@@ -235,3 +235,7 @@ Trade-off: the rules cannot see a built path, so such a command can read more th
 The settings and sign-in beside them stay off limits: `settings.json`, `.credentials.json`, `~/.claude.json`, Grok's `auth.json`, a link among the records leading out, a `..` climbing out. Bots are unchanged and still shut out of these folders ([ADR 0102](0102-bots-read-project-memory.md) lets a Bot read only Claude Code's memory of each project). Where Codex and Antigravity keep their own records the app has never read, so they are not listed.
 
 Trade-off: records may hold a pasted secret or a token a command printed. A project session's agent already reads everything under your home folder outside the agents' folders; what this opens beyond that is these records. A command cannot be told apart as a read or a write, so under auto a command writing into the records is not stopped, as one writing anywhere else outside the project is not; a file tool's write is.
+
+2026-11-24：Antigravity 的项目会话不再走上面这一套。它拦不住、只能事后停，所以它自己的文件夹整个算它自己的，别家 Agent 的文件夹只按文件拦登录和设置；见 [ADR 0111 的 2026-11-24 补记](0111-antigravity-in-project-sessions.md)。Codex、Grok 和 Claude Code 的项目会话仍然是上面写的。
+
+2026-11-24: an Antigravity project session no longer goes by the rules above. It cannot be held back, only stopped after the fact, so its own folder is wholly its own and another agent's folder is shut only at its sign-in and settings files; see [ADR 0111's 2026-11-24 addendum](0111-antigravity-in-project-sessions.md). Codex, Grok and Claude Code project sessions are as written above.

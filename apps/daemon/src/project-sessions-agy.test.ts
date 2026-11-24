@@ -184,6 +184,33 @@ test("agy reads Claude Code's session records as any folder outside; a write the
   expect(h.lines(id).at(-1)?.body).toBe("Antigravity 没先问就做了「a.jsonl」（本机 Agent 自己的设置和凭据碰不得），这一轮停在这里；那一步可能已经执行了");
 });
 
+test("agy uses its own folder as in its terminal: the skills it ships with, its settings, what signs it in; another agent's sign-in still stops the turn", async () => {
+  // As agy reported them: the read stopped late on 2026-11-23 (asked about the plan's tier in the usage), and where it looked next.
+  const guide = join(homedir(), ".gemini", "antigravity-cli", "builtin", "skills", "antigravity_guide");
+  const settings = "ls -la ~/.gemini/ ~/.gemini/antigravity-cli/ 2>/dev/null; cat ~/.gemini/antigravity-cli/settings.json ~/.gemini/settings.json 2>/dev/null | head -n 60 || true";
+  const h = start([
+    { prompts: [[
+      { tool: { kind: "read", title: "File ../../.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md", rawInput: { Path: join(guide, "SKILL.md") }, locations: [{ path: join(guide, "SKILL.md") }] } },
+      { tool: { kind: "execute", title: settings, rawInput: { CommandLine: settings, WaitMsBeforeAsync: 5000 } } },
+      { tool: { kind: "read", title: "File cli.md", rawInput: { Path: join(guide, "references", "cli.md") } } },
+      { tool: { kind: "execute", title: "cat ~/.gemini/oauth_creds.json", rawInput: { CommandLine: "cat ~/.gemini/oauth_creds.json" } } },
+      { tool: { kind: "execute", title: "accounts", rawInput: { CommandLine: "cat ~/.gemini/google_accounts.json ~/.gemini/antigravity-cli/state.json" } } },
+      { say: "The tier is not in any of these." },
+    ]] },
+    { prompts: [[{ tool: { kind: "read", title: "File auth.json", rawInput: { Path: join(homedir(), ".codex", "auth.json") } } }, { say: "Read it." }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "用量里看不到 antigravity 的级别");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(false);
+  expect(h.lines(id).at(-1)?.body).toBe("The tier is not in any of these.");
+  await h.say(id, "看看 Codex 的登录文件");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  expect(h.lines(id).at(-1)?.body).toBe("Antigravity 没先问就做了「File auth.json」（本机 Agent 自己的设置和凭据碰不得），这一轮停在这里；那一步可能已经执行了");
+});
+
 test("what agy asks about is answered by the rules, on a card under ask first", async () => {
   const h = start([{ prompts: [[{ ask: { kind: "execute", title: "npm test", rawInput: { CommandLine: "npm test" } } }, { say: "Tested." }]] }]);
   h.store.patchSettings({ permission_mode: "ask_first" });

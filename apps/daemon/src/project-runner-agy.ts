@@ -178,9 +178,14 @@ export function projectAgyOf(store: Store): () => Promise<ResolvedAgent> {
   return () => resolveAgent({ runner: "antigravity", custom: null, setting: store.agentPath("antigravity"), configDir: null });
 }
 
+/** `agy`'s own folder under your home, the one it shares with Gemini CLI: its settings, its skills (the ones it ships with too), every session's notes. */
+export function agyHomeDir(home = homedir()): string {
+  return join(home, ".gemini");
+}
+
 /** Where `agy` keeps a session's own notes and plans (`brain/<session>`), under its default data folder. */
 export function agyBrainDir(session: string, home = homedir()): string {
-  return join(home, ".gemini", "antigravity-cli", "brain", session);
+  return join(agyHomeDir(home), "antigravity-cli", "brain", session);
 }
 
 
@@ -459,7 +464,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (live.mode === "plan" && action.appName === "write_file") {
         return { action, decision: { kind: "deny" as const, reason: en ? "plan mode is on: nothing changes before the plan is approved" : "计划模式开着：计划批准前什么都不改" } };
       }
-      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own, readableDirs: records }) };
+      // It cannot be asked first, so the agents' folders are judged file by file (ADR 0111 addendum 2026-11-24).
+      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own, readableDirs: records, ownAgentDirs: [agyHomeDir(home)] }) };
     };
 
     const ended = (tool: Tool, ok: boolean, exitCode?: number | null) => {
