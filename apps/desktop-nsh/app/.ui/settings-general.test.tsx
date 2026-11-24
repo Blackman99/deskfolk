@@ -73,7 +73,7 @@ async function session(handlers: Record<string, unknown> = {}, width = 1100) {
 }
 
 test("the workspace card shows the folder as set, with the role note, and a chosen folder is saved", async () => {
-  const target = "/tmp";
+  const target = seeded.workspaceAlt;
   const { app, read, until, restore } = await session({ "shell.pick_workspace_folder": target });
   try {
     const before = await read();

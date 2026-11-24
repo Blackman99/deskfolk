@@ -11,7 +11,7 @@
  * Lines go in through `runtime.client` into the scratch group only: one posted into the fixture's
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
-import { computed, Scroll, signal, Text, View } from "nsh";
+import { computed, host, Scroll, signal, Text, View } from "nsh";
 import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type ClaudeCodeStatus, type DelegationView, type Message, type ProjectConsultSetting, type ProjectContextUsage, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
@@ -377,19 +377,25 @@ api.answerAsk = function (this: unknown, ...args: unknown[]) {
 // Your local agents as a fixed list (`story-agents`), so the consultant menu's models do not hang on
 // what this computer has installed; what was asked before (the Bot's picker asks as the story opens)
 // is forgotten, as a window that has shown no Bot yet has nothing asked.
-const fakeAgents = signal(false);
+const fakeAgents = signal(Boolean((host.params as { fixedAgents?: boolean }).fixedAgents));
 const fakeMultiAccounts = signal(false);
 const STORY_AGENTS: AgentsStatusResponse = {
-  items: [{
-    runner: "antigravity", custom_id: null, label: "Antigravity", path: "/usr/local/bin/agy", source: "path", version: "1.5.14", logged_in: true, auth: null,
-    login_command: null, models: [{ id: "story-agy-alpha", name: "Story Alpha (High)", efforts: [] }, { id: "story-agy-beta", name: "Story Beta (Low)", efforts: [] }],
-    default_model: null, proxy: null, proxy_source: null, checked_at: D2, error: null,
-  }],
+  items: [
+    {
+      runner: "codex", custom_id: null, label: "Codex", path: "/usr/local/bin/codex", source: "path", version: "0.1.0", logged_in: true, auth: null,
+      login_command: "codex login", models: [], default_model: null, proxy: null, proxy_source: null, checked_at: D2, error: null,
+    },
+    {
+      runner: "antigravity", custom_id: null, label: "Antigravity", path: "/usr/local/bin/agy", source: "path", version: "1.5.14", logged_in: true, auth: null,
+      login_command: null, models: [{ id: "story-agy-alpha", name: "Story Alpha (High)", efforts: [] }, { id: "story-agy-beta", name: "Story Beta (Low)", efforts: [] }],
+      default_model: null, proxy: null, proxy_source: null, checked_at: D2, error: null,
+    },
+  ],
   custom_agents: [],
 };
 const STORY_AGENTS_MULTI: AgentsStatusResponse = {
   items: [
-    ...STORY_AGENTS.items,
+    ...STORY_AGENTS.items.filter((agent) => agent.runner !== "codex"),
     {
       runner: "codex", custom_id: null, label: "Codex", path: "/usr/local/bin/codex", source: "path", version: "0.153.4", logged_in: true, auth: "personal",
       login_command: null, models: [{ id: "gpt-5.6-terra", name: "gpt-5.6-terra", efforts: ["low", "high"] }],

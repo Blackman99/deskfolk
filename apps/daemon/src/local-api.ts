@@ -105,6 +105,7 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
     configDirs: (runner) => options.store.agentConfigDirs(runner),
     customAgents: () => options.store.customAgents(),
     remembered: { load: () => options.store.agentStatusMemory(), save: (memory) => options.store.rememberAgentStatuses(memory) },
+    ...(options.agentDescribe ? { describe: options.agentDescribe } : {}),
   });
   const agentProbe = options.agents;
   options.agentUsage ??= createAgentUsageProbe({

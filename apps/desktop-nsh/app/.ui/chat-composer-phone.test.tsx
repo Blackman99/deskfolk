@@ -6,8 +6,8 @@ import { openStory } from "./fixture";
 const t = copyFor("zh");
 const PHONE = { width: 390, height: 844 };
 
-async function project() {
-  const app = await openStory("chat-stage", PHONE);
+async function project(params: Record<string, unknown> = {}) {
+  const app = await openStory("chat-stage", PHONE, params);
   await app.waitFor("id:show-project", { timeout: 15_000 });
   await app.press("id:show-project");
   await app.waitFor("id:project-chat", { timeout: 15_000 });
@@ -67,7 +67,7 @@ test("the model's row says what runs and opens the picker's sheet over the +; Ba
 });
 
 test("the consultants' row opens their sheet over the +; the first added turns it on, and the chip on the row opens the same sheet, which turning off leaves up", async () => {
-  const app = await project();
+  const app = await project({ fixedAgents: true });
   await app.press("id:project-plus");
   await app.waitFor("id:project-plus-consult", { timeout: 5_000 });
   await app.press("id:project-plus-consult");

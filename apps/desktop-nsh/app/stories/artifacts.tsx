@@ -17,6 +17,7 @@
 import { cleanup, host, Scroll, signal, Text, View, type ViewRef } from "nsh";
 import type { Attachment } from "@real-bot/protocol";
 import { ShellArtifact } from "../src/m/overlays/shell-artifact.svelte.ts";
+import { joinHostPath } from "../src/m/paths.ts";
 import { runtime } from "../src/runtime";
 import { WorkspaceDragGhost } from "../src/ui/WorkspaceDragGhost";
 import { dropTargetAt, workspaceDropTarget, type WorkspaceDragItem } from "../src/ui/workspace-drag";
@@ -180,7 +181,7 @@ export default function Artifacts() {
 
   /** The project session's file the tests seed, outside the workspace. */
   const projectDir = String((host.params as { projectDir?: string }).projectDir ?? "");
-  const projectFile = projectDir ? `${projectDir}/src/main.py` : "";
+  const projectFile = projectDir ? (joinHostPath(projectDir, "src/main.py") ?? "") : "";
   /** A file in neither the workspace nor the project, as an agent may cite from `~/Downloads`. */
   const elsewhere = String((host.params as { elsewhere?: string }).elsewhere ?? "");
   /** What the project's preview shows: its own file, or the one from elsewhere. */

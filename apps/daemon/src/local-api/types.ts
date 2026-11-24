@@ -127,6 +127,8 @@ export type LocalApiOptions = {
   projectCodex?: () => Promise<import("../agents/runtime").ResolvedAgent>;
   /** What the daemon knows of your other local agents (ADR 0079); one is made when absent. */
   agents?: import("../agents/status").AgentProbe;
+  /** Test stand-in for probing one local agent while keeping the store-backed `createAgentProbe` wiring intact. */
+  agentDescribe?: import("../agents/status").AgentProbeDeps["describe"];
   /** Their usage; one is made when absent. */
   agentUsage?: import("../agents/usage").AgentUsageProbe;
   /** Every agent's usage in one answer (ADR 0080); one is made from the two above when absent. */
