@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, sy
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { HttpError } from "./errors";
-import { HOST_LIST_LIMIT, isForeignHome, listHostDir, resolveHostPath, type HostFs } from "./host-paths";
+import { HOST_LIST_LIMIT, isForeignHome, listHostDir, locateHostFile, resolveHostPath, type HostFs } from "./host-paths";
 
 const dirs: string[] = [];
 function tmp(): string {
@@ -208,5 +208,65 @@ describe("on Windows", () => {
       expect(() => resolveHostPath(path, disk)).toThrow("path must be an absolute host directory");
     }
     expect(resolveHostPath("C:/Users/me/ws/", disk)).toBe("C:\\Users\\me\\ws");
+  });
+
+  test("an 8.3 short name of the current user's profile is not treated as another user's home", () => {
+    // Mimics GitHub's Windows runner: `homedir()` is `C:\Users\runneradmin`, while `%TEMP%` uses
+    // `C:\Users\RUNNER~1\…` and `realpathSync` preserves the short spelling while `fileId` matches.
+    const shortProfile = "C:\\Users\\RUNNER~1";
+    const longProfile = "C:\\Users\\runneradmin";
+    const tempDir = `${shortProfile}\\AppData\\Local\\Temp\\deskfolk`;
+    const tempFile = `${tempDir}\\notes.md`;
+    const foreignDir = "C:\\Users\\alice\\Documents";
+    const kinds = new Map<string, "dir" | "file">([
+      ["c:\\", "dir"],
+      ["c:\\users", "dir"],
+      [longProfile.toLowerCase(), "dir"],
+      [shortProfile.toLowerCase(), "dir"],
+      [`${shortProfile}\\appdata`.toLowerCase(), "dir"],
+      [`${shortProfile}\\appdata\\local`.toLowerCase(), "dir"],
+      [`${shortProfile}\\appdata\\local\\temp`.toLowerCase(), "dir"],
+      [tempDir.toLowerCase(), "dir"],
+      [tempFile.toLowerCase(), "file"],
+      ["c:\\users\\alice", "dir"],
+      [foreignDir.toLowerCase(), "dir"],
+    ]);
+    const idOf = (path: string): string => {
+      const clean = win32.resolve(path).toLowerCase();
+      if (!kinds.has(clean)) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+      return clean === shortProfile.toLowerCase() ? `id:${longProfile.toLowerCase()}` : `id:${clean}`;
+    };
+    const shortDisk: HostFs = {
+      home: longProfile,
+      paths: {
+        platform: "win32",
+        lstat: (path) => {
+          const kind = kinds.get(win32.resolve(path).toLowerCase());
+          if (!kind) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+          return { isSymbolicLink: () => false, isDirectory: () => kind === "dir" };
+        },
+        // Keeps the short spelling as passed in, the way `realpathSync` does on Windows.
+        realpath: (path) => win32.resolve(path),
+        readlink: () => { throw new Error("EINVAL"); },
+        homedir: () => longProfile,
+        fileId: idOf,
+      },
+      stat: ((path: string) => {
+        const kind = kinds.get(win32.resolve(path).toLowerCase());
+        if (!kind) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+        return { isDirectory: () => kind === "dir" };
+      }) as unknown as typeof statSync,
+      readdir: ((path: string) => {
+        const clean = win32.resolve(path).toLowerCase();
+        if (clean === tempDir.toLowerCase()) return ["notes.md"];
+        return [];
+      }) as unknown as typeof readdirSync,
+    };
+
+    expect(isForeignHome(tempFile, longProfile, "win32", shortDisk.paths)).toBe(false);
+    expect(isForeignHome(foreignDir, longProfile, "win32", shortDisk.paths)).toBe(true);
+    expect(locateHostFile(tempFile, shortDisk)).toBe(tempFile);
+    expect(listHostDir(tempDir, shortDisk).items).toEqual([{ name: "notes.md", path: tempFile, kind: "file" }]);
+    expect(() => listHostDir(foreignDir, shortDisk)).toThrow("access is denied on this computer");
   });
 });

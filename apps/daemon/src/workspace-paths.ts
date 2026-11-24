@@ -37,8 +37,9 @@ export const nodePathHost: PathHost = {
   homedir: () => homedir(),
   fileId: (path) => {
     const st = statSync(path, { bigint: true });
-    // A file system that reports no file ids still has one real path per file.
-    return st.ino === 0n ? `path:${realpathSync(path)}` : `${st.dev}:${st.ino}`;
+    // A file system that reports no file ids still has one real path per file; `native` resolves
+    // Windows 8.3 short names (such as `RUNNER~1`) to the canonical folder name.
+    return st.ino === 0n ? `path:${realpathSync.native(path)}` : `${st.dev}:${st.ino}`;
   },
 };
 
@@ -580,7 +581,7 @@ function winPlace(host: PathHost, root: string, abs: string): ClassifiedPath {
   return { zone: "inside", abs, rel };
 }
 
-function sameFile(host: PathHost, a: string, b: string): boolean {
+export function sameFile(host: PathHost, a: string, b: string): boolean {
   if (!host.fileId) return false;
   try {
     return host.fileId(a) === host.fileId(b);

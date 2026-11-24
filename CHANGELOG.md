@@ -63,6 +63,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - Antigravity only: it does not ask first, so the app can only stop the turn after the step, which does not undo it. Codex, Grok and Claude Code are refused before they act and carry on; they and Bots are unchanged.
 - Checked: of the 3066 tool calls of the 79 most recent agy sessions on this computer, the old rules stop 7 (all of them agy using its own folder) and the new ones none. Sent the question above (with a line asking it only to look), a real agy listed its own directory, read its own settings and sign-in file, ran `/quota`, and answered in 160 seconds without a stop; the same request on the old code still stops on the line in the screenshot.
 
+### Windows: files under `%TEMP%` open when the username uses an 8.3 short name
+
+- On Windows accounts whose username is longer than 8 characters (or contains spaces), `%TEMP%` and some tools spell the profile folder with an 8.3 short name (such as `C:\Users\RUNNER~1\…`). Opening or listing a cited file or project directory under that spelling used to fail with "file not found" / access denied because the host-path check compared only the folder name against `homedir()`. It now checks the file system identity when the names differ, so your own profile's short-name spelling is accepted while other users' profiles stay denied.
+
 ### An Antigravity project session out of usage picks up at the reset
 
 - Claude Code, Codex and Grok project sessions already picked up by themselves once a usage limit reset; an Antigravity session stopped and waited for you. Now, when a run ends on agy's failure, the app asks agy's own `/quota` once (read-only, no model call, the same ask as the usage widget's). If a window of the group the session's model belongs to ("Gemini Models", or "Claude and GPT models") is used up, the failure line says when it picks up ("Antigravity usage limit reached (resets 11/24, 05:00 PM; it picks up by itself then)"), and a minute after the latest reset among that group's used-up windows a run starts that goes on, quoting your lines it had not answered.
