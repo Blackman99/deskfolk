@@ -7,7 +7,7 @@
  */
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClientEvent, PermissionMode } from "@real-bot/protocol";
 import type { CompletionOk, JudgeResult } from "./completions";
@@ -267,6 +267,39 @@ test("read-only, agy's own report of a Deskfolk tool call is no write and stops 
   await h.post("记一下");
   expect(h.failKind()).toBeUndefined();
   expect(h.lines("bot")).toEqual(["记好了"]);
+}, 30_000);
+
+// agy's own folder under this machine's home, as a Bot's turn has it. Nothing here is read or run:
+// the stand-in only reports the calls.
+const AGY_OWN = join(homedir(), ".gemini", "antigravity-cli");
+const TASK_LOG = join(AGY_OWN, "brain", "14e7d9e6-d7f3-4a0f-b68b-6dd9cbe1d8ce", ".system_generated", "tasks", "task-246.log");
+const unaskedCommand = (command: string, holdMs = 50): Step => ({ unasked: { kind: "execute", title: command, rawInput: { CommandLine: command, Cwd: "@CWD" }, holdMs } });
+
+test("agy uses its own folder as in its terminal: the log of a command it left running, by command or by file, stops nothing", async () => {
+  // As it ran on 2026-11-24, twice stopping a Bot's long job: a command that outlives agy's wait goes
+  // on as a task of its own, and what it printed is a file in agy's notes for the session.
+  const h = await harness([[
+    unaskedCommand(`ls -la clips/ && cat ${TASK_LOG}`),
+    { unasked: { kind: "read", title: "Read task-246.log", rawInput: { AbsolutePath: TASK_LOG }, locations: [{ path: TASK_LOG }], holdMs: 50 } },
+    unaskedCommand("cd ~/.gemini/antigravity-cli && ls && cat settings.json"),
+    { say: "四段都渲染好了" },
+  ]]);
+  await h.post("看看渲染到哪了");
+  expect(h.failKind()).toBeUndefined();
+  expect(h.lines("bot")).toEqual(["四段都渲染好了"]);
+  expect(h.seen().filter((entry) => entry.unasked).length).toBe(3);
+}, 30_000);
+
+test("what signs another agent in still stops agy's turn, and so does a command in its own folder that the permission mode asks about", async () => {
+  const other = await harness([[unaskedCommand("cat ~/.codex/auth.json", 3_000), { say: "看到了" }]], { permissionMode: "allow_all" });
+  await other.post("看看 Codex 是怎么登录的");
+  expect(other.failKind()).toBe("agent_unguarded");
+  expect(other.lines("bot")).toEqual([]);
+
+  const asks = await harness([[unaskedCommand(`cat ${TASK_LOG}`, 3_000), { say: "看了" }]], { permissionMode: "ask_first" });
+  await asks.post("看看渲染到哪了");
+  expect(asks.failKind()).toBe("agent_unguarded");
+  expect(asks.lines("bot")).toEqual([]);
 }, 30_000);
 
 test("an agy older than 1.5.4 is never started: the turn fails as too old, naming the version it needs", async () => {

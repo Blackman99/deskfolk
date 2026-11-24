@@ -106,3 +106,45 @@ On 2026-10-10 on this Mac, first with probe scripts, then through the real engin
 你要项目会话支持 Grok，问到账号时选了「加，Bot 和项目会话都能选」。Grok Build 1.0.89 的 `GROK_HOME` 把配置、登录（`auth.json`）和会话一起搬到那个目录（它自己的文档写「Override config directory (default: ~/.grok)」），所以 Grok 和 Codex 的 `CODEX_HOME` 一样有账号：决定 9 里「有配置目录变量的 Agent」多了 Grok。设置里 Grok 那张卡能加别的账号的目录，每个账号各问一次 `grok models`（没登录的写要登录），登录命令是 `GROK_HOME=<目录> grok login`；Bot 面板里能给跑在 Grok 上的 Bot 选它花哪个账号；有 Bot 在用的账号拿不掉。每个账号的目录本身照旧是凭据，任何 Bot 都碰不到，只有里面 Grok 自带的技能（`<目录>/bundled`）和默认账号的 `~/.grok/bundled` 一样能读。Bot 的一轮额度用完时换账号（ADR 0110）照旧只有 Claude 有，Codex 也没有，Grok 和 Codex 一样。项目会话里的 Grok 账号见 [ADR 0115](0115-grok-in-project-sessions.md)。
 
 You asked for Grok in project sessions and, asked about accounts, chose to have them for Bots and project sessions alike. Grok Build 1.0.89's `GROK_HOME` moves its config, sign-in (`auth.json`) and sessions to that directory, so Grok takes accounts as Codex does with `CODEX_HOME`: decision 9's agents with a config-dir variable now include Grok. Grok's card in Settings takes other accounts' directories, each asked with its own `grok models` (signed out says so), signed in with `GROK_HOME=<dir> grok login`; a Bot on Grok picks whose plan it spends; an account a Bot runs on cannot be removed. Each account's directory stays a credential no Bot can touch, apart from Grok's shipped skills inside it (`<dir>/bundled`), readable as `~/.grok/bundled` is. Moving a Bot's turn to another account when one runs out (ADR 0110) is still Claude's only, as for Codex. Grok accounts in project sessions: [ADR 0115](0115-grok-in-project-sessions.md).
+
+## 补记：Antigravity 的 Bot 用它自己的文件夹（2026-11-24）/ Addendum: an Antigravity Bot uses its own folder (2026-11-24)
+
+2026-11-24 你的「视频导演」（跑在 Antigravity 上）做一个长视频任务，一轮被停了两次（01:47、07:23），都写着「Antigravity 没先问就做了要批准的事，或动了凭据」。两次停在同一种调用上：`ls -la clips/ && cat ~/.gemini/antigravity-cli/brain/<会话>/.system_generated/tasks/task-246.log`。agy 的命令跑得比它等的时间长，就转成它自己的后台任务接着跑，输出写在它这个会话的笔记文件夹里，它再用 `cat` 读回来。长任务里这是它每隔几步就做的事，而规则把整个 `~/.gemini` 当凭据。你说 Bot 用 Antigravity 时应当能访问这些文件。
+
+同一天凌晨刚给 Antigravity 的项目会话改过这件事（[ADR 0111 的 2026-11-24 补记](0111-antigravity-in-project-sessions.md)），那条补记写着「Bot 不变」。它的理由对 Bot 一样成立：Antigravity 是拦不住的那个（上面 2026-11-12 补记的「边界」），应用只能在它报出调用时停下这一轮，那一步已经做了。所以 Antigravity 的 Bot 改用同一套规则，不另开一个只放 brain 文件夹的口子（那种口子在项目会话上一天漏了四次）：
+
+1. **它自己的文件夹（`~/.gemini`）是它自己的。** 读直接读，改和命令按这个 Bot 的权限模式走：自带的和你装的技能、它的设置、每个会话的笔记和后台任务日志，登录文件也在内。
+2. **别家 Agent 的文件夹读得到，只有登录文件和设置文件（按文件名认）和钥匙串碰不得；文件工具不能往别家的文件夹里写。** 文件名表和判断是那条补记里的同一份（`isAgentSecretPath`、`namesAgentSecret`）。
+3. **仍然停下这一轮的**：第 2 条里的那些；权限模式本来就要先问或不许的（改动先问、只读）；一件事被停住时的只读轮里的命令和改动。
+
+和项目会话有两处不同。Bot 没有「这个会话自己的 brain 文件夹每种模式下都能写」这一条：规则不知道是哪个会话，Bot 也没有计划模式，它往自己的文件夹里写就按权限模式走。本机 Agent 的会话记录在项目会话里是单列的只读文件夹，Bot 这里它们是别家文件夹的一部分，按第 2 条读。
+
+别的 Agent 的 Bot 不变：Codex、Grok、OpenCode 是动手前被拒、接着干，每个 Agent 的整个文件夹照旧碰不到。
+
+取舍：和那条补记写的一样（agy 读得到它自己的登录文件；规则只认写出来的文件名）。另外这比你说的「这些文件」宽：Antigravity 的 Bot 现在也读得到别家 Agent 文件夹里登录和设置以外的东西（技能、指令文件、会话记录）。这些读应用原来也挡不住，只是事后停下这一轮。
+
+验证：
+- 应用记下的 Bot 命令 25518 条（跑在 Antigravity 上的轮次占 195 条），按 Bot、自动模式过新旧两套规则：新规则没有多拦任何一条；被停的那两条，旧规则拦、新规则放。
+- 隔离运行时（工作树的代码，自己的端口和数据目录）里的真 agy 1.5.16，一次性 Bot，`gemini-3.8-flash-low`，自动模式：让它把一条跑一分钟的命令放到后台，再用 `cat` 读回这条任务的日志。它跑了 12 条命令，除了那条后台命令本身，另外 11 条都点名了它自己的 `brain/<会话>/.system_generated/tasks`（10 条 `cat`、`ls`，1 条等日志写完的循环），74 秒答完，没有被停。同一句话在旧代码上，不到 24 秒就停在第一条 `cat` 上，那一行和你截图里的一样。
+
+实现：`engine/agent/driver.ts`（`AgentDriver.ownDirs`）、`engine/agent/drivers/agy.ts`（报出 `agyHomeDir`；`agyHomeDir`、`agyBrainDir` 先单独从 `project-runner-agy.ts` 搬过来）、`engine/agent/external-runner.ts`（`policyContext` 把它交给规则的 `ownAgentDirs`）；规则本身没动。测试在 `agent-runner-agy.test.ts` 和 `engine/agent/policy.test.ts`。
+
+On 2026-11-24 your 视频导演 Bot, run by Antigravity on a long video job, had a turn stopped twice (01:47 and 07:23), each time with "Antigravity did something that needed your OK, or touched credentials, without asking". Both stops were on the same kind of call: `ls -la clips/ && cat ~/.gemini/antigravity-cli/brain/<session>/.system_generated/tasks/task-246.log`. A command that outlives agy's wait goes on as a background task of agy's own, what it prints is written in agy's notes for the session, and agy reads it back with `cat`. On a long job it does that every few steps, and the rules took the whole of `~/.gemini` for credentials. You said a Bot on Antigravity should be able to reach these files.
+
+Early that same day Antigravity's project sessions had been changed for the same reason ([ADR 0111's addendum of 2026-11-24](0111-antigravity-in-project-sessions.md)), and that addendum says "Bots are unchanged". Its reason holds for a Bot just as well: Antigravity is the agent that cannot be held back (see "The boundary" in the 2026-11-12 addendum above), so the app can only stop the turn when the call is reported, and the step has run by then. So a Bot on Antigravity now goes by the same rules, and gets no exception of its own for the brain folder (exceptions of that kind were missed four times in one day on the project-session side):
+
+1. **Its own folder (`~/.gemini`) is its own.** Read freely, changed and named in commands by the Bot's permission mode: the skills it ships with and yours, its settings, every session's notes and background-task logs, and its sign-in file too.
+2. **Another agent's folder can be read; only its sign-in and settings files (known by name) and the keychain are off limits, and nothing is written there with a file tool.** The name lists and the check are the ones of that addendum (`isAgentSecretPath`, `namesAgentSecret`).
+3. **What still stops the turn**: what item 2 names; what the permission mode asks about or refuses anyway (ask first, read-only); and a command or a change in the read-only turn of work that a stop holds.
+
+Two things differ from a project session. A Bot has no "the session's own brain folder can be written in every mode": the rules are not told which session it is and a Bot has no plan mode, so a write into its own folder goes by the permission mode. And your agents' session records, a read-only folder of their own in a project session, are here just part of another agent's folder, read under item 2.
+
+Bots on the other agents are unchanged: Codex, Grok and OpenCode are refused before they act and carry on, and every agent's whole folder stays shut to them.
+
+Trade-offs: those of that addendum (agy reads its own sign-in file; the rules know a name only where it is written). And this is wider than "these files": a Bot on Antigravity now also reads what is in another agent's folder besides its sign-in and settings (skills, instruction files, session records). The app never held those reads back either, it only stopped the turn afterwards.
+
+Checked:
+- The 25518 Bot commands the app has on record (195 of them from turns run by Antigravity), through the old rules and the new as a Bot in auto mode: the new rules refuse nothing the old ones let through; the two commands that stopped the turn are refused by the old rules and pass the new.
+- A real agy 1.5.16 in an isolated runtime (the worktree's code, its own port and data folder), a throwaway Bot on `gemini-3.8-flash-low`, auto mode: told to leave a one-minute command running and read that task's log back with `cat`. It ran 12 commands; besides the background command itself, the other 11 all named its own `brain/<session>/.system_generated/tasks` (10 a `cat` or an `ls`, 1 a loop waiting for the log to finish), and it answered in 74 seconds without a stop. The same line on the old code stopped at the first `cat`, within 24 seconds, with the line in your screenshot.
+
+Implementation: `engine/agent/driver.ts` (`AgentDriver.ownDirs`), `engine/agent/drivers/agy.ts` (it names `agyHomeDir`; `agyHomeDir` and `agyBrainDir` were moved there from `project-runner-agy.ts` first, by themselves), `engine/agent/external-runner.ts` (`policyContext` hands it to the rules as `ownAgentDirs`); the rules themselves are as they were. Tests in `agent-runner-agy.test.ts` and `engine/agent/policy.test.ts`.

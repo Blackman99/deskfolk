@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A Bot on Antigravity is no longer stopped for reading its own background-task logs
+
+- 视频导演, a Bot run by Antigravity, had a turn of a long video job stopped twice, each time with "Antigravity did something that needed your OK, or touched credentials, without asking". The step it stopped on was `cat ~/.gemini/antigravity-cli/brain/<session>/.system_generated/tasks/task-246.log`: a command that outlives agy's wait goes on as a background task of agy's own, what it prints is written in agy's own notes, and agy reads it back. On a long job it does that every few steps, and the rules took the whole of `~/.gemini` for credentials. The fix for Antigravity project sessions in the entry below did not cover Bots.
+- A Bot on Antigravity now goes by the same rules as its project sessions: its own folder (`~/.gemini`) is its own, read freely, changed and named in commands by the Bot's permission mode.
+- Another agent's folder (`~/.claude`, `~/.codex`, `~/.grok`…) can be read. Off limits there are only the sign-in and settings files (known by name) and the keychain, and its file tools write nothing into another agent's folder. Only those, or something its permission mode asks about or refuses anyway, stop the turn. This is wider than the task logs alone: a Bot on Antigravity now also reads another agent's skills, instruction files and session records. The app never held those reads back either, it only stopped the turn afterwards.
+- Bots on the other agents (Codex, Grok, OpenCode…) are unchanged: they are refused before they act and carry on.
+- Checked: the 25518 Bot commands the app has on record, through the old rules and the new, with nothing refused by the new rules that the old ones let through. A real agy in an isolated runtime (a throwaway Bot, auto mode), told to leave a one-minute command running and read its log back with `cat`: 12 commands (11 of them naming its own task-log folder), an answer in 74 seconds, no stop; the same line on the old code stopped at the first `cat`, within 24 seconds, with the line in the screenshot.
+
 ### Spend now estimates Antigravity's Gemini 4 and Claude 5.5 models
 
 - The built-in agent price table (`agents/agent-prices.ts`) still held only `gemini-3.8-flash` and Claude 4.6, and did not strip `-xhigh` thinking suffixes, so Antigravity project sessions running on Gemini 4 (`gemini-4-hydrogen`, `gemini-4-neon`, `gemini-4-carbon`, `gemini-4-argon`, including `-xhigh`) or Claude 5.5 (`claude-opus-5-5`, `claude-sonnet-5-5`) recorded tokens with no estimated amount.

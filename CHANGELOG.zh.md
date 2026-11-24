@@ -6,6 +6,14 @@
 
 ## Unreleased
 
+### 跑在 Antigravity 上的 Bot 不再因为读自己的后台任务日志被停下
+
+- 「视频导演」（跑在 Antigravity 上）做长视频任务时，一轮被停了两次，都写着「Antigravity 没先问就做了要批准的事，或动了凭据」。停下的那一步是 `cat ~/.gemini/antigravity-cli/brain/<会话>/.system_generated/tasks/task-246.log`：agy 的命令跑得比它等的时间长，就转成它自己的后台任务，输出写在它自己的笔记文件夹里，它再读回来。长任务里它每隔几步就这样做一次，而规则把整个 `~/.gemini` 当凭据。下面那条给 Antigravity 项目会话做的修复没有覆盖 Bot。
+- 现在跑在 Antigravity 上的 Bot 和它的项目会话用同一套规则：它自己的文件夹（`~/.gemini`）是它自己的，读直接读，改和命令按这个 Bot 的权限模式走。
+- 别家 Agent 的文件夹（`~/.claude`、`~/.codex`、`~/.grok`…）它读得到，碰不得的只有里面的登录文件和设置文件（按文件名认）和钥匙串，它的文件工具也不能往别家的文件夹里写。碰了这些，或者做了权限模式本来就要先问或不许的事，才停下这一轮。这比只放开任务日志宽：别家文件夹里的技能、指令文件、会话记录，Antigravity 的 Bot 现在也读得到。这些读应用原来也拦不住，只是事后停下这一轮。
+- 别的 Agent（Codex、Grok、OpenCode…）的 Bot 没变：它们是动手前被拒、接着干。
+- 查过的：应用记下的 25518 条 Bot 命令过新旧两套规则，新规则没有多拦任何一条。隔离运行时里的真 agy（一次性 Bot、自动模式），让它把一条跑一分钟的命令放到后台、再 `cat` 读回日志：12 条命令（11 条点名了它自己的任务日志文件夹），74 秒答完，没有被停；同一句话在旧代码上，不到 24 秒就停在第一条 `cat` 上，和截图里是同一句。
+
 ### 花费里现在能估算 Antigravity 的 Gemini 4 和 Claude 5.5 模型了
 
 - 内置的 Agent 价目表（`agents/agent-prices.ts`）之前只有 `gemini-3.8-flash` 和 Claude 4.6，也没有剥离 `-xhigh` 思考等级后缀，所以 Antigravity 项目会话跑在 Gemini 4（`gemini-4-hydrogen`、`gemini-4-neon`、`gemini-4-carbon`、`gemini-4-argon`，含 `-xhigh`）和 Claude 5.5（`claude-opus-5-5`、`claude-sonnet-5-5`）上时只记了 token，算不出估算金额。

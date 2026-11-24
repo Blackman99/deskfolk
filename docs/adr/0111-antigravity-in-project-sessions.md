@@ -197,3 +197,9 @@ Checked:
 - Your own two lines (with a third asking it only to look, to change no file and touch no process), in a separate checkout of the repository, on `gemini-3.8-flash-low`: 31 calls, among them a listing of `~/.gemini` and `antigravity-cli`, its own `settings.json` and `oauth_creds.json`, and `agy -p "/quota"` twice; it answered in 160 seconds without a stop. The default model you usually run was not used, to spare its quota.
 
 Implementation: `engine/agent/credentials.ts` (`isAgentSecretPath`, `namesAgentSecret`, `agentFolderMentions` and the name lists; `homeSpellings` and `dirSpellings` were pulled out first, by themselves), `engine/agent/policy.ts` (`ActionContext.ownAgentDirs`), `project-runner-agy.ts` (`agyHomeDir`); tests in `engine/agent/policy.test.ts`, `engine/agent/credentials.test.ts` and `project-sessions-agy.test.ts`.
+
+## 补记 2026-11-24（同日）：Bot 也按这条走 / Addendum 2026-11-24 (same day): Bots go by it too
+
+上一条补记的取舍里写着「Bot 不变」。当天跑在 Antigravity 上的 Bot 做长任务，一轮被停了两次，停在 agy `cat` 它自己笔记文件夹里的后台任务日志上（`brain/<会话>/.system_generated/tasks/task-N.log`）。Antigravity 的 Bot 现在也按上面这套规则判，只是没有「这个会话自己的 brain 文件夹每种模式下都能写」那一条；`agyHomeDir`、`agyBrainDir` 搬到了 `engine/agent/drivers/agy.ts`。细节见 [ADR 0079 的 2026-11-24 补记](0079-local-agents.md)。Codex、Grok、Claude Code 的项目会话和别的 Agent 的 Bot 仍然不变。
+
+The addendum above lists "Bots are unchanged" among its trade-offs. That day a Bot run by Antigravity on a long job had a turn stopped twice, on agy's `cat` of a background task's log in its own notes (`brain/<session>/.system_generated/tasks/task-N.log`). A Bot on Antigravity now goes by the rules above too, without "the session's own brain folder can be written in every mode"; `agyHomeDir` and `agyBrainDir` moved to `engine/agent/drivers/agy.ts`. Details in [ADR 0079's addendum of 2026-11-24](0079-local-agents.md). Codex, Grok and Claude Code project sessions, and Bots on the other agents, are still unchanged.

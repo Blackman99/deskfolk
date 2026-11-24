@@ -125,5 +125,11 @@ export type AgentDriver = {
   caps: DriverCaps;
   /** How the agent reaches the app's tools, said in the preface when it is not by their names (ADR 0079). */
   toolHint?: { zh: string; en: string };
+  /**
+   * The agent's own folders, named only by an agent that cannot be made to ask first (Antigravity):
+   * a refusal then stops the turn and holds nothing back, so its turns go by the rules for such an
+   * agent (`ActionContext.ownAgentDirs`, ADR 0079 addendum 2026-11-24).
+   */
+  ownDirs?(): string[];
   start(host: AgentHost, first: AgentInputPart[]): Promise<AgentSession>;
 };

@@ -13,6 +13,12 @@
  * have asked about stops the turn, as in its print mode before. What it does ask about is answered by
  * the app's rules, as for any ACP agent.
  *
+ * Such a stop holds nothing back, so its own folder (`agyHomeDir`) is its own, as in its terminal and
+ * as in a project session of it (ADR 0111 addendum 2026-11-24, ADR 0079 addendum of the same day):
+ * `agy` keeps what a command it left running printed there (`brain/<session>/.system_generated/tasks`)
+ * and reads it back with a command of its own. The driver names the folder (`ownDirs`), and the
+ * runner hands it to the rules.
+ *
  * An `agy` older than 1.5.4 is not started: before it, cancelling or closing a session mid-prompt
  * could hang (fixed in 1.5.1) and so could a call that asked for permission twice (1.5.4). Its turn
  * fails as `agent_outdated`, saying which version it found.
@@ -47,6 +53,7 @@ export function agyDriver(deps: AgyDeps = {}): AgentDriver {
   });
   return {
     ...inner,
+    ownDirs: () => [agyHomeDir()],
     async start(host, first) {
       const text = await (deps.version ?? agyVersionText)(host.executable, host.env);
       if (!agyServesAcp(text)) throw new AgentStartError("agent_outdated", agyTooOld(text, host.locale));

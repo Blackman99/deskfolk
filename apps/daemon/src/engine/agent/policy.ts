@@ -4,7 +4,9 @@
  * one, run a command, fetch from the web, something else — and then decided exactly as a Claude
  * Agent turn's are (ADR 0061, `claude-code/policy.ts`): reads run, a write or a command goes as the
  * Bot's permission mode says (ADR 0092), the same recursive-search refusal, nothing in the
- * background, and never any agent's own credentials. Pure, like Claude's.
+ * background, and never any agent's own credentials: the whole of each agent's folder, or, for an
+ * agent that cannot be made to ask first, what signs another agent in or sets it up
+ * (`ownAgentDirs`). Pure, like Claude's.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { posix } from "node:path";
@@ -58,13 +60,13 @@ export type ActionContext = {
    */
   readableDirs?: string[];
   /**
-   * Set for a project session whose agent cannot be made to ask first (Antigravity, ADR 0111
-   * addendum 2026-11-24): the folders of that agent itself. Its calls are checked as they run, so a
-   * refusal here stops the turn and holds nothing back. For such a session its own agent's folders
-   * are its own, as in its terminal, and your other agents' folders are read as any folder outside
-   * the workspace: only what signs one of them in or sets it up is off limits, file by file
-   * (`isAgentSecretPath`, `namesAgentSecret`). A file written into another agent's folder is still
-   * refused: that changes how the other is set up.
+   * Set where the agent cannot be made to ask first (Antigravity: a project session of it, ADR 0111
+   * addendum 2026-11-24, and a Bot's turn on it, ADR 0079 addendum of the same day): the folders of
+   * that agent itself. Its calls are checked as they run, so a refusal here stops the turn and holds
+   * nothing back. For it its own agent's folders are its own, as in its terminal, and your other
+   * agents' folders are read as any folder outside the workspace: only what signs one of them in or
+   * sets it up is off limits, file by file (`isAgentSecretPath`, `namesAgentSecret`). A file written
+   * into another agent's folder is still refused: that changes how the other is set up.
    */
   ownAgentDirs?: string[];
   /** The folders in a folder, links to folders too; this machine's disk when absent. */

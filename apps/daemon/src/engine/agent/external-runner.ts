@@ -9,7 +9,9 @@
  * The boundary, as you chose it (2026-10-10): every call the agent asks about or has the app carry
  * out is decided before it runs (`gate`); a call the app only hears of after it ran is checked
  * then, and one its permission mode would have asked about or refused (ADR 0092), or one that touched
- * an agent's credentials, stops the turn (`agent_unguarded`).
+ * an agent's credentials, stops the turn (`agent_unguarded`). For an agent that asks about nothing
+ * (Antigravity) every refusal is such a stop, so its driver names the agent's own folders
+ * (`ownDirs`) and the rules leave those to it, as in its terminal (addendum 2026-11-24).
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -284,6 +286,8 @@ export async function runExternalSession(input: {
     workspace: root,
     configDirs: store.allAgentConfigDirs(),
     permission: store.permissionModeFor(current.bot_id),
+    // An agent that cannot be made to ask first uses its own folder as in its terminal (ADR 0079 addendum 2026-11-24).
+    ...(driver.ownDirs ? { ownAgentDirs: driver.ownDirs() } : {}),
   });
 
   /** What steps of your own look at in a call (ADR 0105); this agent names no MCP tool of its own apart. */

@@ -489,3 +489,40 @@ posixTest("it reads the other agents' folders, and writes none of them with its 
     expect([path, decideAction(write(path), { ...unasked, permission: "allow_all" })]).toEqual([path, { kind: "deny", reason: expect.stringContaining("credentials") }]);
   }
 });
+
+// A Bot's turn on such an agent: the agent's own folder named, and nothing else of the agents' open
+// to it, neither notes of a session's own nor your agents' records.
+const botTurn: ActionContext = { mode: "work", workspace, home, permission: "auto", configDirs: [join(home, ".claude-b")], ownAgentDirs: [gemini] };
+const taskLog = join(gemini, "antigravity-cli", "brain", "14e7d9e6-d7f3-4a0f-b68b-6dd9cbe1d8ce", ".system_generated", "tasks", "task-246.log");
+
+posixTest("a Bot's turn on an agent that cannot ask first goes by the same rules, with its own folder named and nothing else", () => {
+  // As agy ran them in a Bot's long job on 2026-11-24, twice stopping the turn: what a command it left running printed, read back from its own notes.
+  for (const command of [
+    `ls -la clips/ && cat ${taskLog}`,
+    `ls -la "${workspace}/work/a story/" "${workspace}/work/h3-short/clips/" && cat ${taskLog}`,
+    `tail -n 40 ${taskLog}`, "cd ~/.gemini/antigravity-cli/brain && ls -t | head", "cat ~/.gemini/oauth_creds.json", "ls ~/.claude/skills", transcripts,
+  ]) {
+    expect([command, decideAction(shell(command), botTurn)]).toEqual([command, expect.objectContaining({ kind: "allow" })]);
+    // Any other agent's Bot, as before.
+    expect([command, decideAction(shell(command), { ...botTurn, ownAgentDirs: undefined }).kind]).toEqual([command, "deny"]);
+  }
+  for (const path of [taskLog, join(guide, "SKILL.md"), join(gemini, "antigravity-cli", "settings.json"), join(home, ".claude", "skills", "x", "SKILL.md"), join(claudeRecords, "-Users-someone-proj", "47ce0671.jsonl")]) {
+    expect([path, decideAction(read(path), botTurn).kind]).toEqual([path, "allow"]);
+    expect([path, decideAction(read(path), { ...botTurn, ownAgentDirs: undefined }).kind]).toEqual([path, "deny"]);
+  }
+  // Its notes are in its own folder, where a change goes by the Bot's permission mode like any other.
+  expect(decideAction(write(join(gemini, "antigravity-cli", "brain", "session-9", "task.md")), botTurn)).toMatchObject({ kind: "allow", effect: true });
+  expect(decideAction(write(join(gemini, "antigravity-cli", "brain", "session-9", "task.md")), { ...botTurn, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(shell(`cat ${taskLog}`), { ...botTurn, permission: "ask_first" }).kind).toBe("ask");
+  expect(decideAction(shell(`cat ${taskLog}`), { ...botTurn, mode: "readonly" })).toEqual({ kind: "deny", reason: expect.stringContaining("read-only turn") });
+  expect(decideAction(read(taskLog), { ...botTurn, mode: "readonly" }).kind).toBe("allow");
+  // What signs another agent in or sets it up, a file written into another's folder, the keychain: off limits in every mode.
+  for (const command of ["cat ~/.codex/auth.json", "cat ~/.claude/settings.json", "cat ~/.claude-b/.credentials.json", "cd ~/.codex && cat auth.json", `cat ${taskLog} ~/.grok/auth.json`,
+    "cat ~/.gemini/antigravity-cli/skills/out.md", "security find-generic-password -s 'Claude Code-credentials' -w"]) {
+    expect([command, decideAction(shell(command), { ...botTurn, permission: "allow_all" })]).toEqual([command, { kind: "deny", reason: expect.stringContaining("credentials") }]);
+  }
+  for (const path of [join(home, ".codex", "auth.json"), join(home, ".claude", "settings.json"), join(home, ".claude-b", "settings.json"), join(gemini, "antigravity-cli", "skills", "out.md")]) {
+    expect([path, decideAction(read(path), { ...botTurn, permission: "allow_all" }).kind]).toEqual([path, "deny"]);
+  }
+  expect(decideAction(write(join(home, ".claude", "skills", "x", "SKILL.md")), { ...botTurn, permission: "allow_all" })).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+});

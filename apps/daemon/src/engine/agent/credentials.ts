@@ -2,8 +2,11 @@
  * Where your local agents keep what signs them in and how they are set up (ADR 0061, ADR 0079):
  * off limits to every Bot, whichever agent runs it — a Bot on Codex reads no more of `~/.claude`
  * than one on Claude Code reads of `~/.codex`. Refused outright, never carded: an approval would be
- * you letting one agent read another's (or its own) credentials. Pure, like the rest of the policy:
- * home, platform and the listed account directories come in, so the rules are tested on a fake disk.
+ * you letting one agent read another's (or its own) credentials. The one agent that cannot be made
+ * to ask first (Antigravity, a Bot on it or a project session of it) is judged file by file instead
+ * ({@link isAgentSecretPath}, {@link namesAgentSecret}): refusing it stops its turn after the call
+ * has run. Pure, like the rest of the policy: home, platform and the listed account directories come
+ * in, so the rules are tested on a fake disk.
  */
 import { posix, win32 } from "node:path";
 import { asksKeychainForSecret, isKeychainPath } from "../../keychains";
@@ -394,8 +397,8 @@ function nameOf(path: string, win: boolean): string {
 }
 
 /**
- * A file that signs one of your agents in or sets it up, for a session to which the agents' folders
- * are otherwise open (one with `ownAgentDirs`, ADR 0111 addendum 2026-11-24): a path in the
+ * A file that signs one of your agents in or sets it up, for a session or a Bot's turn to which the
+ * agents' folders are otherwise open (one with `ownAgentDirs`, ADR 0111 addendum 2026-11-24): a path in the
  * keychains; or one in another agent's folder (an account folder you listed too) under a sign-in or
  * settings file's name ({@link SIGN_IN_NAMES}, {@link SETTINGS_NAMES}). Nothing else there is: its
  * skills, what it remembers, its records, notes and logs, the folder itself; nor anything among the
