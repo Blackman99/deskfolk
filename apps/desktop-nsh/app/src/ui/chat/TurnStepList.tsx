@@ -2,7 +2,7 @@
  * What a working message's last line opens onto (`TurnStepList.svelte`): the steps going on now,
  * each said whole, and what a running command is printing as it prints it. Escape closes it.
  */
-import { effect, keymap, Scroll, Text, View, type ScrollRef } from "nsh";
+import { cleanup, computed, effect, keymap, Scroll, Text, View, type ScrollRef } from "nsh";
 import type { StepRow } from "../../m/chat/turn-activity.ts";
 import { shadow } from "../styles";
 
@@ -21,10 +21,28 @@ export function TurnStepList(props: {
   onClose: () => void;
 }) {
   let list: ScrollRef | undefined;
-  // Follow the end of the list, the way a terminal does.
+  let atEnd = true;
+  // From the list's mount to its first layout (the Scroll's `onLayout`), as in `CommandActivity`.
+  let placing = false;
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  const toEnd = () => list?.scrollTo({ y: 1_000_000, animated: false });
+  const followEnd = () => {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(() => {
+      pending = null;
+      if (atEnd) toEnd();
+    }, 0);
+  };
+  cleanup(() => {
+    if (pending) clearTimeout(pending);
+  });
+  // Follow new steps the way a terminal does, unless you have scrolled up to read. By the count
+  // (`computed`), not `props.rows`: the array is rebuilt every 250 ms as the step clocks tick, and
+  // following the array snapped the list back to the bottom four times a second while you scrolled up.
+  const count = computed(() => props.rows.length);
   effect(() => {
-    void props.rows.length;
-    setTimeout(() => list?.scrollTo({ y: 1_000_000, animated: false }), 0);
+    void count();
+    if (atEnd) followEnd();
   });
   effect(() => keymap.bind("escape", () => props.onClose(), { when: "always" }));
   return (
@@ -36,7 +54,24 @@ export function TurnStepList(props: {
       style={{ boxShadow: shadow("sm") }}
     >
       <Text class="mb-[6px] text-[12px] font-semibold text-ink-muted">{props.title}</Text>
-      <Scroll ref={(node) => (list = node)} class="max-h-[216px]" contentClass="gap-[3px]">
+      <Scroll
+        testID="turn-steps-scroll"
+        ref={(node) => {
+          list = node;
+          atEnd = true;
+          placing = true;
+        }}
+        class="max-h-[216px]"
+        contentClass="gap-[3px]"
+        onLayout={() => {
+          if (!placing) return;
+          placing = false;
+          if (atEnd) toEnd();
+        }}
+        onScroll={(e) => {
+          atEnd = e.contentSize.height - e.offset.y - e.size.height < 8;
+        }}
+      >
         <Each of={props.rows} key={(row) => row.id}>
           {(row) => {
             const output = () => (row().shell && props.outputOf ? props.outputOf(row().id) : null);

@@ -4,7 +4,7 @@ import { openStory } from "./fixture";
 
 const t = copyFor("zh");
 
-async function open(section: "activity" | "plan") {
+async function open(section: "activity" | "steps" | "plan") {
   const app = await openStory("chat-cards");
   await app.waitFor(`id:show-${section}`, { timeout: 10_000 });
   await app.press(`id:show-${section}`);
@@ -72,6 +72,35 @@ test("a project session's step list shows its rows with no command output to rea
   await app.waitFor("id:card-task-steps");
   expect(app.texts()).toContain("后台命令");
   expect(app.shows("id:card-task-steps >> id:turn-step-output")).toBe(false);
+});
+
+test("scrolling up in a working step list stays put across clock ticks and new steps", async () => {
+  const app = await open("steps");
+  await app.waitFor("id:card-steps-scroll >> id:turn-steps-scroll");
+  await app.wait(60);
+  // Starts at the end; scroll back to the top to read the first step.
+  await app.scroll("id:card-steps-scroll >> id:turn-steps-scroll", -600);
+  await app.wait(60);
+  // Clock ticks rebuild `rows` every 250 ms without changing its length; must not snap back to bottom.
+  await app.press("id:steps-tick");
+  await app.press("id:steps-tick");
+  await app.wait(60);
+  await app.press("id:card-steps-scroll >> text:步骤 1：检查构建产物与工作区差异");
+  await app.waitUntil(() => app.texts().includes("step:1"));
+  // A new step arriving while scrolled up must not yank the scroll back to the end either.
+  await app.press("id:steps-add");
+  await app.wait(60);
+  await app.press("id:steps-tick");
+  await app.wait(60);
+  await app.press("id:card-steps-scroll >> text:步骤 2：检查构建产物与工作区差异");
+  await app.waitUntil(() => app.texts().includes("step:2"));
+  // Once back at the end, new steps are followed again.
+  await app.scroll("id:card-steps-scroll >> id:turn-steps-scroll", 1000);
+  await app.wait(60);
+  await app.press("id:steps-add");
+  await app.wait(60);
+  await app.press("id:card-steps-scroll >> text:步骤 18：检查构建产物与工作区差异");
+  await app.waitUntil(() => app.texts().includes("step:18"));
 });
 
 test("delegation records say who asked whom, the reply and the wait", async () => {

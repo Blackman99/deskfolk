@@ -29,6 +29,15 @@ const POLL_MS = 1500;
 const sayText = (block: TrailBlock) => (block.kind === "say" ? block.text : "");
 const callRows = (block: TrailBlock) => (block.kind === "calls" ? block.rows : []);
 
+function sameTrailBlock(a: TrailBlock, b: TrailBlock): boolean {
+  if (a.kind !== b.kind || a.key !== b.key) return false;
+  if (a.kind === "say" && b.kind === "say") return a.text === b.text;
+  if (a.kind === "calls" && b.kind === "calls") {
+    return a.rows.length === b.rows.length && JSON.stringify(a.rows) === JSON.stringify(b.rows);
+  }
+  return false;
+}
+
 export function ProjectSubagentDialog(props: {
   task: AgentRunTask;
   onClose: () => void;
@@ -37,7 +46,11 @@ export function ProjectSubagentDialog(props: {
   files?: FileOnDisk;
 }) {
   const t = () => copy();
-  const going = () => props.task.status === "running";
+  // Scalar computeds: `props.task` is a new object on every parent run event, and reading it
+  // directly in effects re-fetched the detail and restarted the clock on every streamed chunk.
+  const taskId = computed(() => props.task.id);
+  const runId = computed(() => props.task.run_id);
+  const going = computed(() => props.task.status === "running");
   const detail = signal<AgentTaskDetail | null>(null);
   const failed = signal(false);
   const nowMs = signal(Date.now());
@@ -45,17 +58,18 @@ export function ProjectSubagentDialog(props: {
   // Read it, and again while it runs.
   effect(() => {
     const api = runtime.client;
-    const taskId = props.task.id;
-    const run = props.task.run_id;
+    const id = taskId();
+    const run = runId();
     const again = going();
     let gone = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const read = async () => {
       if (!api) return;
       try {
-        const next = await api.agentTaskDetail(run, taskId);
+        const next = await api.agentTaskDetail(run, id);
         if (gone) return;
-        detail.set(next);
+        const prev = detail();
+        if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) detail.set(next);
         failed.set(false);
       } catch {
         if (!gone) failed.set(true);
@@ -78,7 +92,21 @@ export function ProjectSubagentDialog(props: {
   // A phone's Back closes it first, rather than leaving the conversation under it.
   cleanup(holdBack(() => props.onClose()));
 
-  const blocks = computed(() => trailBlocks(detail()?.steps ?? []));
+  // Keep each unchanged block's object identity so appending a new step does not churn earlier
+  // `MarkdownBody` and `CommandActivity` blocks while the reader is scrolled up.
+  let keptBlocks = new Map<string, TrailBlock>();
+  const blocks = computed(() => {
+    const raw = trailBlocks(detail()?.steps ?? []);
+    const next = new Map<string, TrailBlock>();
+    const out = raw.map((block) => {
+      const before = keptBlocks.get(block.key);
+      const keep = before && sameTrailBlock(before, block) ? before : block;
+      next.set(block.key, keep);
+      return keep;
+    });
+    keptBlocks = next;
+    return out;
+  });
   const onCall = () => (detail() ? runningCall(detail()!.steps) : null);
   const facts = () =>
     [

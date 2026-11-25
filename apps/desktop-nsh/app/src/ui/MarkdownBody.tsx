@@ -78,7 +78,7 @@ export function MarkdownBody(props: {
   testID?: string;
   children?: JSX.Element;
 }) {
-  const markdown = () => prepareMarkdown(props.source, props.options ?? {}, props.hideStandaloneArtifactLinks ?? []);
+  const markdown = computed(() => prepareMarkdown(props.source, props.options ?? {}, props.hideStandaloneArtifactLinks ?? []));
   const loads = new AbortController();
   cleanup(() => loads.abort());
   /** The file whose menu is open, and where (window coordinates). Here, not on the chip: a streamed rerun makes the chips again. */
@@ -103,16 +103,22 @@ export function MarkdownBody(props: {
     if (/^(https?|mailto):/i.test(target.url)) void openUrl(target.url).catch(() => undefined);
   }
 
-  const inv = () => props.inverted === true;
+  const inv = computed(() => props.inverted === true);
   /** The code colours in force: a new pair makes the view again, which reads them as it is made. */
   const themes = computed(() => codeThemes("chat"), { equals: (a, b) => a.light === b.light && a.dark === b.dark });
   const surface = () => (inv() ? null : codeSurface());
   /**
    * Whether the text has a fenced code block, the only kind the colours paint. Only such a text asks
    * for them on the web; a text without one reads nothing of them, so it is not made again (its chips
-   * and pictures with it) when they arrive.
+   * and pictures with it) when they arrive. Memoised so a live `props.source` (streaming tokens or a
+   * polled subagent trail) does not tear down and remount `TextView` on every update.
    */
-  const fenced = () => FENCE.test(props.source);
+  const fenced = computed(() => FENCE.test(props.source));
+  const withCodeColors = computed(() => fenced() && !inv() && codeColorsComing());
+  const textOptions = computed(
+    () => ({ streaming: props.options?.streaming === true, math: false }),
+    { equals: (a, b) => a.streaming === b.streaming },
+  );
   effect(() => {
     if (fenced() && !inv()) wantCodeColors();
   });
@@ -120,7 +126,7 @@ export function MarkdownBody(props: {
   const view = () => (
     <TextView
       markdown={markdown()}
-      options={{ streaming: props.options?.streaming === true, math: false }}
+      options={textOptions()}
       extensions={EXTENSIONS}
       selectable={props.selectable !== false}
       codeBlockActions={[{ id: "copy", label: props.copyLabel }]}
@@ -173,8 +179,8 @@ export function MarkdownBody(props: {
 
   return (
     <View testID={props.testID} class={`min-w-0 ${props.class ?? ""}`}>
-      {fenced() && !inv() && codeColorsComing() ? (
-        // Made again once the colours are read (the key), as `CodeColors` reads them as it is made.
+      <If when={withCodeColors()} else={view()}>
+        {/* Made again once the colours are read (the key), as `CodeColors` reads them as it is made. */}
         <Each of={[themes()]} key={(pair) => `${pair.light} ${pair.dark} ${codeColorsAvailable()}`}>
           {(pair) => (
             <CodeColors class="min-w-0" light={pair().light} dark={pair().dark}>
@@ -182,9 +188,7 @@ export function MarkdownBody(props: {
             </CodeColors>
           )}
         </Each>
-      ) : (
-        view()
-      )}
+      </If>
       {props.children}
       <If when={props.files && fileMenu()}>
         {() => (

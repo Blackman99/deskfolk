@@ -271,7 +271,7 @@ const PLAN: AgentRunApproval = {
   summary: ["## 迁移计划", "", "1. 先读 `notes/weekly.md`", "2. 再改 `src/app.ts`", "", "- 风险：旧数据", "- 回滚：还原提交"].join("\n"),
 };
 
-const SECTIONS = ["ask", "approval", "work", "control", "activity", "plan"] as const;
+const SECTIONS = ["ask", "approval", "work", "control", "activity", "steps", "plan"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function Card(props: { id: string; children: import("nsh").JSX.Element }) {
@@ -299,6 +299,18 @@ export default function ChatCards() {
   const closed = signal(false);
   const answered = signal<string | null>(null);
   const holds = signal<Hold[]>([HOLD]);
+  const stepTick = signal(0);
+  const stepCount = signal(16);
+  const liveStepRows = (): StepRow[] => {
+    const tick = stepTick();
+    return Array.from({ length: stepCount() }, (_, i) => ({
+      id: `live:${i + 1}`,
+      text: `步骤 ${i + 1}：检查构建产物与工作区差异`,
+      time: `${tick + i + 1} 秒`,
+      shell: false,
+      open: () => note(`step:${i + 1}`),
+    }));
+  };
   return (
     <View class="flex-1 bg-bg">
       <View class="flex-row flex-wrap gap-2 p-3 border-b border-line">
@@ -443,6 +455,17 @@ export default function ChatCards() {
             botsById={new Map([[WRITER.id, WRITER], [EDITOR.id, EDITOR]])}
             onOpenArtifact={(path, id) => note(`open:${path}:${id ?? ""}`)}
           />
+        </If>
+        <If when={section() === "steps"}>
+          <View class="flex-row gap-2">
+            <Button testID="steps-tick" size="sm" variant="secondary" onPress={() => stepTick.update((n) => n + 1)}>
+              tick
+            </Button>
+            <Button testID="steps-add" size="sm" variant="secondary" onPress={() => stepCount.update((n) => n + 1)}>
+              add
+            </Button>
+          </View>
+          <TurnStepList id="card-steps-scroll" title={`Claude Code 正在做 ${stepCount()} 件事`} rows={liveStepRows()} onClose={() => undefined} />
         </If>
         <If when={section() === "plan"}>
           <If when={plan()}>

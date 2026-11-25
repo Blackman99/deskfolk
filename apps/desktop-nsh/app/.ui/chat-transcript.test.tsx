@@ -256,3 +256,18 @@ test("a running subagent with nothing to read yet says where it is, and its trai
   expect(app.shows(`text:${t.project.taskNoSteps}`)).toBe(false);
   expect(app.count("id:subagent-foot")).toBe(1);
 });
+
+test("a running subagent popup does not re-fetch on parent task churn and keeps scroll steady across polls", async () => {
+  const app = await open("dialog");
+  await app.press("id:open-long");
+  await app.waitFor("id:subagent-prompt", { timeout: 10_000 });
+  // Parent run events replace `props.task` every 120 ms; wait 500 ms and verify only the initial read ran.
+  await app.wait(500);
+  expect(app.texts()).toContain("long-reads:1");
+  // Scroll down into the middle of the trail and wait for the 1.5 s poll to append a new block.
+  await app.scroll("id:modal-scroll", 700);
+  await app.waitUntil(() => app.texts().includes("最新追加的第 25 段"), { timeout: 5_000 });
+  // The middle block stays in view (not jumped away or remounted offscreen) and its link opens.
+  await app.press("id:modal-scroll >> text:mid.md");
+  await app.waitUntil(() => app.texts().includes("path:notes/mid.md"));
+});

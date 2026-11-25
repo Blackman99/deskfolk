@@ -8,7 +8,7 @@
  * its name, JSON and diffs by their look, anything else as a log), in the code colours of chat
  * (`code-colors.tsx`). Output with colour codes of its own is shown plain, without them.
  */
-import { computed, effect, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
+import { cleanup, computed, effect, Scroll, signal, Text, View, type JSX, type ScrollRef } from "nsh";
 import { formatDuration, type CommandRow } from "../../m/chat/command-activity.ts";
 import { outputLang } from "../../m/chat/command-output.ts";
 import { codeColorsAvailable, codeSurface, codeTheme, colorSpans, highlightCode, wantCodeColors } from "../code-colors";
@@ -118,14 +118,25 @@ export function CommandActivity(props: {
   let atEnd = true;
   // From the list's mount to its first layout (the Scroll's `onLayout`).
   let placing = false;
+  let pending: ReturnType<typeof setTimeout> | null = null;
   const toEnd = () => list?.scrollTo({ y: 1_000_000, animated: false });
+  const followEnd = () => {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(() => {
+      pending = null;
+      if (atEnd) toEnd();
+    }, 0);
+  };
+  cleanup(() => {
+    if (pending) clearTimeout(pending);
+  });
   // By the count, as the messenger's `use:follow={done.length}`: the rows come as a new array on every
   // read of a subagent (1.5 s) and every event of a turn, and following the array sent the list back
   // to its end each time, past an output you had opened at its foot.
   const count = computed(() => done().length);
   effect(() => {
     void count();
-    if (atEnd) setTimeout(toEnd, 0);
+    if (atEnd) followEnd();
   });
 
   return (

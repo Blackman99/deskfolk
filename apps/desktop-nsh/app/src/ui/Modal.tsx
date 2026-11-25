@@ -147,13 +147,13 @@ export function Modal(props: {
               <If
                 when={props.fill}
                 else={
-                  <Scroll class="shrink min-h-0">
+                  <Scroll testID="modal-scroll" class="shrink min-h-0">
                     <View class={`flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>{props.children}</View>
                   </Scroll>
                 }
               >
                 {/* `grow`: the content is at least the body's height, so a note can sit in its middle. */}
-                <Scroll class="flex-1 min-h-0" contentClass={`grow flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>
+                <Scroll testID="modal-scroll" class="flex-1 min-h-0" contentClass={`grow flex-col ${props.bodyClass ?? "px-5 py-[18px] gap-[14px]"}`}>
                   {props.children}
                 </Scroll>
               </If>

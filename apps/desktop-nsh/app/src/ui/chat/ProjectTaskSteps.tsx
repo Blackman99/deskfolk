@@ -35,7 +35,9 @@ export function ProjectTaskSteps(props: {
         each.map(async ([run, task]) => {
           try {
             const detail = await api.agentTaskDetail(run, task);
-            if (!gone && detail.output !== null) outputs.update((current) => ({ ...current, [task]: detail.output! }));
+            if (!gone && detail.output !== null) {
+              outputs.update((current) => (current[task] === detail.output ? current : { ...current, [task]: detail.output! }));
+            }
           } catch {
             // The next read tries again; the row still says what runs.
           }

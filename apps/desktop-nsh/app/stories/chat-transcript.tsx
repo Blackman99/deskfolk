@@ -130,6 +130,12 @@ const TASK_LOST = { ...TASK, id: "task-3", status: "completed", description: "�
 const TASK_EMPTY = { ...TASK, id: "task-4", description: "Wait for the full screen test run and total it", agent_type: null, tool_uses: null, tokens: null } as AgentRunTask;
 /** Empty on its first read, its trail there on the next. */
 const TASK_LATE = { ...TASK, id: "task-5", description: "后来才有动作" } as AgentRunTask;
+/** Long running trail whose parent task row churns rapidly while open. */
+const TASK_LONG = { ...TASK, id: "task-6", description: "长轨迹" } as AgentRunTask;
+const LONG_STEPS = Array.from({ length: 24 }, (_, i) => ({
+  kind: "say" as const,
+  text: i === 12 ? "第 13 段：检查 `notes/mid.md` 的内容。\n\n继续核对每一处引用与输出。" : `第 ${i + 1} 段：检查工作区里的模块和构建产物。\n\n第二行补充说明。`,
+}));
 const DETAIL = {
   task: TASK,
   output: null,
@@ -274,7 +280,13 @@ export default function ChatTranscript() {
   const show = (task: AgentRunTask) => {
     const client = runtime.client as unknown as { agentTaskDetail: (run: string, id: string) => Promise<AgentTaskDetail> } | null;
     let lateReads = 0;
+    let longReads = 0;
     let reads = 0;
+    let churn: ReturnType<typeof setInterval> | null = null;
+    const stopChurn = () => {
+      if (churn) clearInterval(churn);
+      churn = null;
+    };
     if (client) {
       client.agentTaskDetail = async (_run, id) => {
         if (id === TASK_LOST.id) throw new Error("gone");
@@ -282,9 +294,15 @@ export default function ChatTranscript() {
         const empty = { ...DETAIL, task, prompt: null, model: null, steps: [] } as AgentTaskDetail;
         if (id === TASK_EMPTY.id) return empty;
         if (id === TASK_LATE.id) return (lateReads += 1) === 1 ? empty : { ...DETAIL, task };
+        if (id === TASK_LONG.id) {
+          longReads += 1;
+          note(`long-reads:${longReads}`);
+          const steps = longReads >= 2 ? [...LONG_STEPS, { kind: "say" as const, text: "最新追加的第 25 段" }] : LONG_STEPS;
+          return { ...DETAIL, task, steps } as unknown as AgentTaskDetail;
+        }
         // Every read is a new answer, as the daemon's is, even when nothing in it changed. On the
-        // second, the conversation's row for the task changes too, as it does with each call it makes
-        // (the popup then reads again at once); from the third on, `pnpm build` has ended.
+        // second, the conversation's row for the task changes too, as it does with each call it makes;
+        // from the third on, `pnpm build` has ended.
         reads += 1;
         if (reads === 2) open.set({ ...task, tool_uses: 3 } as AgentRunTask);
         const ended = reads >= 3;
@@ -295,6 +313,13 @@ export default function ChatTranscript() {
       };
     }
     open.set(task);
+    if (task.id === TASK_LONG.id) {
+      churn = setInterval(() => {
+        const cur = open();
+        if (!cur || cur.id !== TASK_LONG.id) return stopChurn();
+        open.set({ ...cur, tokens: (cur.tokens ?? 0) + 1 } as AgentRunTask);
+      }, 120);
+    }
   };
 
   return (
@@ -376,6 +401,9 @@ export default function ChatTranscript() {
             </Button>
             <Button testID="open-late" size="sm" variant="secondary" onPress={() => show(TASK_LATE)}>
               late
+            </Button>
+            <Button testID="open-long" size="sm" variant="secondary" onPress={() => show(TASK_LONG)}>
+              long
             </Button>
           </View>
         </If>
