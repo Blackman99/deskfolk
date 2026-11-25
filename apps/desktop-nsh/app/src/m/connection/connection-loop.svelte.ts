@@ -11,6 +11,7 @@ import type {
   ToolFrame,
 } from "@real-bot/protocol";
 import { probeHealth } from "../api.ts";
+import { pruneComposerDrafts } from "../chat/composer-drafts.ts";
 import type { TurnActivity } from "../chat/turn-activity.ts";
 import type { LocalEndpoint } from "../discovery.ts";
 import { EventSync } from "../event-sync.ts";
@@ -266,6 +267,7 @@ export class ConnectionLoop {
     this.host.messageSnapshotRevision++;
     // The conversation on screen keeps its lines until it is read again, below.
     const fresh = fromRuntimeSnapshot(snapshot);
+    pruneComposerDrafts(new Set(fresh.sessions.map((s) => s.id)));
     const open = this.host.selectedId && fresh.sessions.some((s) => s.id === this.host.selectedId) ? this.host.selectedId : null;
     this.host.snapshot = open ? keepSessionLines(fresh, this.host.snapshot, open) : fresh;
     // The others are down to their last line: nothing they read before follows on from it.

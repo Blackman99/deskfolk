@@ -4,6 +4,7 @@ import { snapshot } from "../../lib/reactive.ts";
 import type { Message, RuntimeSnapshot } from "@real-bot/protocol";
 import { base64url, generateIdentity, identityPublic, type RemoteRequest, type RemoteResponse } from "@real-bot/remote";
 import { ApiError } from "../api.ts";
+import { clearComposerDrafts } from "../chat/composer-drafts.ts";
 import { MessengerRuntime, nextRemoteRetry } from "../runtime.svelte.ts";
 import { emptySnapshot } from "../snapshot.ts";
 import { RemoteApi, type DurablePendingRequest } from "./api.ts";
@@ -34,6 +35,7 @@ afterEach(() => {
   for (const runtime of runtimes.splice(0)) runtime.destroy();
   for (const restore of restores.splice(0)) restore();
   useEnrollmentDriver(null);
+  clearComposerDrafts();
 });
 
 /** A Mac that answers the one read a connect needs, and nothing else it does not have. */

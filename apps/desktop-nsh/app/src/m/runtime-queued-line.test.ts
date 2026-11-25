@@ -7,12 +7,16 @@ import "../platform/install";
 import { afterEach, expect, test } from "nsh/test";
 import { snapshot } from "../lib/reactive.ts";
 import { ApiError } from "./api.ts";
+import { clearComposerDrafts } from "./chat/composer-drafts.ts";
 import { MessengerRuntime } from "./runtime.svelte.ts";
 import { fakeApi } from "./test-mocks.ts";
 import { aDirect, aMessage } from "./test-fixtures.ts";
 
 const runtimes: MessengerRuntime[] = [];
-afterEach(() => { for (const runtime of runtimes.splice(0)) runtime.destroy(); });
+afterEach(() => {
+  for (const runtime of runtimes.splice(0)) runtime.destroy();
+  clearComposerDrafts();
+});
 
 function connected(api: object): MessengerRuntime {
   const runtime = new MessengerRuntime();

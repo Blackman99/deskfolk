@@ -46,7 +46,8 @@ import type { TurnActivity, ToolStep } from "./chat/turn-activity.ts";
 import { classifySession, isFileDropSession } from "./sidebar/session-groups.ts";
 import { applyEvent, emptySnapshot, keepNewestRun, type Snapshot } from "./snapshot.ts";
 import type { EventSync } from "./event-sync.ts";
-import { SessionView } from "./session-view.svelte.ts";
+import { forgetComposerDraft, loadComposerDraft, saveComposerDraft } from "./chat/composer-drafts.ts";
+import { SessionView, type SessionDraftStore } from "./session-view.svelte.ts";
 import type { TraceFocus } from "./overlays/task-trace.ts";
 import type { PaneContent } from "./workbench/pane-content.ts";
 import { isLiveStatus } from "./chat/transcript.ts";
@@ -367,11 +368,16 @@ export class MessengerRuntime {
    */
   private readonly views = new Map<string, SessionView>();
 
+  private readonly draftStore: SessionDraftStore = {
+    load: loadComposerDraft,
+    save: saveComposerDraft,
+  };
+
   /** The view for a session, made on first use. */
   sessionView(id: string): SessionView {
     let view = this.views.get(id);
     if (!view) {
-      view = new SessionView(id);
+      view = new SessionView(id, this.draftStore);
       this.views.set(id, view);
     }
     return view;
@@ -1288,6 +1294,7 @@ export class MessengerRuntime {
       }
       // Nothing will read it again; a draft for a conversation that is gone is not kept.
       this.views.delete(event.id);
+      forgetComposerDraft(event.id);
     }
     if (event.event === "delegation.changed") {
       this.delegationEventRevisions.set(event.id, ++this.delegationEventSeq);

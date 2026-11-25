@@ -1,4 +1,4 @@
-import { state } from "../lib/reactive";
+import { state, untrack } from "../lib/reactive";
 import type { ComposerSuggestion } from "@real-bot/protocol";
 
 /** A file picked or pasted into the composer, waiting for the next send. */
@@ -42,13 +42,24 @@ export type StagedWorkspacePath = {
 /** A read history kept over a dropped link: its cursor, and the position of its newest line then (null when none). */
 export type KeptHistory = { next: string | null; newest: { created_at: string; id: string } | null };
 
+/** Optional persistence backing `SessionView.draft` across crashes and reloads. */
+export type SessionDraftStore = {
+  load(sessionId: string): string;
+  save(sessionId: string, text: string): void;
+};
+
 export class SessionView {
   readonly sessionId: string;
+  private readonly draftStore?: SessionDraftStore;
 
   /** What you have typed here but not sent. */
   #draft$s = state("");
 	get draft() { return this.#draft$s.get(); }
-	set draft(value) { this.#draft$s.set(value); }
+	set draft(value) {
+		if (value === untrack(() => this.#draft$s.get())) return;
+		this.#draft$s.set(value);
+		this.draftStore?.save(this.sessionId, value);
+	}
   /** The message a reply is aimed at, or null for an ordinary send. */
   #replyingToId$s = state<string | null>(null);
 	get replyingToId(): string | null { return this.#replyingToId$s.get(); }
@@ -169,8 +180,11 @@ export class SessionView {
    */
   revision = 0;
 
-  constructor(sessionId: string) {
+  constructor(sessionId: string, draftStore?: SessionDraftStore) {
     this.sessionId = sessionId;
+    this.draftStore = draftStore;
+    const kept = draftStore?.load(sessionId) ?? "";
+    if (kept) this.#draft$s.set(kept);
   }
 
   get hasOlderMessages(): boolean {

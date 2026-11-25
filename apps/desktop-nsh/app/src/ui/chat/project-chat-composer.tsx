@@ -319,20 +319,32 @@ export function ProjectComposer(props: {
               onRemovePath={files.removePendingPath}
             />
           </If>
-          <ComposerEditor
-            testID="project-input"
-            value={view().draft}
-            onChange={(text) => {
-              view().draft = text;
-              sendFailed.set(false);
+          {/* One editor per conversation, as in `Composer`: undo history, IME state and any late
+              revision stay with the session they belonged to and never leak into the next one's draft. */}
+          <Each of={[props.selected.id]} key={(id: string) => id}>
+            {() => {
+              let mine: ComposerEditorHandle | null = null;
+              return (
+                <ComposerEditor
+                  testID="project-input"
+                  value={view().draft}
+                  onChange={(text) => {
+                    view().draft = text;
+                    sendFailed.set(false);
+                  }}
+                  placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : s().consulting() ? t().project.composerPlaceholderConsult(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
+                  editable
+                  commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
+                  onSend={() => void send()}
+                  onPaste={onPaste}
+                  onHandle={(handle) => {
+                    if (handle) editor = mine = handle;
+                    else if (editor === mine) editor = null;
+                  }}
+                />
+              );
             }}
-            placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : s().consulting() ? t().project.composerPlaceholderConsult(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
-            editable
-            commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
-            onSend={() => void send()}
-            onPaste={onPaste}
-            onHandle={(handle) => (editor = handle)}
-          />
+          </Each>
           <View class="flex-row items-center w-full gap-[6px]" onLayout={(e) => rowWidth.set(e.bounds.size.width)}>
             <If
               when={phone()}

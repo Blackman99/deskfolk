@@ -1,6 +1,6 @@
 import "./install";
 import { expect, test } from "nsh/test";
-import { mediaMatches } from "./globals";
+import { createKeyedPersist, mediaMatches } from "./globals";
 
 test("the messenger's media queries answer from the width", () => {
   expect(mediaMatches("(max-width: 680px)", 390)).toBe(true);
@@ -46,4 +46,47 @@ test("Intl formatters may be called without new, as in a browser", () => {
   expect(plain.format(new Date(0))).toBe("1970");
   expect(new Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric" }) instanceof Intl.DateTimeFormat).toBe(true);
   expect(typeof Intl.DateTimeFormat.supportedLocalesOf).toBe("function");
+});
+
+test("createKeyedPersist serialises writes per key and flushes the latest value (including deletes)", async () => {
+  const map = new Map<string, string>();
+  const started: Array<{ key: string; value: string | null; finish: () => void }> = [];
+  const flush = createKeyedPersist(
+    (key) => (map.has(key) ? map.get(key)! : null),
+    (key, value) =>
+      new Promise<void>((resolve) => {
+        started.push({ key, value, finish: resolve });
+      }),
+  );
+
+  // First keystroke starts writing immediately (no debounce).
+  map.set("k1", "a");
+  flush("k1");
+  expect(started.map((s) => [s.key, s.value])).toEqual([["k1", "a"]]);
+
+  // Rapid typing while the first write is still in flight collapses to the latest state.
+  map.set("k1", "ab");
+  flush("k1");
+  map.set("k1", "abc");
+  flush("k1");
+  // Another key proceeds independently without waiting on k1.
+  map.set("k2", "x");
+  flush("k2");
+  expect(started.map((s) => [s.key, s.value])).toEqual([["k1", "a"], ["k2", "x"]]);
+
+  started[0]!.finish();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(started.map((s) => [s.key, s.value])).toEqual([["k1", "a"], ["k2", "x"], ["k1", "abc"]]);
+
+  // Deleting while "abc" is still writing must land after "abc", never before it.
+  map.delete("k1");
+  flush("k1");
+  started[2]!.finish();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(started.map((s) => [s.key, s.value])).toEqual([["k1", "a"], ["k2", "x"], ["k1", "abc"], ["k1", null]]);
+
+  started[1]!.finish();
+  started[3]!.finish();
 });

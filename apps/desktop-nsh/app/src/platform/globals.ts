@@ -17,6 +17,38 @@ type StorageLike = {
   key(index: number): string | null;
 };
 
+/**
+ * Serialises async writes to the same storage key and collapses bursts (rapid typing, or typing
+ * followed right away by clearing on send) to the latest value in `read(key)`. The first write
+ * starts immediately — no debounce — so a crash or dev reload right after a keystroke does not
+ * wait on a timer, and an earlier write can never land after a later one.
+ */
+export function createKeyedPersist(
+  read: (key: string) => string | null,
+  write: (key: string, value: string | null) => Promise<unknown>,
+  onError: (error: unknown) => void = (error) => console.error("storage write failed", String(error)),
+): (key: string) => void {
+  const writing = new Set<string>();
+  const dirty = new Set<string>();
+  return (key: string) => {
+    if (writing.has(key)) {
+      dirty.add(key);
+      return;
+    }
+    writing.add(key);
+    const flush = (): void => {
+      dirty.delete(key);
+      void write(key, read(key))
+        .catch(onError)
+        .finally(() => {
+          if (dirty.has(key)) flush();
+          else writing.delete(key);
+        });
+    };
+    flush();
+  };
+}
+
 function memoryStorage(entries: Map<string, string>, persist?: (key: string, value: string | null) => void): StorageLike {
   return {
     get length() {
@@ -164,11 +196,11 @@ export function installGlobals(): void {
   if (typeof g.sessionStorage === "undefined") g.sessionStorage = memoryStorage(new Map());
   if (typeof g.localStorage === "undefined") {
     nativeStorage = true;
-    g.localStorage = memoryStorage(kept, (key, value) => {
-      void (value === null ? Storage.removeItem(key) : Storage.setItem(key, value)).catch((error) =>
-        console.error("storage write failed", String(error)),
-      );
-    });
+    const flush = createKeyedPersist(
+      (key) => (kept.has(key) ? kept.get(key)! : null),
+      (key, value) => (value === null ? Storage.removeItem(key) : Storage.setItem(key, value)),
+    );
+    g.localStorage = memoryStorage(kept, (key) => flush(key));
   }
 }
 
