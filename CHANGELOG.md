@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### On a phone a project session's context usage sits at the top right, and a tap shows it in full
+
+- On a phone a project session's context usage was a 16-point ring in the composer's row, with no room for its percentage, no hover hint to read on a phone, and nothing when tapped. It is now at the right of the conversation's header: the ring with its percentage (or the tokens used, when the model did not say its window), a button as tall as the header. A tap brings up a sheet from the bottom: a large ring, then what is used, the context window, what is left and the model; when the model did not say its window, the window reads "Unknown" with a line saying only what is used can be shown. It turns yellow from three quarters and red from nine tenths, as before.
+- The composer's row on a phone no longer holds the ring. Wide desktop windows are unchanged: the ring stays beside Send, with its details on hover (a window narrowed to a phone's width moves it to the header too).
+
 ### A Bot on Antigravity is no longer stopped for reading its own background-task logs
 
 - 视频导演, a Bot run by Antigravity, had a turn of a long video job stopped twice, each time with "Antigravity did something that needed your OK, or touched credentials, without asking". The step it stopped on was `cat ~/.gemini/antigravity-cli/brain/<session>/.system_generated/tasks/task-246.log`: a command that outlives agy's wait goes on as a background task of agy's own, what it prints is written in agy's own notes, and agy reads it back. On a long job it does that every few steps, and the rules took the whole of `~/.gemini` for credentials. The fix for Antigravity project sessions in the entry below did not cover Bots.

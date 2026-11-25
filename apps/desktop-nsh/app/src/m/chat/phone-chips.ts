@@ -2,9 +2,9 @@
  * What the phone composer's chips show in the room its row leaves them (ADR 0116 addendum
  * 2026-11-23): plan mode's chip with its word or its icon alone, the consultants' with their logos
  * or their number. The richest that fits is taken; the logos give way first, then plan mode's word.
- * The row measures itself and what stands right of the chips (the context ring, the microphone,
- * Stop, Send); the chips' own widths are these, read off their classes (a 36 pt high pill, a 16 pt
- * icon, 14 pt logos), the word's a little over its widest language.
+ * The row measures itself and what stands right of the chips (the microphone, Stop, Send; a
+ * phone's context ring is in the header); the chips' own widths are these, read off their classes
+ * (a 36 pt high pill, a 16 pt icon, 14 pt logos), the word's a little over its widest language.
  */
 export const CHIP = {
   gap: 6,

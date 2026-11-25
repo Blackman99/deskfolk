@@ -67,6 +67,53 @@ test("on a phone the actions fold into a sheet and back leaves the conversation"
   expect(app.shows("id:header-direct >> id:top-back")).toBe(true);
 });
 
+test("on a phone a project session's context usage sits at the header's right and opens its figures", async () => {
+  const app = await open({ width: 390, height: 3400 });
+  expect(app.count("id:header-project >> id:top-context")).toBe(0);
+  await app.press("id:header-context-normal");
+  await app.waitFor("id:header-project >> id:top-context", { timeout: 5_000 });
+  expect(app.shows("id:header-project >> id:top-context-ring")).toBe(true);
+  expect(app.shows("id:header-project >> id:top-context >> text:34%")).toBe(true);
+  expect(app.shows("label:上下文占用：68k / 200k tokens（34%）")).toBe(true);
+  const normalColor = app.spanStyle("id:header-project >> id:top-context >> text:34%").color;
+
+  await app.press("id:header-project >> id:top-context");
+  await app.waitFor("id:context-sheet", { timeout: 5_000 });
+  expect(app.shows("id:context-used >> text:68k tokens")).toBe(true);
+  expect(app.shows("id:context-window >> text:200k tokens")).toBe(true);
+  expect(app.shows("id:context-left >> text:132k tokens")).toBe(true);
+  expect(app.shows("id:context-model >> text:claude-opus-4-6")).toBe(true);
+  expect(app.count("id:context-window-unknown")).toBe(0);
+  await app.press("id:context-sheet >> id:bottom-sheet-close");
+  await app.waitFor("id:context-sheet", { state: "gone", timeout: 5_000 });
+
+  await app.press("id:header-context-high");
+  await app.waitUntil(() => app.shows("id:header-project >> id:top-context >> text:92%"), { timeout: 5_000 });
+  expect(app.spanStyle("id:header-project >> id:top-context >> text:92%").color).not.toBe(normalColor);
+
+  // A model that does not say its window: the count beside a dashed ring, and the sheet says why there is no more.
+  await app.press("id:header-context-nolimit");
+  await app.waitUntil(() => app.shows("id:header-project >> id:top-context >> text:42.3k"), { timeout: 5_000 });
+  await app.press("id:header-project >> id:top-context");
+  await app.waitFor("id:context-window-unknown", { timeout: 5_000 });
+  expect(app.shows("id:context-used >> text:42.3k tokens")).toBe(true);
+  expect(app.shows("id:context-window >> text:未知")).toBe(true);
+  expect(app.count("id:context-left")).toBe(0);
+  expect(app.count("id:context-model")).toBe(0);
+  await app.press("id:context-sheet >> id:bottom-sheet-close");
+  await app.waitFor("id:context-sheet", { state: "gone", timeout: 5_000 });
+
+  await app.press("id:header-context-clear");
+  await app.waitFor("id:header-project >> id:top-context", { state: "gone", timeout: 5_000 });
+});
+
+test("on a desktop the header has no context button: the composer's ring stays beside Send", async () => {
+  const app = await open();
+  await app.press("id:header-context-normal");
+  expect(app.shows("id:header-project >> text:Claude Code · ~/my-projects/real-bot")).toBe(true);
+  expect(app.count("id:header-project >> id:top-context")).toBe(0);
+});
+
 test("a pane's bar names the conversation and runs the tab's actions", async () => {
   const app = await open();
   expect(app.shows("id:bar-direct >> id:bar-title")).toBe(true);

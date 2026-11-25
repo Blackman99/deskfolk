@@ -136,6 +136,13 @@ export const zh = {
   contextLabel: "上下文占用",
   contextHint: (used: string, limit: string, pct: string) => `上下文占用：${used} / ${limit} tokens（${pct}）`,
   contextUsedOnlyHint: (used: string) => `上下文占用：${used} tokens`,
+  contextUsed: "已用",
+  contextWindow: "上下文窗口",
+  contextLeft: "剩余",
+  contextModel: "模型",
+  contextTokens: (n: string) => `${n} tokens`,
+  contextWindowUnknown: "未知",
+  contextWindowUnknownNote: "这个模型没报窗口大小，只能看已经用了多少。",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -267,4 +274,11 @@ export const en: CopyShape<typeof zh> = {
   contextLabel: "Context usage",
   contextHint: (used: string, limit: string, pct: string) => `Context usage: ${used} / ${limit} tokens (${pct})`,
   contextUsedOnlyHint: (used: string) => `Context usage: ${used} tokens`,
+  contextUsed: "Used",
+  contextWindow: "Context window",
+  contextLeft: "Left",
+  contextModel: "Model",
+  contextTokens: (n: string) => `${n} tokens`,
+  contextWindowUnknown: "Unknown",
+  contextWindowUnknownNote: "This model did not say how large its context window is, so only what is used shows.",
 };

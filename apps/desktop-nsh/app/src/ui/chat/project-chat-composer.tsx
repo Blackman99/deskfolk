@@ -433,8 +433,9 @@ export function ProjectComposer(props: {
               </ComposerPlus>
               {/* What changes what Send does stays in sight while it is on: one press turns plan mode off, the consultants' chip opens their sheet.
                   They take the room the row leaves them (`phone-chips.ts`): the consultants' logos give way to their number, then plan mode's
-                  word to its icon, so at 360 pt with both on, the context ring, the microphone and a run's stop menu the row still fits; on a
-                  narrower phone the chips give way (clipped) before Send or Stop would leave it. */}
+                  word to its icon, so at 360 pt with both on, the microphone and a run's stop menu the row still fits; on a narrower phone
+                  the chips give way (clipped) before Send or Stop would leave it. The context ring is in the header on a phone
+                  (`ProjectContextTop`). */}
               <View class="shrink min-w-0 flex-row items-center gap-[6px] overflow-hidden">
                 <If when={s().caps().plan && s().planning()}>{planPill(chips().planWords)}</If>
                 <If when={s().consulting()}>
@@ -445,7 +446,10 @@ export function ProjectComposer(props: {
             <View class="flex-1" />
             {/* Right of the spring, measured as one: what the phone's chips leave room for. */}
             <View class="shrink-0 flex-row items-center gap-[6px]" onLayout={(e) => rightWidth.set(e.bounds.size.width)}>
-              <ProjectContextPill context={props.selected.project_context} compact={compact()} />
+              {/* On a phone the header shows it, where a press opens its figures (`ProjectContextTop`). */}
+              <If when={!phone()}>
+                <ProjectContextPill context={props.selected.project_context} compact={compact()} />
+              </If>
               <If when={voiceOffered() || voice.busy}>
                 <VoiceButton voice={voice} disabled={!connected()} />
               </If>

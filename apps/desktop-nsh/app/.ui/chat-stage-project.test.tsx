@@ -450,6 +450,18 @@ test("a project session's composer shows context window usage when reported and 
   await app.waitFor("id:project-context", { state: "gone", timeout: 5_000 });
 });
 
+test("on a phone width the composer has no context ring: the header has it (`ProjectContextTop`)", async () => {
+  const app = await openStory("chat-stage", { width: 390, height: 844 });
+  await app.waitFor("id:show-project", { timeout: 15_000 });
+  await app.press("id:show-project");
+  await app.waitFor("id:project-plus", { timeout: 15_000 });
+  await app.press("id:story-context-normal");
+  // Before, the ring alone showed beside the microphone at once; give it time to show anyway.
+  await app.wait(500);
+  expect(app.count("id:project-context")).toBe(0);
+  expect(app.shows("id:project-plus")).toBe(true);
+});
+
 test("project lines open the line menu on right click without triggering the pane menu, while blank space opens the pane menu", async () => {
   const app = await project();
   await app.waitFor("id:project-line-agent", { timeout: 10_000 });

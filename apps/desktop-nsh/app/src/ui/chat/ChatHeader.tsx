@@ -1,7 +1,8 @@
 /**
  * The bar above a conversation (`ChatHeader.svelte`): the avatar, the title and, under it, who is in
  * it and the Bot's status; the actions (pin, the flow, the conversation's settings) and, on a phone, the
- * back arrow and a ⋯ that folds the actions into a sheet. A Bot at work elsewhere is said on a row of
+ * back arrow and a ⋯ that folds the actions into a sheet, or a project session's context usage
+ * (`ProjectContextTop`). A Bot at work elsewhere is said on a row of
  * its own under the name. With no conversation it asks you to pick one, and offers the setup guide
  * and a way to make the first Bot.
  */
@@ -23,6 +24,7 @@ import { tip } from "../tip";
 import { BotElsewhere, elsewhereState } from "./BotElsewhere";
 import { BotFace } from "./BotFace";
 import { pulseMotion, rosterLabelsOf, statusColor, statusLabelsOf } from "./labels";
+import { ProjectContextTop } from "./ProjectContextTop";
 
 export function ChatHeader(props: {
   selected: SessionSummary | null;
@@ -384,6 +386,9 @@ export function ChatHeader(props: {
                 </If>
               </View>
             </If>
+
+            {/* A project session's context window usage: on a phone here, a button with its sheet; on a desktop beside Send. */}
+            <If when={narrow() ? project() : null}>{(session) => <ProjectContextTop context={session().project_context} />}</If>
           </>
         )}
       </If>

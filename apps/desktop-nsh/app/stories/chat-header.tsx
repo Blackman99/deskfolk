@@ -6,7 +6,17 @@
  * be asked for cheaply (a Bot working in the group, task lists) is props or a local overlay.
  */
 import { Scroll, signal, Text, View } from "nsh";
-import { FILE_DROP_SESSION_ID, USER_MEMBER, type AgentRunTask, type Bot, type InterfaceRevisionHead, type Message, type SessionSummary, type Turn } from "@real-bot/protocol";
+import {
+  FILE_DROP_SESSION_ID,
+  USER_MEMBER,
+  type AgentRunTask,
+  type Bot,
+  type InterfaceRevisionHead,
+  type Message,
+  type ProjectContextUsage,
+  type SessionSummary,
+  type Turn,
+} from "@real-bot/protocol";
 import { buildMessageLookup } from "../src/m/chat/chat-view";
 import { messageIndexMarks } from "../src/m/chat/message-index";
 import { classifySession } from "../src/m/sidebar/session-groups";
@@ -56,9 +66,13 @@ Object.defineProperty(runtime, "snapshot", {
 const sessions = () => runtime.snapshot.sessions;
 const directSession = () => sessions().find((s) => classifySession(s) === "you-bot");
 const groupSession = () => sessions().find((s) => classifySession(s) === "group");
+/** The project session's context window usage, as its run last reported it; set by the story's buttons. */
+const projectContext = signal<ProjectContextUsage | null>(null);
 const projectSession = (): SessionSummary | undefined => {
   const base = groupSession();
-  return base ? ({ ...base, id: "project-story", kind: "project", title: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", agent: "claude-code" } as unknown as SessionSummary) : undefined;
+  return base
+    ? ({ ...base, id: "project-story", kind: "project", title: "Deskfolk", project_dir: "/Users/dev/my-projects/real-bot", agent: "claude-code", project_context: projectContext() } as unknown as SessionSummary)
+    : undefined;
 };
 const fileDropSession = (): SessionSummary | undefined => {
   const base = directSession();
@@ -159,6 +173,23 @@ export default function ChatHeaderStory() {
             </View>
             <View testID="header-none" class="border border-line">
               <ChatHeader selected={null} pinnedSessionIds={[]} onTogglePin={() => {}} onToggleSessionSettings={() => {}} onCreateBot={() => say("create-bot")} onShowOnboarding={() => say("onboarding")} />
+            </View>
+            <View testID="header-project" class="border border-line">
+              <ChatHeader selected={projectSession()!} pinnedSessionIds={[]} onTogglePin={() => {}} onToggleSessionSettings={() => {}} onCreateBot={() => {}} onShowOnboarding={() => {}} />
+            </View>
+            <View class="flex-row flex-wrap gap-2">
+              {(
+                [
+                  ["header-context-normal", "ctx 34%", { used: 68_000, limit: 200_000, model: "claude-opus-4-6" }],
+                  ["header-context-high", "ctx 92%", { used: 184_000, limit: 200_000, model: "claude-opus-4-6" }],
+                  ["header-context-nolimit", "ctx 42.3k", { used: 42_300, limit: null }],
+                  ["header-context-clear", "ctx clear", null],
+                ] as const
+              ).map(([id, text, context]) => (
+                <View role="button" testID={id} onPress={() => projectContext.set(context)} class="px-3 py-1 border border-line rounded-(--radius-sm)">
+                  <Text class="text-[12px] text-ink">{text}</Text>
+                </View>
+              ))}
             </View>
           </Section>
 
