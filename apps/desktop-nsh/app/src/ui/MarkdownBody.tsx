@@ -180,8 +180,10 @@ export function MarkdownBody(props: {
   return (
     <View testID={props.testID} class={`min-w-0 ${props.class ?? ""}`}>
       <If when={withCodeColors()} else={view()}>
-        {/* Made again once the colours are read (the key), as `CodeColors` reads them as it is made. */}
-        <Each of={[themes()]} key={(pair) => `${pair.light} ${pair.dark} ${codeColorsAvailable()}`}>
+        {/* Made again once the colours are read (the key), as `CodeColors` reads them as it is made. The list
+            itself reads whether they are in: `withCodeColors` stays true while they arrive on the web, so
+            nothing else would ask the list again, and the code stayed plain. */}
+        <Each of={[{ ...themes(), available: codeColorsAvailable() }]} key={(pair) => `${pair.light} ${pair.dark} ${pair.available}`}>
           {(pair) => (
             <CodeColors class="min-w-0" light={pair().light} dark={pair().dark}>
               {view()}
