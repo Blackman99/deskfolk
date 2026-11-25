@@ -8,6 +8,7 @@
  */
 import type { MappedUsage } from "../completions";
 import type { Spend, SpendKind, SpendPurpose } from "@real-bot/protocol";
+import { estimateAgentCost } from "../agents/agent-prices";
 import type { Store } from "../store";
 import type { CallTarget, SpendOwner } from "./types";
 
@@ -41,7 +42,7 @@ export type SpendTracker = {
     turnId?: string | null;
     judgementId?: string | null;
     model: string;
-    usage: { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
+    usage: { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number | null };
     /** Another local agent than Claude Code (ADR 0079), by its name; Claude Agent when absent. */
     providerName?: string;
   }) => Spend | null;
@@ -218,14 +219,19 @@ export function createSpend(deps: SpendDeps): SpendTracker {
 
   function recordClaudeSpend(input: Parameters<SpendTracker["recordClaudeSpend"]>[0]): Spend | null {
     const { usage } = input;
-    if (usage.inputTokens <= 0 && usage.outputTokens <= 0 && usage.costUsd <= 0) return null;
+    if (usage.inputTokens <= 0 && usage.outputTokens <= 0 && (usage.costUsd ?? 0) <= 0) return null;
+    const inputTokens = Math.max(0, usage.inputTokens);
+    const outputTokens = Math.max(0, usage.outputTokens);
+    const cachedTokens = Math.max(0, usage.cachedTokens);
+    const estimatedCostUsdTicks = usage.costUsd !== null
+      ? Math.max(0, Math.round(usage.costUsd * 1e10))
+      : estimateAgentCost(input.model, { inputTokens, outputTokens, cachedTokens });
     const row = store.insertSpend({
       kind: input.kind, purpose: input.purpose ?? null, sessionId: input.owner.sessionId, sessionName: input.owner.sessionName,
       botId: input.owner.botId, botName: input.owner.botName, turnId: input.turnId ?? null, judgementId: input.judgementId ?? null, chainId: null,
       providerId: "", providerName: input.providerName ?? "Claude Agent", model: input.model, thinkingLevel: null,
-      inputTokens: Math.max(0, usage.inputTokens), outputTokens: Math.max(0, usage.outputTokens),
-      totalTokens: Math.max(0, usage.inputTokens) + Math.max(0, usage.outputTokens), cachedTokens: Math.max(0, usage.cachedTokens),
-      reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: Math.max(0, Math.round(usage.costUsd * 1e10)), missingReason: null,
+      inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cachedTokens,
+      reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks, missingReason: null,
     });
     publishSpend(row);
     return row;

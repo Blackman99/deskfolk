@@ -16,6 +16,7 @@ import { claudeLaunch, killsTree } from "../claude-code/spawn";
 import type { AgentDriver, AgentEvent, AgentHost, AgentSession } from "../engine/agent/driver";
 import { driverFor } from "../engine/agent/drivers/profiles";
 import type { Store } from "../store";
+import { estimateAgentCost } from "./agent-prices";
 import { resolveAgent } from "./runtime";
 
 /** At most this many calls at once on each agent; the next waits. */
@@ -59,8 +60,18 @@ export function createAgentJudge(deps: {
     const dir = mkdtempSync(join(tmpdir(), "deskfolk-call-"));
     const children: ChildProcess[] = [];
     let session: AgentSession | null = null;
-    const usage: ClaudeReadingUsage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUsd: 0 };
-    const cumulative = new Map<string, ClaudeReadingUsage>();
+    const usage = { inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUsd: 0 };
+    let sawCost = false;
+    const cumulative = new Map<string, { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number }>();
+    const settledUsage = (): ClaudeReadingUsage => {
+      if (sawCost) return usage;
+      const estimated = estimateAgentCost(target.model, {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cachedTokens: usage.cachedTokens,
+      });
+      return { ...usage, costUsd: estimated !== null ? estimated / 1e10 : null };
+    };
     try {
       const answer = await new Promise<ClaudeReadingAnswer>((resolve) => {
         let settled = false;
@@ -111,6 +122,7 @@ export function createAgentJudge(deps: {
           },
           async emit(event: AgentEvent) {
             if (event.type === "usage") {
+              if (event.costUsd !== null) sawCost = true;
               if (event.cumulative) {
                 const before = cumulative.get(event.model) ?? { inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUsd: 0 };
                 usage.inputTokens += Math.max(0, event.input - before.inputTokens);
@@ -129,8 +141,9 @@ export function createAgentJudge(deps: {
               settle(failed);
               session?.close();
             } else if (event.type === "result") {
-              if (event.result.kind === "reply" && event.result.text.trim()) settle({ content: event.result.text, usage, fail: null });
-              else settle({ content: null, usage, fail: event.result.kind === "error" && (event.result.failKind === "agent_missing" || event.result.failKind === "agent_outdated" || event.result.failKind === "agent_signed_out") ? "claude_unavailable" : "claude_failed" });
+              const billed = settledUsage();
+              if (event.result.kind === "reply" && event.result.text.trim()) settle({ content: event.result.text, usage: billed, fail: null });
+              else settle({ content: null, usage: billed, fail: event.result.kind === "error" && (event.result.failKind === "agent_missing" || event.result.failKind === "agent_outdated" || event.result.failKind === "agent_signed_out") ? "claude_unavailable" : "claude_failed" });
             }
           },
           stderr: () => {},

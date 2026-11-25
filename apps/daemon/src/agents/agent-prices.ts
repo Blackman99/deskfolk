@@ -5,10 +5,11 @@
  * own estimate is. It is an estimate of what the tokens would cost, not a bill.
  *
  * Left out: gpt-oss-120b (agy's `gpt-oss-120b-medium`) — OpenAI lists no price for it, and the
- * hosts that sell it disagree — and agy's multi-model orchestrators (`gemini-pro-orchestrator`,
- * `gemini-pro-orchestrator-neon`, `gemini-pro-orchestrator-argon`), which route dynamically across
- * models and have no single public API token rate, so rows on them stay unpriced instead of
- * guessed. A model not in the table is also unpriced. Rates are the standard tier; the higher
+ * hosts that sell it disagree. agy's multi-model orchestrators (`gemini-pro-orchestrator`,
+ * `gemini-pro-orchestrator-neon`, `gemini-pro-orchestrator-argon`, `gemini-pro-orchestrator-carbon`,
+ * `gemini-pro-orchestrator-hydrogen`) route dynamically between a planner and a faster executor
+ * without a separate public rate; we estimate them at their primary planner model's rate as an
+ * upper bound. A model not in the table stays unpriced. Rates are the standard tier; the higher
  * long-context tier (over 272K input tokens for OpenAI) is not modelled.
  */
 import type { ModelPricing } from "@real-bot/protocol";
@@ -50,12 +51,18 @@ export const AGENT_PRICES: Readonly<Record<string, ModelPricing>> = {
 };
 
 /**
- * Lower-case, and drop agy's thinking-level suffix so one model has one entry; Grok names the
- * standard-speed model a turn ran on `grok-4.7-build` in its usage (measured 2026-11-18), the one
- * its public price is for.
+ * Lower-case, drop agy's thinking-level suffix so one model has one entry, map Grok's `-build`
+ * usage name to its priced model, and map agy's `gemini-pro-orchestrator*` aliases to their
+ * primary Gemini 4 planner model (an upper-bound estimate).
  */
 export function normalizeAgentModel(id: string): string {
-  return id.trim().toLowerCase().replace(/-(xhigh|high|medium|low|thinking)$/, "").replace(/^(grok-[\d.]+)-build$/, "$1");
+  return id
+    .trim()
+    .toLowerCase()
+    .replace(/-(xhigh|high|medium|low|thinking)$/, "")
+    .replace(/^(grok-[\d.]+)-build$/, "$1")
+    .replace(/^gemini-pro-orchestrator-(neon|argon|carbon|hydrogen)$/, "gemini-4-$1")
+    .replace(/^gemini-pro-orchestrator$/, "gemini-4-carbon");
 }
 
 export function agentModelPricing(model: string | null | undefined): ModelPricing | null {

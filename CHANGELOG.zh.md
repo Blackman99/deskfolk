@@ -17,7 +17,8 @@
 ### 花费里现在能估算 Antigravity 的 Gemini 4 和 Claude 5.5 模型了
 
 - 内置的 Agent 价目表（`agents/agent-prices.ts`）之前只有 `gemini-3.8-flash` 和 Claude 4.6，也没有剥离 `-xhigh` 思考等级后缀，所以 Antigravity 项目会话跑在 Gemini 4（`gemini-4-hydrogen`、`gemini-4-neon`、`gemini-4-carbon`、`gemini-4-argon`，含 `-xhigh`）和 Claude 5.5（`claude-opus-5-5`、`claude-sonnet-5-5`）上时只记了 token，算不出估算金额。
-- 补上了这些模型（以及 `claude-opus-4-7`）的公开 API 单价和 `-xhigh` 后缀归一化，并在打开数据库时为之前没算出价格的项目会话行自动补算估算金额。多模型编排器（`gemini-pro-orchestrator*`）和 `gpt-oss-120b-medium` 没有单一公开 token 单价，仍保持不估算。
+- 补上了这些模型（以及 `claude-opus-4-7`）的公开 API 单价和 `-xhigh` 后缀归一化，并把 Antigravity 的多模型编排器（`gemini-pro-orchestrator*`，如 `gemini-pro-orchestrator-neon`、`gemini-pro-orchestrator-argon`）按各自的主规划模型单价做上限估算；`gpt-oss-120b-medium` 仍保持不估算。
+- 跑在 Antigravity / Codex 上的 Bot 与内置调用现在同样按价目表估算（无单价模型记为 `null` 显示「—」，不再误写成 `$0`），打开数据库时自动补算历史未估算或误记为 `$0` 的 Antigravity / Codex / Grok 记录。
 
 ### 拖窗格分隔线时，用量页的卡片当场重排
 

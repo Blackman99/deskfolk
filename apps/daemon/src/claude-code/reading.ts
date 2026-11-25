@@ -49,8 +49,8 @@ export type ClaudePromptBlock =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64"; media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; data: string } };
 
-/** What a reading cost, as the result reports it. */
-export type ClaudeReadingUsage = { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number };
+/** What a reading cost, as the result reports it (costUsd null when the agent reports no price and the model is unpriced). */
+export type ClaudeReadingUsage = { inputTokens: number; outputTokens: number; cachedTokens: number; costUsd: number | null };
 
 export type ClaudeReadingAnswer = {
   content: string | null;
@@ -122,7 +122,7 @@ function usageOf(result: Extract<SDKMessage, { type: "result" }>): ClaudeReading
       inputTokens: sum.inputTokens + (row.inputTokens ?? 0) + (row.cacheReadInputTokens ?? 0) + (row.cacheCreationInputTokens ?? 0),
       outputTokens: sum.outputTokens + (row.outputTokens ?? 0),
       cachedTokens: sum.cachedTokens + (row.cacheReadInputTokens ?? 0),
-      costUsd: sum.costUsd + (row.costUSD ?? 0),
+      costUsd: (sum.costUsd ?? 0) + (row.costUSD ?? 0),
     }), { inputTokens: 0, outputTokens: 0, cachedTokens: 0, costUsd: 0 });
   }
   const usage = result.usage;

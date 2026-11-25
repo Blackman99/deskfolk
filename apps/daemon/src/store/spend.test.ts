@@ -509,7 +509,7 @@ describe("spend ledger", () => {
     store.close();
   });
 
-  test("reopening the store backfills estimates on unpriced project-session agent rows only", () => {
+  test("reopening the store backfills estimates on unpriced or zero-estimated Antigravity/Codex/Grok rows", () => {
     const dir = mkdtempSync(join(tmpdir(), "spend-agent-reprice-"));
     try {
       const dbPath = join(dir, "deskfolk.db");
@@ -533,7 +533,7 @@ describe("spend ledger", () => {
         costUsdTicks: null,
         estimatedCostUsdTicks: null,
       });
-      // Unpriced orchestrator row stays null.
+      // Orchestrator row is now backfilled using its primary model's rate (gemini-4-neon).
       const orchestrator = first.insertSpend({
         kind: "turn",
         purpose: "project",
@@ -581,7 +581,7 @@ describe("spend ledger", () => {
         costUsdTicks: 999_000,
         estimatedCostUsdTicks: null,
       });
-      // Bot turn on Antigravity (purpose is null) is untouched.
+      // Bot turn on Antigravity that previously recorded bogus 0 is backfilled.
       const botTurn = first.insertSpend({
         kind: "turn",
         sessionId: writer.direct_session.id,
@@ -589,23 +589,40 @@ describe("spend ledger", () => {
         turnId: ulid(),
         providerId: "",
         providerName: "Antigravity",
-        model: "gemini-4-neon-high",
+        model: "gemini-pro-orchestrator-neon",
         inputTokens: 1_000_000,
-        cachedTokens: 0,
+        cachedTokens: 800_000,
         outputTokens: 100_000,
         costUsdTicks: null,
-        estimatedCostUsdTicks: null,
+        estimatedCostUsdTicks: 0,
+      });
+      // Unpriced model that previously recorded bogus 0 is cleared to null (shown as "—", not "$0").
+      const bogusZero = first.insertSpend({
+        kind: "turn",
+        sessionId: writer.direct_session.id,
+        botId: writer.bot.id,
+        turnId: ulid(),
+        providerId: "",
+        providerName: "Antigravity",
+        model: "gpt-oss-120b-medium",
+        inputTokens: 100_000,
+        cachedTokens: 0,
+        outputTokens: 10_000,
+        costUsdTicks: null,
+        estimatedCostUsdTicks: 0,
       });
       first.close();
 
       const reopened = new Store({ filename: dbPath });
       const byId = new Map(reopened.listSpend({}).map((row) => [row.id, row]));
       expect(byId.get(unpricedAgy.id)?.estimated_cost_usd_ticks).toBe(22_200_000_000);
-      expect(byId.get(orchestrator.id)?.estimated_cost_usd_ticks).toBeNull();
+      // 100k * $3 + 10k * $15 per 1M = $0.30 + $0.15 = $0.45 -> 4.5e9 ticks.
+      expect(byId.get(orchestrator.id)?.estimated_cost_usd_ticks).toBe(4_500_000_000);
       expect(byId.get(historical.id)?.estimated_cost_usd_ticks).toBe(123_456);
       expect(byId.get(grokReported.id)?.cost_usd_ticks).toBe(999_000);
       expect(byId.get(grokReported.id)?.estimated_cost_usd_ticks).toBeNull();
-      expect(byId.get(botTurn.id)?.estimated_cost_usd_ticks).toBeNull();
+      expect(byId.get(botTurn.id)?.estimated_cost_usd_ticks).toBe(22_200_000_000);
+      expect(byId.get(bogusZero.id)?.estimated_cost_usd_ticks).toBeNull();
       reopened.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

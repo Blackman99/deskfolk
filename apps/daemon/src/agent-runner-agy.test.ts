@@ -184,9 +184,10 @@ test("an Antigravity Bot's turn runs on agy acp: sandboxed, the app's tools over
   expect(prompt!.prompt[0]!.text).toContain("这一轮由用户自己的 Antigravity 运行");
   expect(prompt!.prompt[0]!.text).not.toContain("拿不到 Deskfolk 的工具");
 
-  const spend = h.store.db.query<{ provider_name: string; input_tokens: number; output_tokens: number; cached_tokens: number }, []>(
-    "SELECT provider_name, input_tokens, output_tokens, cached_tokens FROM spend WHERE provider_name = 'Antigravity'").all();
-  expect(spend).toEqual([{ provider_name: "Antigravity", input_tokens: 140, output_tokens: 25, cached_tokens: 40 }]);
+  const spend = h.store.db.query<{ provider_name: string; input_tokens: number; output_tokens: number; cached_tokens: number; estimated_cost_usd_ticks: number | null }, []>(
+    "SELECT provider_name, input_tokens, output_tokens, cached_tokens, estimated_cost_usd_ticks FROM spend WHERE provider_name = 'Antigravity'").all();
+  // gemini-3.8-flash-high: (100 fresh * $0.75 + 40 cached * $0.075 + 25 out * $3.75) / 1M * 1e10 = 1_717_500 ticks
+  expect(spend).toEqual([{ provider_name: "Antigravity", input_tokens: 140, output_tokens: 25, cached_tokens: 40, estimated_cost_usd_ticks: 1_717_500 }]);
   const route = h.store.db.query<{ reason_code: string | null }, []>("SELECT reason_code FROM turn_route_decisions").get();
   expect(route?.reason_code).toBe("agent_antigravity");
 }, 30_000);

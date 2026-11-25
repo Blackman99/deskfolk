@@ -33,6 +33,7 @@ import { classifyPath } from "../../workspace-paths";
 import { producedPaths, snapshotWorkDir } from "../../workspace-tools";
 import { AGENT_MCP_PREFIX, AGENT_MCP_TOKEN_ENV, AGENT_MCP_URL_ENV, mintAgentMcp, revokeAgentMcp } from "../../agent-mcp/bridge";
 import { agentMcpShim } from "../../agent-mcp/launch";
+import { estimateAgentCost } from "../../agents/agent-prices";
 import { claudeLaunch, killsTree } from "../../claude-code/spawn";
 import { readOnlyTools } from "../tools";
 import type { EffectCall } from "../custom-steps";
@@ -692,13 +693,20 @@ export async function runExternalSession(input: {
       state.billed.set(event.model, { input: event.input, output: event.output, cached: event.cached, cost: event.costUsd ?? 0 });
     }
     if (delta.input <= 0 && delta.output <= 0 && delta.cost <= 0) return;
+    const model = event.model || state.model || settings.runner;
+    const inputTokens = Math.max(0, delta.input);
+    const outputTokens = Math.max(0, delta.output);
+    const cachedTokens = Math.max(0, delta.cached);
+    const estimatedCostUsdTicks = event.costUsd !== null
+      ? Math.max(0, Math.round(delta.cost * 1e10))
+      : estimateAgentCost(model, { inputTokens, outputTokens, cachedTokens });
     try {
       const spend = store.insertSpend({
         kind: "turn", sessionId: owner.sessionId, sessionName: owner.sessionName, botId: owner.botId, botName: owner.botName,
-        turnId, judgementId: null, chainId: null, providerId: "", providerName: label, model: event.model || state.model || settings.runner,
-        thinkingLevel: null, inputTokens: Math.max(0, delta.input), outputTokens: Math.max(0, delta.output),
-        totalTokens: Math.max(0, delta.input) + Math.max(0, delta.output), cachedTokens: Math.max(0, delta.cached),
-        reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks: Math.max(0, Math.round(delta.cost * 1e10)), missingReason: null,
+        turnId, judgementId: null, chainId: null, providerId: "", providerName: label, model,
+        thinkingLevel: null, inputTokens, outputTokens,
+        totalTokens: inputTokens + outputTokens, cachedTokens,
+        reasoningTokens: null, costUsdTicks: null, estimatedCostUsdTicks, missingReason: null,
       });
       deps.publishSpend(spend);
     } catch (error) {

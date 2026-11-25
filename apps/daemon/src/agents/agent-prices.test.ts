@@ -35,11 +35,17 @@ describe("agent prices", () => {
     expect(agentModelPricing("GPT-5.6-TERRA")).toEqual(agentModelPricing("gpt-5.6-terra"));
   });
 
+  test("agy orchestrators use their primary planner model rate as an upper-bound estimate", () => {
+    expect(agentModelPricing("gemini-pro-orchestrator-neon")).toEqual(agentModelPricing("gemini-4-neon"));
+    expect(agentModelPricing("gemini-pro-orchestrator-neon-high")).toEqual(agentModelPricing("gemini-4-neon"));
+    expect(agentModelPricing("gemini-pro-orchestrator-argon")).toEqual(agentModelPricing("gemini-4-argon"));
+    expect(agentModelPricing("gemini-pro-orchestrator-carbon")).toEqual(agentModelPricing("gemini-4-carbon"));
+    expect(agentModelPricing("gemini-pro-orchestrator-hydrogen")).toEqual(agentModelPricing("gemini-4-hydrogen"));
+    expect(agentModelPricing("gemini-pro-orchestrator")).toEqual(agentModelPricing("gemini-4-carbon"));
+  });
+
   test("unknown or missing models have no price", () => {
     expect(agentModelPricing("gpt-oss-120b-medium")).toBeNull();
-    expect(agentModelPricing("gemini-pro-orchestrator")).toBeNull();
-    expect(agentModelPricing("gemini-pro-orchestrator-neon")).toBeNull();
-    expect(agentModelPricing("gemini-pro-orchestrator-argon")).toBeNull();
     expect(agentModelPricing("nope")).toBeNull();
     expect(agentModelPricing(null)).toBeNull();
     expect(agentModelPricing("")).toBeNull();
