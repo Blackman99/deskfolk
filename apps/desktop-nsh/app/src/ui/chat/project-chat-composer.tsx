@@ -50,7 +50,7 @@ import { VoiceButton } from "./VoiceButton";
 import { VoiceStatus } from "./VoiceStatus";
 import { WaitingJump } from "./WaitingJump";
 import type { HiddenWaiting } from "./waiting-jump";
-import { agentModels, agentsStatus } from "../../m/chat/project-agent-options.svelte";
+import { agentModels, agentsStatus, claudeStatus } from "../../m/chat/project-agent-options.svelte";
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 import { phoneChips } from "../../m/chat/phone-chips";
@@ -256,6 +256,7 @@ export function ProjectComposer(props: {
       agentName={s().agentName()}
       disabled={!connected()}
       agents={agentsStatus()}
+      claude={claudeStatus()}
       client={runtime.client}
       onOpen={s().askConsultOptions}
       onChange={(next) => void s().setConsult(next)}
@@ -355,6 +356,7 @@ export function ProjectComposer(props: {
                     agentName={s().agentName()}
                     disabled={!connected()}
                     agents={agentsStatus()}
+                    claude={claudeStatus()}
                     client={runtime.client}
                     onOpen={s().askConsultOptions}
                     onChange={(next) => void s().setConsult(next)}

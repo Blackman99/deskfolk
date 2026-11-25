@@ -456,7 +456,8 @@ export function createProjectRunner(deps: ProjectRunnerDeps): ProjectRunner {
     const status = deps.claudeCode ? await deps.claudeCode.current() : null;
     if (!status?.path) return fail(live, en ? "Claude Code was not found on this computer" : "这台电脑上没找到 Claude Code");
     // Its account known to be out of usage (ADR 0110): the session moves to another of yours first.
-    const picked = pickClaudeAccount({ status, listed: store.claudeCodeConfigDirs(), preferred: project.configDir, outs: store.accountsOut() });
+    // A consultant stays on the account it was asked on (ADR 0116).
+    const picked = project.parentId ? null : pickClaudeAccount({ status, listed: store.claudeCodeConfigDirs(), preferred: project.configDir, outs: store.accountsOut() });
     if (picked?.switched) {
       await exited(live.sessionId);
       if (live.stopped) return;

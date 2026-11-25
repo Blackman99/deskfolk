@@ -146,10 +146,11 @@ export type AgentTask = {
 };
 
 /**
- * One consultant the composer's switch brings in (ADR 0116 addendum 2026-11-23): which agent, and
- * the model and thinking level it runs on (null: that agent's default).
+ * One consultant the composer's switch brings in (ADR 0116 addendum 2026-11-23): which agent, the
+ * account directory (omitted or null: that agent's default), and the model and thinking level it
+ * runs on (null: that agent's default).
  */
-export type ConsultMember = { agent: ProjectAgent; model: string | null; effort: string | null };
+export type ConsultMember = { agent: ProjectAgent; model: string | null; effort: string | null; config_dir?: string | null };
 
 /**
  * The composer's consultant switch, a project session's own like plan mode: while `on`, every line
@@ -214,13 +215,21 @@ export function parseConsultSetting(value: unknown): ProjectConsultSetting | nul
   const out: ConsultMember[] = [];
   for (const member of members) {
     if (!member || typeof member !== "object") return null;
-    const { agent, model, effort } = member as { agent?: unknown; model?: unknown; effort?: unknown };
+    const { agent, model, effort, config_dir } = member as { agent?: unknown; model?: unknown; effort?: unknown; config_dir?: unknown };
     if (!isProjectAgent(agent)) return null;
     if (model !== undefined && model !== null && (typeof model !== "string" || !model.trim())) return null;
     if (effort !== undefined && effort !== null && (typeof effort !== "string" || !effort.trim())) return null;
-    const next = { agent, model: typeof model === "string" ? model.trim() : null, effort: typeof effort === "string" ? effort.trim() : null };
-    // The same agent, model and level twice is one consultant.
-    if (!out.some((one) => one.agent === next.agent && one.model === next.model && one.effort === next.effort)) out.push(next);
+    if (config_dir !== undefined && config_dir !== null && (typeof config_dir !== "string" || !config_dir.trim())) return null;
+    const cleanDir = typeof config_dir === "string" ? config_dir.trim() : null;
+    if (cleanDir !== null && !PROJECT_AGENT_CAPS[agent].accounts) return null;
+    const next: ConsultMember = {
+      agent,
+      model: typeof model === "string" ? model.trim() : null,
+      effort: typeof effort === "string" ? effort.trim() : null,
+      ...(cleanDir !== null ? { config_dir: cleanDir } : {}),
+    };
+    // The same agent, account, model and level twice is one consultant.
+    if (!out.some((one) => one.agent === next.agent && (one.config_dir ?? null) === (next.config_dir ?? null) && one.model === next.model && one.effort === next.effort)) out.push(next);
   }
   return { on: on && out.length > 0, members: out };
 }

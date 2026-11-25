@@ -391,6 +391,38 @@ test("in a Claude Code session the consultant menu offers another agent's own mo
   expect(said(app)).toContain('"agent":"antigravity","model":"story-agy-alpha"');
 });
 
+test("when an agent has multiple accounts, adding a consultant lets you pick the account and shows it on the member row", async () => {
+  const app = await project();
+  await app.press("id:story-accounts");
+  await app.press("id:project-consult");
+  await app.waitFor("id:consult-add", { timeout: 5_000 });
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-codex", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-codex");
+  await app.waitFor("id:tune-row-account-/Users/dev/.codex-work", { timeout: 10_000 });
+  await app.press("id:tune-row-account-/Users/dev/.codex-work");
+  await app.waitFor("id:tune-row-model-gpt-5.6-terra", { timeout: 5_000 });
+  await app.press("id:tune-row-model-gpt-5.6-terra");
+  await app.waitFor("id:tune-row-effort-high", { timeout: 5_000 });
+  await app.press("id:tune-row-effort-high");
+  await app.waitUntil(() => app.texts().includes("consult:on:codex/gpt-5.6-terra/high@/Users/dev/.codex-work"), { timeout: 10_000 });
+  await app.waitFor("id:consult-member-account-0", { timeout: 5_000 });
+  expect(app.texts()).toContain("work · /Users/dev/.codex-work");
+
+  // Same agent and model on the default account can be added as a second consultant.
+  await app.press("id:consult-add");
+  await app.waitFor("id:tune-row-agent-codex", { timeout: 5_000 });
+  await app.press("id:tune-row-agent-codex");
+  await app.waitFor("id:tune-row-account-default", { timeout: 5_000 });
+  await app.press("id:tune-row-account-default");
+  await app.waitFor("id:tune-row-model-gpt-5.6-terra", { timeout: 5_000 });
+  await app.press("id:tune-row-model-gpt-5.6-terra");
+  await app.waitFor("id:tune-row-effort-high", { timeout: 5_000 });
+  await app.press("id:tune-row-effort-high");
+  await app.waitFor("id:consult-member-1", { timeout: 5_000 });
+  expect(app.shows("id:consult-member-account-1")).toBe(true);
+});
+
 test("a project session's composer shows context window usage when reported and hides it when cleared", async () => {
   const app = await project();
   expect(app.shows("id:project-context")).toBe(false);

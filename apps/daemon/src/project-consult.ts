@@ -20,6 +20,7 @@ import {
   consultTaskParts,
   isConsultTask,
   isProjectAgent,
+  PROJECT_AGENT_CAPS,
   PROJECT_AGENTS,
   type AgentRun,
   type AgentTask,
@@ -31,6 +32,7 @@ import {
 } from "@real-bot/protocol";
 import { AGENT_MCP_PREFIX, AGENT_MCP_TOKEN_ENV, AGENT_MCP_URL_ENV, agentMcpPort, mintAgentMcp, revokeAgentMcp } from "./agent-mcp/bridge";
 import { agentMcpShim } from "./agent-mcp/launch";
+import { normalizeConfigDir, sameConfigDir, tildeDir } from "./claude-code/account";
 import type { AgentTool, AgentToolBridge } from "./engine/agent-runner";
 import { isoNow } from "./ids";
 import type { ProjectRunner } from "./project-runner";
@@ -76,6 +78,7 @@ export const CONSULT_TOOL_SPEC: AgentTool = {
   inputSchema: {
     properties: {
       agent: { type: "string", enum: [...PROJECT_AGENTS], description: "Which agent to ask: claude_code, codex, antigravity or grok. Leave it out when going on with `consultant`." },
+      config_dir: { type: "string", description: "The account config directory to run it on, when the user asks for a specific account of that agent. Leave it out for that agent's default account." },
       model: { type: "string", description: "The model it runs on, as that agent names it (Claude Code: opus, sonnet, haiku or a full id; Codex: for example gpt-5.6-terra). Leave it out for that agent's default." },
       effort: { type: "string", description: "Its thinking level, as that agent names it (low, medium, high). Leave it out for its default." },
       message: { type: "string", description: "What you say to it: the question, the plan and the context it needs, or your answer to its question. Leave it out only to keep waiting for an answer still coming." },
@@ -252,7 +255,7 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
   function header(consultant: string): string {
     const project = store.projectOf(consultant);
     const agent = project ? AGENT_NAMES[project.agent] : "?";
-    return `${en() ? "Consultant" : "参谋"} ${consultant} · ${agent}${project?.model ? ` · ${project.model}` : ""}`;
+    return `${en() ? "Consultant" : "参谋"} ${consultant} · ${agent}${project?.model ? ` · ${project.model}` : ""}${project?.configDir ? ` · ${tildeDir(project.configDir)}` : ""}`;
   }
 
   /** The first line a consultant reads: who asks, what it may do, then what it was asked. */
@@ -299,9 +302,22 @@ export function createConsultDesk(deps: { store: Store; runner: () => ProjectRun
       if (!isProjectAgent(named)) return fail(zh ? `agent 要是 ${PROJECT_AGENTS.join("、")} 之一` : `agent must be one of ${PROJECT_AGENTS.join(", ")}`);
       if (!message) return fail(zh ? "message 不能为空：告诉参谋要讨论什么" : "message is required: tell the consultant what to talk over");
       agent = named;
+      const askedDir = text("config_dir");
+      let configDir: string | null = null;
+      if (askedDir) {
+        if (!PROJECT_AGENT_CAPS[agent].accounts) {
+          return fail(zh ? `${AGENT_NAMES[agent]} 不支持指定账号` : `${AGENT_NAMES[agent]} does not pick an account`);
+        }
+        const normalized = normalizeConfigDir(askedDir);
+        const listed = normalized ? store.agentConfigDirs(agent).find((kept) => sameConfigDir(kept, normalized)) : undefined;
+        if (!listed) {
+          return fail(zh ? `${askedDir} 不是你设置里已配置的 ${AGENT_NAMES[agent]} 账号` : `${askedDir} is not one of your ${AGENT_NAMES[agent]} accounts listed in Settings`);
+        }
+        configDir = listed;
+      }
       const parentName = store.getSession(sessionId).name;
       const created = store.createConsultantSession({
-        parentId: sessionId, agent, model: text("model") || null, effort: text("effort") || null,
+        parentId: sessionId, agent, configDir, model: text("model") || null, effort: text("effort") || null,
         name: `${zh ? "参谋" : "Consultant"} · ${AGENT_NAMES[agent]}${parentName ? ` — ${parentName}` : ""}`.slice(0, 120),
       });
       consultant = created.id;

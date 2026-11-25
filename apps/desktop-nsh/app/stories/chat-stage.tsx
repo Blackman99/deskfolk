@@ -12,7 +12,7 @@
  * Writer direct would start a turn there and leave it unfinished for every later test.
  */
 import { computed, Scroll, signal, Text, View } from "nsh";
-import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type DelegationView, type Message, type ProjectConsultSetting, type ProjectContextUsage, type SessionSummary } from "@real-bot/protocol";
+import { USER_MEMBER, type AgentRun, type AgentsStatusResponse, type AgentTaskDetail, type Annotation, type Bot, type ClaudeCodeCommand, type ClaudeCodeStatus, type DelegationView, type Message, type ProjectConsultSetting, type ProjectContextUsage, type SessionSummary } from "@real-bot/protocol";
 import { classifySession, youBotPeer } from "../src/m/sidebar/session-groups";
 import { ApiBase } from "../src/m/api-base.ts";
 import { LocalApi } from "../src/m/local-api.ts";
@@ -378,6 +378,7 @@ api.answerAsk = function (this: unknown, ...args: unknown[]) {
 // what this computer has installed; what was asked before (the Bot's picker asks as the story opens)
 // is forgotten, as a window that has shown no Bot yet has nothing asked.
 const fakeAgents = signal(false);
+const fakeMultiAccounts = signal(false);
 const STORY_AGENTS: AgentsStatusResponse = {
   items: [{
     runner: "antigravity", custom_id: null, label: "Antigravity", path: "/usr/local/bin/agy", source: "path", version: "1.5.14", logged_in: true, auth: null,
@@ -386,10 +387,40 @@ const STORY_AGENTS: AgentsStatusResponse = {
   }],
   custom_agents: [],
 };
+const STORY_AGENTS_MULTI: AgentsStatusResponse = {
+  items: [
+    ...STORY_AGENTS.items,
+    {
+      runner: "codex", custom_id: null, label: "Codex", path: "/usr/local/bin/codex", source: "path", version: "0.153.4", logged_in: true, auth: "personal",
+      login_command: null, models: [{ id: "gpt-5.6-terra", name: "gpt-5.6-terra", efforts: ["low", "high"] }],
+      default_model: null, proxy: null, proxy_source: null, checked_at: D2, error: null,
+      accounts: [
+        { config_dir: null, logged_in: true, auth: "personal", login_command: null, error: null },
+        { config_dir: "/Users/dev/.codex-work", logged_in: true, auth: "work", login_command: null, error: null },
+      ],
+    },
+  ],
+  custom_agents: [],
+};
+const STORY_CLAUDE_MULTI: ClaudeCodeStatus = {
+  path: "/usr/local/bin/claude",
+  version: "2.1.329",
+  logged_in: true,
+  email: "home@example.com",
+  accounts: [
+    { config_dir: null, config_directory: null, logged_in: true, auth_method: "claude.ai", subscription_type: "max", email: "home@example.com", error: null, login_command: "" },
+    { config_dir: "/Users/dev/.claude-work", config_directory: "/Users/dev/.claude-work", logged_in: true, auth_method: "claude.ai", subscription_type: "max", email: "work@example.com", error: null, login_command: "" },
+  ],
+} as unknown as ClaudeCodeStatus;
 const local = LocalApi.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
 const realAgents = local.agents!;
 local.agents = function (this: unknown, ...args: unknown[]) {
+  if (fakeMultiAccounts()) return Promise.resolve(STORY_AGENTS_MULTI);
   return fakeAgents() ? Promise.resolve(STORY_AGENTS) : realAgents.apply(this, args);
+};
+const realClaudeCode = local.claudeCode!;
+local.claudeCode = function (this: unknown, ...args: unknown[]) {
+  return fakeMultiAccounts() ? Promise.resolve(STORY_CLAUDE_MULTI) : realClaudeCode.apply(this, args);
 };
 const realCommands = api.projectCommands!;
 api.projectCommands = function (this: unknown, ...args: unknown[]) {
@@ -527,7 +558,13 @@ export default function ChatStageStory() {
             {button("story-context-clear", "ctx clear", () => projectContext.set(null))}
             {button("story-agents", "fixed agents", () => {
               forgetClaudeOptions();
+              fakeMultiAccounts.set(false);
               fakeAgents.set(true);
+            })}
+            {button("story-accounts", "multi accounts", () => {
+              forgetClaudeOptions();
+              fakeAgents.set(false);
+              fakeMultiAccounts.set(true);
             })}
             {button("story-subagent-done", "subagent done", () => subagentDone.set(true))}
             {button("story-approval", "approval", () => runOn.set("approval"))}
@@ -552,7 +589,7 @@ export default function ChatStageStory() {
           <Text testID="story-session" class="text-[12px] text-ink-muted">{`session:${which()}`}</Text>
           <Text testID="story-posted" class="text-[12px] text-ink-muted">{`posted:${posted()}`}</Text>
           <Text testID="story-plan-mode" class="text-[12px] text-ink-muted">{`plan-mode:${planMode() ? "on" : "off"}`}</Text>
-          <Text testID="story-consult" class="text-[12px] text-ink-muted">{`consult:${consultSetting()?.on ? "on" : "off"}:${(consultSetting()?.members ?? []).map((m) => `${m.agent}/${m.model ?? "-"}/${m.effort ?? "-"}`).join(",")}`}</Text>
+          <Text testID="story-consult" class="text-[12px] text-ink-muted">{`consult:${consultSetting()?.on ? "on" : "off"}:${(consultSetting()?.members ?? []).map((m) => `${m.agent}/${m.model ?? "-"}/${m.effort ?? "-"}${m.config_dir ? `@${m.config_dir}` : ""}`).join(",")}`}</Text>
           <Text testID="story-state" class="text-[12px] text-ink-muted">{`lines:${lines().length} older:${(here() ? runtime.sessionView(here()!.id).hasOlderMessages : false) ? "yes" : "no"}`}</Text>
           <Text testID="story-last" class="text-[12px] text-ink-muted">{`last:${last()?.id ?? ""}`}</Text>
           <Text testID="story-answers" class="text-[12px] text-ink-muted">{`answers:${Object.entries(askAnswers()).map(([id, a]) => `${id}=${a.selected.join(",")}|${a.custom ?? ""}`).join(";")}`}</Text>

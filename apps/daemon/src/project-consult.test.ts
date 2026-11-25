@@ -10,6 +10,7 @@ import { ulid } from "./ids";
 import { createLocalApi } from "./local-api";
 import { CONSULT_TOOL } from "./project-consult";
 import type { ProjectQuery } from "./project-runner";
+import { validateBusiness } from "./remote/routes";
 import { memoryKeyStore } from "./secrets";
 import { Store } from "./store";
 
@@ -77,16 +78,20 @@ function scripted(seen: Seen, parentStep: Step, consultantStep: Step): ProjectQu
 
 const FAKE_GROK = join(import.meta.dir, "fixtures/agents/fake-grok.ts");
 
-function start(parentStep: Step, consultantStep: Step, opts: { waitMs?: number; grok?: Record<string, unknown> } = {}) {
+function start(parentStep: Step, consultantStep: Step, opts: { waitMs?: number; grok?: Record<string, unknown>; status?: ClaudeCodeStatus; grokDirs?: Array<string | null> } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "consult-")));
   const grokLog = realpathSync(mkdtempSync(join(tmpdir(), "consult-grok-")));
   const store = new Store({ endpointKey: memoryKeyStore() });
   const seen: Seen = { parent: [], consultant: [], lines: [], denied: [] };
-  const api = createLocalApi({ store, token: "consult-test", schedule: false, claudeCode: probe, projectQuery: scripted(seen, parentStep, consultantStep),
+  const claudeCode: ClaudeCodeProbe = opts.status ? { last: () => opts.status!, current: async () => opts.status!, detect: async () => opts.status! } : probe;
+  const api = createLocalApi({ store, token: "consult-test", schedule: false, claudeCode, projectQuery: scripted(seen, parentStep, consultantStep),
     projectConsultPollMs: 10, ...(opts.waitMs !== undefined ? { projectConsultWaitMs: opts.waitMs } : {}), projectSettleMs: 80,
     // A Grok consultant is the fake Grok playing `opts.grok`.
-    projectGrok: async () => ({ ok: true, executable: process.execPath, source: "known", args: [FAKE_GROK, "agent", "--no-leader", "stdio"], proxy: null,
-      env: { ...process.env as Record<string, string>, FAKE_GROK_SCRIPT: JSON.stringify(opts.grok ?? { prompts: [] }), FAKE_GROK_LOG: join(grokLog, "run.log") } }) });
+    projectGrok: async (configDir) => {
+      opts.grokDirs?.push(configDir ?? null);
+      return { ok: true, executable: process.execPath, source: "known", args: [FAKE_GROK, "agent", "--no-leader", "stdio"], proxy: null,
+        env: { ...process.env as Record<string, string>, FAKE_GROK_SCRIPT: JSON.stringify(opts.grok ?? { prompts: [] }), FAKE_GROK_LOG: join(grokLog, "run.log") } };
+    } });
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
   closes.push(async () => { api.projects.close(); await api.projects.idle(); await api.engine.close(); store.close(); await server.stop(true); rmSync(dir, { recursive: true, force: true }); rmSync(grokLog, { recursive: true, force: true }); });
   const origin = `http://${server.hostname}:${server.port}`;
@@ -497,4 +502,109 @@ test("two members on one model at two levels each go on in a consultant of their
   await h.until(async () => (await h.run(parent))?.status === "completed");
   expect((await h.call("POST", `/v1/sessions/${parent}/clear`)).status).toBe(204);
   expect(h.store.consultantsOf(parent)).toEqual([]);
+});
+
+test("a consultant can be asked on a specific account, stays on it, and two accounts on the same model are two consultants", async () => {
+  const homeA = realpathSync(mkdtempSync(join(tmpdir(), "consult-claude-a-")));
+  const homeB = realpathSync(mkdtempSync(join(tmpdir(), "consult-claude-b-")));
+  const grokB = realpathSync(mkdtempSync(join(tmpdir(), "consult-grok-b-")));
+  closes.push(() => { rmSync(homeA, { recursive: true, force: true }); rmSync(homeB, { recursive: true, force: true }); rmSync(grokB, { recursive: true, force: true }); });
+  const grokDirs: Array<string | null> = [];
+  const multiStatus = {
+    path: "/usr/local/bin/claude",
+    version: "2.1.329",
+    logged_in: true,
+    accounts: [
+      { config_dir: null, config_directory: null, logged_in: true, auth_method: "claude.ai", subscription_type: "max", email: "a@example.com", error: null, login_command: "" },
+      { config_dir: homeA, config_directory: homeA, logged_in: true, auth_method: "claude.ai", subscription_type: "max", email: "a2@example.com", error: null, login_command: "" },
+      { config_dir: homeB, config_directory: homeB, logged_in: true, auth_method: "claude.ai", subscription_type: "max", email: "b@example.com", error: null, login_command: "" },
+    ],
+  } as unknown as ClaudeCodeStatus;
+  const results: Array<{ text: string; isError: boolean }> = [];
+  const h = start(async (ctx) => {
+    if (ctx.line.startsWith("第一句")) {
+      results.push(await consult(ctx, { agent: "claude_code", config_dir: "/not/listed", message: "bad" }));
+      results.push(await consult(ctx, { agent: "antigravity", config_dir: homeA, message: "bad" }));
+      results.push(await consult(ctx, { agent: "claude_code", model: "opus", effort: "high", message: "默认号" }));
+      results.push(await consult(ctx, { agent: "claude_code", config_dir: homeB, model: "opus", effort: "high", message: "B 号" }));
+      results.push(await consult(ctx, { agent: "grok", config_dir: grokB, message: "Grok B 号" }));
+    }
+    return "好";
+  }, async ({ options }) => `dir=${options.env?.CLAUDE_CONFIG_DIR ?? "default"}`, {
+    status: multiStatus,
+    grokDirs,
+    grok: { prompts: [[{ say: "grok-b-ok" }]] },
+  });
+  h.store.setClaudeCodeConfigDirs([homeA, homeB]);
+  h.store.setAgentConfigDirs("grok", [grokB]);
+  // Even if homeB is recorded as out of usage, a consultant explicitly asked on homeB stays on homeB.
+  h.store.markAccountOut({ runner: "claude_code", dir: homeB, email: "b@example.com", until: Date.now() + 60_000, known: true });
+
+  const parent = await h.session();
+  // Unlisted account and account on Antigravity are refused by PATCH.
+  expect((await h.call("PATCH", `/v1/project-sessions/${parent}`, { consult: { on: true, members: [{ agent: "claude_code", model: "opus", effort: null, config_dir: "/not/listed" }] } })).status).toBe(422);
+  expect((await h.call("PATCH", `/v1/project-sessions/${parent}`, { consult: { on: true, members: [{ agent: "antigravity", model: null, effort: null, config_dir: homeA }] } })).status).toBe(422);
+  // The phone's relay lets config_dir through on consult members.
+  expect(() => validateBusiness({ v: 1, id: "r1", method: "PATCH", path: `/v1/project-sessions/${parent}`, body: { consult: { on: true, members: [{ agent: "claude_code", model: "opus", effort: "high", config_dir: homeB }] } } })).not.toThrow();
+
+  // Same agent/model/effort on default account vs homeB are two distinct consultants; duplicates collapse.
+  const set = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${parent}`, {
+    consult: {
+      on: true,
+      members: [
+        { agent: "claude_code", model: "opus", effort: "high" },
+        { agent: "claude_code", model: "opus", effort: "high", config_dir: homeB },
+        { agent: "grok", model: null, effort: null, config_dir: grokB },
+      ],
+    },
+  });
+  expect(set.status).toBe(200);
+  expect(set.body.project_consult).toEqual({
+    on: true,
+    members: [
+      { agent: "claude_code", model: "opus", effort: "high" },
+      { agent: "claude_code", model: "opus", effort: "high", config_dir: homeB },
+      { agent: "grok", model: null, effort: null, config_dir: grokB },
+    ],
+  });
+
+  await h.say(parent, "第一句");
+  await h.until(async () => (await h.run(parent))?.status === "completed", 800);
+  const first = h.seen.lines[0]!;
+  expect(first).toContain("1. Claude Code · opus · high —— 新请： agent=claude_code, model=opus, effort=high");
+  expect(first).toContain(`2. Claude Code · opus · high · ${homeB} —— 新请： agent=claude_code, config_dir=${homeB}, model=opus, effort=high`);
+  expect(first).toContain(`3. Grok · ${grokB} —— 新请： agent=grok, config_dir=${grokB}`);
+
+  // Invalid tool calls failed; valid calls ran on their respective accounts.
+  expect(results[0]!.isError).toBe(true);
+  expect(results[1]!.isError).toBe(true);
+  expect(results[2]!.isError).toBe(false);
+  expect(results[3]!.isError).toBe(false);
+  expect(results[3]!.text).toContain(`dir=${homeB}`);
+  expect(results[3]!.text).toContain(homeB);
+  expect(results[4]!.isError).toBe(false);
+  expect(results[4]!.text).toContain("grok-b-ok");
+  expect(grokDirs).toEqual([grokB]);
+
+  const [defC, bC, grokC] = h.store.consultantsOf(parent);
+  expect(h.store.projectOf(defC!)?.configDir).toBeNull();
+  expect(h.store.projectOf(bC!)?.configDir).toBe(homeB);
+  expect(h.store.projectOf(grokC!)?.configDir).toBe(grokB);
+
+  // On the next line, each account's consultant is matched to its own session id.
+  await h.say(parent, "第二句");
+  await h.until(() => h.seen.lines.some((line) => line.startsWith("第二句")));
+  const second = h.seen.lines.find((line) => line.startsWith("第二句"))!;
+  expect(second).toContain(`1. Claude Code · opus · high —— 接着用 consultant=${defC}`);
+  expect(second).toContain(`2. Claude Code · opus · high · ${homeB} —— 接着用 consultant=${bC}`);
+  expect(second).toContain(`3. Grok · ${grokB} —— 接着用 consultant=${grokC}`);
+
+  // If homeB is later removed from Settings, the user can still switch off or remove another member.
+  await h.until(async () => (await h.run(parent))?.status === "completed");
+  h.store.setClaudeCodeConfigDirs([homeA]);
+  const toggledOff = await h.call<SessionDetail>("PATCH", `/v1/project-sessions/${parent}`, {
+    consult: { on: false, members: [{ agent: "claude_code", model: "opus", effort: "high", config_dir: homeB }] },
+  });
+  expect(toggledOff.status).toBe(200);
+  expect(toggledOff.body.project_consult).toEqual({ on: false, members: [{ agent: "claude_code", model: "opus", effort: "high", config_dir: homeB }] });
 });

@@ -360,7 +360,17 @@ export function projectSessionRoutes(ctx: RouteCtx): Response | Promise<Response
       if (project.parentId) throw new HttpError(422, "invalid_args", "a consultant asks no consultant of its own");
       const consult = body.consult === null ? null : parseConsultSetting(body.consult);
       if (body.consult !== null && !consult) {
-        throw new HttpError(422, "invalid_args", `consult must be { on, members } with at most ${CONSULT_MEMBERS_MAX} members, each { agent, model, effort }, or null`);
+        throw new HttpError(422, "invalid_args", `consult must be { on, members } with at most ${CONSULT_MEMBERS_MAX} members, each { agent, model, effort, config_dir? }, or null`);
+      }
+      if (consult) {
+        const kept = project.consult?.members ?? [];
+        for (const member of consult.members) {
+          if (!member.config_dir) continue;
+          const already = kept.some((one) => one.agent === member.agent && (one.config_dir ?? null) === member.config_dir);
+          if (!already && !accountsOf(member.agent).includes(member.config_dir)) {
+            throw new HttpError(422, "invalid_args", `config_dir is not one of your ${member.agent === "claude_code" ? "Claude" : member.agent} accounts`);
+          }
+        }
       }
       change.consult = consult;
     }

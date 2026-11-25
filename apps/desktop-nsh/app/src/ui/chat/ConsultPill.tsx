@@ -15,7 +15,7 @@
  */
 import { cleanup, signal, Text, View, type ViewRef } from "nsh";
 import { Popover } from "nsh/base";
-import { CONSULT_MEMBERS_MAX, type AgentsStatusResponse, type ConsultMember, type ProjectConsultSetting } from "@real-bot/protocol";
+import { CONSULT_MEMBERS_MAX, type AgentsStatusResponse, type ClaudeCodeStatus, type ConsultMember, type ProjectConsultSetting } from "@real-bot/protocol";
 import type { MessengerApi } from "../../m/messenger-api";
 import { canAddMember, withMember, withoutMember, withSwitch } from "../../m/chat/consult";
 import { modelLabel } from "../../m/taskmap/model-label";
@@ -28,7 +28,7 @@ import { AgentLogo } from "../settings/AgentLogo";
 import { shadow } from "../styles";
 import { Switch } from "../Switch";
 import { tip } from "../tip";
-import { consultTuneTree } from "./consult-tune-tree";
+import { consultAccountLabel, consultTuneTree } from "./consult-tune-tree";
 import { TunePicker } from "./TunePicker";
 
 /** What opens the menu from elsewhere: the phone's + and its chip. */
@@ -38,7 +38,7 @@ export type ConsultHandle = { open(): void };
 const membersOf = (setting: ProjectConsultSetting | null | undefined): ConsultMember[] => (setting?.members ?? []).map((member) => ({ ...member }));
 const consultOn = (setting: ProjectConsultSetting | null | undefined) => Boolean(setting?.on) && membersOf(setting).length > 0;
 const memberName = (member: ConsultMember) => modelLabel(member.model) || copy().project.agentNames[member.agent];
-const memberKey = (member: ConsultMember) => `${member.agent}|${member.model ?? ""}|${member.effort ?? ""}`;
+const memberKey = (member: ConsultMember) => `${member.agent}|${member.config_dir ?? ""}|${member.model ?? ""}|${member.effort ?? ""}`;
 
 /** Who the consultants are, in a line (the phone's + says it under 参谋); null with none. */
 export function consultNames(setting: ProjectConsultSetting | null | undefined): string | null {
@@ -100,6 +100,7 @@ export function ConsultPill(props: {
   agentName: string;
   disabled: boolean;
   agents: AgentsStatusResponse | null;
+  claude: ClaudeCodeStatus | null;
   client: Pick<MessengerApi, "claudeCodeModels"> | null;
   /** Called as the menu opens, to ask again for the agents and models the picker lists. */
   onOpen?: () => void;
@@ -137,8 +138,9 @@ export function ConsultPill(props: {
   );
   const members = () => membersOf(props.setting);
   const on = () => consultOn(props.setting);
-  /** The model and, quieter, its level. */
+  /** The model and, quieter, its level and account. */
   const levelOf = (member: ConsultMember) => (member.effort ? (t().sidebar.thinkingLevels[member.effort as keyof ReturnType<typeof copy>["sidebar"]["thinkingLevels"]] ?? member.effort) : null);
+  const accountOf = (member: ConsultMember) => consultAccountLabel(member, props.agents, props.claude, t());
 
   const tree = consultTuneTree({
     get t() {
@@ -146,6 +148,9 @@ export function ConsultPill(props: {
     },
     get agents() {
       return props.agents;
+    },
+    get claude() {
+      return props.claude;
     },
     get client() {
       return props.client;
@@ -189,10 +194,19 @@ export function ConsultPill(props: {
         {(member, index) => (
           <View testID={`consult-member-${index()}`} class={`flex-row items-center gap-2 rounded-(--radius-sm) ${sheet ? "min-h-[48px] pl-3 pr-1" : "px-[10px] py-[5px]"}`}>
             <AgentLogo runner={member().agent} size={sheet ? 20 : 18} />
-            <Text class={`flex-1 shrink min-w-0 font-medium text-ink line-clamp-1 ${sheet ? "text-[15px]" : "text-[13px]"}`}>
-              <Text>{memberName(member())}</Text>
-              <If when={levelOf(member())}>{(level) => <Text class="text-ink-muted">{` · ${level()}`}</Text>}</If>
-            </Text>
+            <View class="flex-1 shrink min-w-0">
+              <Text class={`font-medium text-ink line-clamp-1 ${sheet ? "text-[15px]" : "text-[13px]"}`}>
+                <Text>{memberName(member())}</Text>
+                <If when={levelOf(member())}>{(level) => <Text class="text-ink-muted">{` · ${level()}`}</Text>}</If>
+              </Text>
+              <If when={accountOf(member())}>
+                {(acct) => (
+                  <Text testID={`consult-member-account-${index()}`} class={`text-ink-muted line-clamp-1 ${sheet ? "text-[12px]" : "text-[11px]"}`}>
+                    {acct()}
+                  </Text>
+                )}
+              </If>
+            </View>
             <View
               role="button"
               testID={`consult-remove-${index()}`}
@@ -215,6 +229,7 @@ export function ConsultPill(props: {
           title={t().project.consultAdd}
           sheetTitle={t().project.consult}
           disabled={props.disabled}
+          onOpen={props.onOpen}
           onOpenChange={(out) => adding.set(out)}
           testID="consult-add"
         />

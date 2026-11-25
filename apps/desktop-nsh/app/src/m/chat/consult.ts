@@ -3,14 +3,14 @@ import { CONSULT_MEMBERS_MAX, type ConsultMember, type ProjectConsultSetting } f
 /**
  * The composer's consultant switch (ADR 0116 addendum 2026-11-23): what the next setting is after
  * a press, so the menu only sends it. The rules: at most `CONSULT_MEMBERS_MAX` members, the same
- * agent on the same model and level only once (on a different model it is another consultant),
- * the first member turns the switch on, the last one removed turns it off, and with no members it
- * cannot be on. Off keeps the members for the next time.
+ * agent on the same account, model and level only once (on another account or model it is another
+ * consultant), the first member turns the switch on, the last one removed turns it off, and with
+ * no members it cannot be on. Off keeps the members for the next time.
  */
 const NONE: ProjectConsultSetting = { on: false, members: [] };
 
 export function sameMember(a: ConsultMember, b: ConsultMember): boolean {
-  return a.agent === b.agent && a.model === b.model && a.effort === b.effort;
+  return a.agent === b.agent && (a.config_dir ?? null) === (b.config_dir ?? null) && a.model === b.model && a.effort === b.effort;
 }
 
 /** Whether another one can be added: under the most, and not already there. */

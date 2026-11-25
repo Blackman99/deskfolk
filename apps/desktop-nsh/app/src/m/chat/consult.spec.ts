@@ -16,7 +16,17 @@ test("the first member turns the switch on, and the same agent on another model 
 test("the same agent, model and level is added once", () => {
   const one = withMember(null, opus);
   expect(canAddMember(one, opus)).toBe(false);
+  expect(canAddMember(one, { ...opus, config_dir: null })).toBe(false);
   expect(withMember(one, opus)).toBe(one);
+});
+
+test("the same agent and model on two different accounts are two consultants", () => {
+  const opusWork: ConsultMember = { ...opus, config_dir: "/Users/me/.claude-work" };
+  const one = withMember(null, opus);
+  expect(canAddMember(one, opusWork)).toBe(true);
+  const two = withMember(one, opusWork);
+  expect(two.members).toEqual([opus, opusWork]);
+  expect(canAddMember(two, opusWork)).toBe(false);
 });
 
 test("at most three members", () => {

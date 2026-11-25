@@ -6,13 +6,14 @@
  * consultant from line to line and remembers what was said. Nothing of it is stored on your line.
  */
 import { USER_MEMBER, type ConsultMember, type Message } from "@real-bot/protocol";
+import { tildeDir } from "./claude-code/account";
 import { slashCommandOf } from "./project-runner";
 import { AGENT_NAMES } from "./store/project-sessions";
 import type { Store } from "./store";
 
-/** A member as a line names it: the agent, then the model and the level when set. */
+/** A member as a line names it: the agent, then the model, level and account when set. */
 export function memberLabel(member: ConsultMember): string {
-  return [AGENT_NAMES[member.agent], member.model, member.effort].filter(Boolean).join(" · ");
+  return [AGENT_NAMES[member.agent], member.model, member.effort, member.config_dir ? tildeDir(member.config_dir) : null].filter(Boolean).join(" · ");
 }
 
 /** The note that goes after a line of yours while the switch is on; null when it is off, for a consultant, or for a command. */
@@ -22,22 +23,28 @@ export function consultBrief(store: Store, message: Message, en: boolean): strin
   if (slashCommandOf(message.body)) return null;
   const project = store.projectOf(message.session_id);
   if (!project || project.parentId || !project.consult?.on || project.consult.members.length === 0) return null;
-  // The session's consultant for each agent, model and level, the newest where there are several;
+  // The session's consultant for each agent, account, model and level, the newest where there are several;
   // each goes to one member only, so two members never share a consultant.
-  const key = (agent: string, model: string | null, effort: string | null) => `${agent}\n${model ?? ""}\n${effort ?? ""}`;
+  const key = (agent: string, configDir: string | null | undefined, model: string | null, effort: string | null) =>
+    `${agent}\n${configDir ?? ""}\n${model ?? ""}\n${effort ?? ""}`;
   const held = new Map<string, string>();
   for (const id of store.consultantsOf(message.session_id)) {
     const consultant = store.projectOf(id);
-    if (consultant) held.set(key(consultant.agent, consultant.model, consultant.effort), id);
+    if (consultant) held.set(key(consultant.agent, consultant.configDir, consultant.model, consultant.effort), id);
   }
   const given = new Set<string>();
   const lines = project.consult.members.map((member, index) => {
-    const found = held.get(key(member.agent, member.model, member.effort));
+    const found = held.get(key(member.agent, member.config_dir, member.model, member.effort));
     const id = found && !given.has(found) ? found : undefined;
     if (id) given.add(id);
     const how = id
       ? `consultant=${id}`
-      : [`agent=${member.agent}`, member.model ? `model=${member.model}` : null, member.effort ? `effort=${member.effort}` : null].filter(Boolean).join(", ");
+      : [
+          `agent=${member.agent}`,
+          member.config_dir ? `config_dir=${member.config_dir}` : null,
+          member.model ? `model=${member.model}` : null,
+          member.effort ? `effort=${member.effort}` : null,
+        ].filter(Boolean).join(", ");
     return en
       ? `${index + 1}. ${memberLabel(member)} — ${id ? "go on with" : "ask anew:"} ${how}`
       : `${index + 1}. ${memberLabel(member)} —— ${id ? "接着用" : "新请："} ${how}`;

@@ -132,12 +132,13 @@ export function consultantsOf(ctx: StoreContext, parentId: string): string[] {
 
 /**
  * A consultant (ADR 0116): a project session in the asking session's directory, on another agent
- * (or the same one on another model), the account that agent's sessions start on by default. It
- * is named for whom it advises, as the spend view lists it; it is never named by its first line.
+ * (or the same one on another model or account), on `configDir` when named else that agent's
+ * default account. It is named for whom it advises, as the spend view lists it; it is never named
+ * by its first line.
  */
 export function createConsultantSession(
   ctx: StoreContext,
-  input: { parentId: string; agent: ProjectAgent; model: string | null; effort: string | null; name: string },
+  input: { parentId: string; agent: ProjectAgent; configDir?: string | null; model: string | null; effort: string | null; name: string },
 ): SessionDetail {
   const parent = projectOf(ctx, input.parentId);
   if (!parent) throw new HttpError(404, "not_found", "not a project session");
@@ -147,8 +148,8 @@ export function createConsultantSession(
   ctx.db.transaction(() => {
     ctx.db.run(
       `INSERT INTO sessions (id, kind, name, last_read_at, project_dir, project_agent, project_config_dir, project_model, project_effort, project_parent_id, created_at, updated_at)
-       VALUES (?, 'project', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-      [id, input.name, now, parent.dir, input.agent, input.model, input.effort, input.parentId, now, now],
+       VALUES (?, 'project', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.name, now, parent.dir, input.agent, input.configDir ?? null, input.model, input.effort, input.parentId, now, now],
     );
     ctx.db.run(`INSERT INTO session_participants (session_id, member, joined_at, left_at) VALUES (?, ?, ?, NULL)`, [id, USER_MEMBER, now]);
   })();

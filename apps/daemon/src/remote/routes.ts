@@ -65,7 +65,7 @@ add("POST", "project-sessions", { agent: one(...PROJECT_AGENTS), dir: string, co
 get("project-sessions/:id/(run|replay|commands|tasks)");
 get("project-sessions/:id/locate", { path: string }, ["path"]);
 // The consultant switch (ADR 0116 addendum 2026-11-23): at most CONSULT_MEMBERS_MAX members.
-const consultMember = object({ agent: one(...PROJECT_AGENTS), model: nullable(string), effort: nullable(effort) }, ["agent"]);
+const consultMember = object({ agent: one(...PROJECT_AGENTS), model: nullable(string), effort: nullable(effort), config_dir: nullable(string) }, ["agent"]);
 const consultSetting: Check = v => object({ on: bool, members: list(consultMember) }, ["on", "members"])(v) && (v as { members: unknown[] }).members.length <= CONSULT_MEMBERS_MAX;
 add("PATCH", "project-sessions/:id", { model: nullable(string), effort: nullable(one(...CLAUDE_EFFORTS)), mode: nullable(one("plan")), config_dir: nullable(string), consult: nullable(consultSetting) }, [], true);
 get("runtime/claude-code/models", { config_dir: string });
