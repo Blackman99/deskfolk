@@ -82,10 +82,14 @@ function ContextFigures(props: { reading: Reading }) {
   const t = () => copy().project;
   const r = props.reading;
   const tokens = (n: number) => t().contextTokens(formatTokens(n));
-  const row = (testID: string, name: string, value: string) => (
+  const used = () => r.ctx()?.used ?? 0;
+  const limit = () => r.ctx()?.limit ?? null;
+  const model = () => r.ctx()?.model ?? null;
+  /** A figure's row. Its words are read where they are drawn: a run that reports again while the sheet is up changes them in place. */
+  const row = (testID: string, name: () => string, value: () => string) => (
     <View testID={testID} class="flex-row items-center justify-between gap-3 min-h-[44px] px-3">
-      <Text class="text-[15px] text-ink-muted">{name}</Text>
-      <Text class="shrink min-w-0 text-[15px] font-medium text-ink tabular-nums text-right line-clamp-1">{value}</Text>
+      <Text class="text-[15px] text-ink-muted">{name()}</Text>
+      <Text class="shrink min-w-0 text-[15px] font-medium text-ink tabular-nums text-right line-clamp-1">{value()}</Text>
     </View>
   );
   return (
@@ -111,21 +115,20 @@ function ContextFigures(props: { reading: Reading }) {
           {r.shortText()}
         </Text>
       </View>
-      <If when={r.ctx()}>
-        {(c) => (
-          <View>
-            {row("context-used", t().contextUsed, tokens(c().used))}
-            {row("context-window", t().contextWindow, c().limit ? tokens(c().limit!) : t().contextWindowUnknown)}
-            <If when={c().limit}>{(limit) => row("context-left", t().contextLeft, tokens(Math.max(0, limit() - c().used)))}</If>
-            <If when={c().model}>{(model) => row("context-model", t().contextModel, model())}</If>
-            <If when={!c().limit}>
-              <Text testID="context-window-unknown" class="px-3 pt-1 text-[13px] text-ink-muted">
-                {t().contextWindowUnknownNote}
-              </Text>
-            </If>
-          </View>
-        )}
-      </If>
+      <View>
+        {row("context-used", () => t().contextUsed, () => tokens(used()))}
+        {row("context-window", () => t().contextWindow, () => {
+          const l = limit();
+          return l ? tokens(l) : t().contextWindowUnknown;
+        })}
+        <If when={limit() !== null}>{row("context-left", () => t().contextLeft, () => tokens(Math.max(0, (limit() ?? 0) - used())))}</If>
+        <If when={model() !== null}>{row("context-model", () => t().contextModel, () => model() ?? "")}</If>
+        <If when={limit() === null}>
+          <Text testID="context-window-unknown" class="px-3 pt-1 text-[13px] text-ink-muted">
+            {t().contextWindowUnknownNote}
+          </Text>
+        </If>
+      </View>
     </View>
   );
 }

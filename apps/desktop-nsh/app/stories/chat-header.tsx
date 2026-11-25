@@ -190,6 +190,20 @@ export default function ChatHeaderStory() {
                   <Text class="text-[12px] text-ink">{text}</Text>
                 </View>
               ))}
+              {/* A run reporting again while you read, the session a new summary each time: 34% now, 92% a moment
+                  later, then a model that does not say its window. */}
+              <View
+                role="button"
+                testID="header-context-rising"
+                onPress={() => {
+                  projectContext.set({ used: 68_000, limit: 200_000, model: "claude-opus-4-6" });
+                  setTimeout(() => projectContext.set({ used: 184_000, limit: 200_000, model: "claude-opus-4-6" }), 1_500);
+                  setTimeout(() => projectContext.set({ used: 42_300, limit: null }), 3_000);
+                }}
+                class="px-3 py-1 border border-line rounded-(--radius-sm)"
+              >
+                <Text class="text-[12px] text-ink">ctx rising</Text>
+              </View>
             </View>
           </Section>
 

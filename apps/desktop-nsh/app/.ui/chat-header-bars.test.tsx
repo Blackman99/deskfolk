@@ -107,6 +107,29 @@ test("on a phone a project session's context usage sits at the header's right an
   await app.waitFor("id:header-project >> id:top-context", { state: "gone", timeout: 5_000 });
 });
 
+test("on a phone the context sheet stays up and follows the figures a run reports while it is open", async () => {
+  const app = await open({ width: 390, height: 3400 });
+  await app.press("id:header-context-rising");
+  await app.waitFor("id:header-project >> id:top-context >> text:34%", { timeout: 5_000 });
+  await app.press("id:header-project >> id:top-context");
+  await app.waitFor("id:context-used >> text:68k tokens", { timeout: 5_000 });
+  // The run reports again (the session a new summary): the same sheet, the new figures.
+  await app.waitFor("id:context-used >> text:184k tokens", { timeout: 5_000 });
+  expect(app.shows("id:context-sheet")).toBe(true);
+  expect(app.shows("id:context-left >> text:16k tokens")).toBe(true);
+  expect(app.shows("id:context-figures >> text:92%")).toBe(true);
+  expect(app.count("id:context-sheet")).toBe(1);
+  // Then a model with no window: the rows that need one go, the note comes.
+  await app.waitFor("id:context-window >> text:未知", { timeout: 5_000 });
+  expect(app.shows("id:context-sheet")).toBe(true);
+  expect(app.shows("id:context-used >> text:42.3k tokens")).toBe(true);
+  expect(app.count("id:context-left")).toBe(0);
+  expect(app.count("id:context-model")).toBe(0);
+  expect(app.shows("id:context-window-unknown")).toBe(true);
+  await app.press("id:context-sheet >> id:bottom-sheet-close");
+  await app.waitFor("id:context-sheet", { state: "gone", timeout: 5_000 });
+});
+
 test("on a desktop the header has no context button: the composer's ring stays beside Send", async () => {
   const app = await open();
   await app.press("id:header-context-normal");
