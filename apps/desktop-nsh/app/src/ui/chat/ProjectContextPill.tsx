@@ -7,11 +7,10 @@
  */
 import { Canvas, Text, token, View } from "nsh";
 import type { ProjectContextUsage } from "@real-bot/protocol";
-import { formatTokens } from "../../m/spend-format.ts";
-import { usageLevel, usageUsed, usageUsedText } from "../../m/usage/usage.ts";
-import { copy } from "../../runtime";
+import { usageUsed } from "../../m/usage/usage.ts";
 import { tip } from "../tip";
 import { drawRing, levelColor } from "../usage/ring";
+import { contextReading } from "./project-context";
 
 const TEXT_TONE = { normal: "text-ink-muted", warn: "text-warn-text", danger: "text-danger" } as const;
 
@@ -20,32 +19,7 @@ export function ProjectContextPill(props: {
   /** Narrow composer width: keep the ring alone. */
   compact?: boolean;
 }) {
-  const t = () => copy();
-  const ctx = () => {
-    const c = props.context;
-    return c && c.used > 0 ? c : null;
-  };
-  const percent = () => {
-    const c = ctx();
-    return c && c.limit && c.limit > 0 ? (c.used / c.limit) * 100 : null;
-  };
-  const level = () => {
-    const p = percent();
-    return p !== null ? usageLevel(p) : "normal";
-  };
-  const label = () => {
-    const c = ctx();
-    if (!c) return "";
-    const p = percent();
-    if (p !== null && c.limit) return t().project.contextHint(formatTokens(c.used), formatTokens(c.limit), usageUsedText(p));
-    return t().project.contextUsedOnlyHint(formatTokens(c.used));
-  };
-  const shortText = () => {
-    const c = ctx();
-    if (!c) return "";
-    const p = percent();
-    return p !== null ? usageUsedText(p) : formatTokens(c.used);
-  };
+  const { ctx, percent, level, label, shortText } = contextReading(() => props.context);
 
   return (
     <If when={ctx()}>
