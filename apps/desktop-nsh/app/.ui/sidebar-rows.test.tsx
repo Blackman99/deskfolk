@@ -52,9 +52,9 @@ test("a status replaces the last line, with its count; unread, elsewhere, archiv
   expect(app.shows("id:fx-archived >> text:old line")).toBe(true);
   expect(app.shows("id:fx-filedrop >> id:file-drop-mark")).toBe(true);
   expect(app.shows("id:fx-filedrop >> text:3 files")).toBe(true);
-  // The project row wears its agent's mark and the run's dot.
+  // The project row wears its bare agent mark and a single inline status indicator.
   expect(app.shows("id:fx-project >> id:agent-avatar")).toBe(true);
-  expect(app.shows("id:fx-project >> id:avatar-status-dot")).toBe(true);
+  expect(app.shows("id:fx-project >> id:row-status >> text:正在处理")).toBe(true);
   await app.press("id:fx-unread >> id:session-fx-unread");
   await app.waitUntil(() => logged(app, "select:fx-unread"));
 });

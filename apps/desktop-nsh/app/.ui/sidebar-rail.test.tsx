@@ -52,6 +52,7 @@ test("an avatar opens its conversation, its menu and the start of a drag; the ra
   const app = await open();
   await app.press(rail(seeded.group));
   await app.waitUntil(() => state(app).includes(`selected:${seeded.group}`));
+  expect(app.shows(`id:rail-active-${seeded.group}`)).toBe(true);
   await app.rightClick(rail(seeded.writerDirect));
   await app.waitUntil(() => log(app).includes("menu:direct"));
   // A press that stays put selected it and began nothing; pulled away, it is a drag.

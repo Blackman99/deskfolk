@@ -74,9 +74,46 @@ export function ConnectorLogo(props: { id: VendorId; size?: number }) {
   return <Tiled glyph={props.id} tile={CONNECTOR_TILE[props.id]} size={props.size ?? 36} />;
 }
 
+const transparentCache = new Map<string, string>();
+
+/** A local agent's mark without its solid light tile, sized for compact sidebar rows over dark/light glass. */
+function markUri(runner: BotRunner, color: string, size: number): string {
+  const key = runner === "claude_code" ? "spark" : `agent:${runner}`;
+  const cacheKey = `${key}|${color}|${size}`;
+  const known = transparentCache.get(cacheKey);
+  if (known) return known;
+  let svg = GLYPHS[key] ?? "";
+  // Codex's SVG bakes a solid white rounded square behind its gradient knot; strip it on bare marks.
+  if (runner === "codex") {
+    svg = svg.replace(/<path d="M19\.503 0H4\.496[^"]*" fill="#fff"\/>/, "");
+  }
+  svg = svg
+    .replace(/(\s[\w:-]+)=([^\s"'>]+)/g, '$1="$2"')
+    .replace(/currentColor/g, color)
+    .replace(/(<svg\b[^>]*?)\s+xmlns="[^"]*"/, "$1")
+    .replace("<svg ", `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" `);
+  const uri = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  transparentCache.set(cacheKey, uri);
+  return uri;
+}
+
 export function AgentLogo(props: { runner: BotRunner; size?: number }) {
   const key = () => (props.runner === "claude_code" ? "spark" : `agent:${props.runner}`);
   return <Tiled glyph={key()} tile={AGENT_TILE[props.runner]} size={props.size ?? 36} custom={props.runner === "custom"} testID={`agent-logo-${props.runner}`} />;
+}
+
+/** Bare brand glyph (no white tile background), adapting monochrome marks to the theme ink. */
+export function AgentMark(props: { runner: BotRunner; size?: number }) {
+  const size = () => props.size ?? 16;
+  const color = () => token("ink-secondary");
+  return (
+    <Image
+      testID={`agent-mark-${props.runner}`}
+      src={markUri(props.runner, color(), size())}
+      style={{ width: size(), height: size(), flexShrink: 0 }}
+      accessible={false}
+    />
+  );
 }
 
 /** The Claude Spark, Anthropic's mark for Claude, as `ClaudeSpark.svelte` draws it. */

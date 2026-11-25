@@ -27,7 +27,7 @@ import { WINDOW_CHROME } from "../../m/window-chrome";
 import { BrandMark } from "../BrandMark";
 import { Icon, type IconName } from "../Icon";
 import { SessionAvatar } from "../SessionAvatar";
-import { AgentLogo } from "../settings/AgentLogo";
+import { AgentMark } from "../settings/AgentLogo";
 import { floor } from "../interface/floor";
 import { dismissRailTips, RailTooltip } from "./RailTooltip";
 import { settingsEntryColours } from "./foot-action";
@@ -231,53 +231,73 @@ export function SidebarRail(props: {
     const unread = () => sessionUnreadCount(session);
     const on = () => runtime.selectedId === session.id;
     const lit = () => on() || props.contextMenuSessionId === session.id;
+    const tileLook = () => {
+      if (on()) return "bg-accent-tint border-brand";
+      if (lit()) return "bg-ink/8 border-line";
+      return "border-transparent hover:bg-row-hover";
+    };
     return pop(
       () => orderOf(session.id),
-      <RailTooltip
-        testID={`rail-session-${session.id}`}
-        class={`group w-[48px] h-[48px] items-center justify-center border border-transparent rounded-(--radius-md) ${lit() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
-        label={sessionTip(session, title(), status(), unread())}
-        name={unread() > 0 ? `${title()} · ${copy().sidebar.unread} ${unread()}` : title()}
-        describedBy={`rail-tip-${session.id}`}
-        current={on()}
-        onPress={() => void runtime.selectSession(session.id)}
-        onContextMenu={(e) => props.onOpenContextMenu(e, session)}
-        onDrag={props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, session) : undefined}
-      >
-        <If
-          when={isFileDropSession(session)}
-          else={
-            <If when={session.kind === "project"} else={<SessionAvatar session={session} bots={botsById()} botStatus={botStatusOf} ringColor={token(lit() ? "accent-tint" : "ground")} />}>
-              {/* Its agent's mark, as its row in the open sidebar wears it; the dot while the agent works. */}
-              <View testID="rail-agent" accessible={false} class="relative w-[40px] h-[40px]">
-                <AgentLogo runner={projectAgentOf(session)} size={40} />
-                <If when={isLiveRun(snapshot().agentRuns[session.id])}>
-                  <View testID="rail-agent-busy" accessible={false} class="absolute right-0 bottom-0 w-[9.5px] h-[9.5px] rounded-full bg-brand border-2 border-ground" />
-                </If>
-              </View>
-            </If>
-          }
-        >
-          <View testID="rail-file-drop" accessible={false} class="w-[40px] h-[40px] items-center justify-center rounded-(--radius-card-sm) bg-accent-tint">
-            <Icon name="file-down" class="tint-brand" />
-          </View>
+      <View class="relative w-[64px] items-center justify-center">
+        <If when={on()}>
+          <View
+            testID={`rail-active-${session.id}`}
+            accessible={false}
+            class="absolute left-0 w-[3px] h-[22px] rounded-r-full bg-brand"
+          />
         </If>
-        {/* What waits on you comes before what is merely unread, as in the pinned row. */}
-        <If
-          when={status().count}
-          else={
-            <If when={unread() > 0}>
-              <View testID="rail-badge" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-mustard border-[1.5px] border-ground">
-                <Text class="text-[10px] font-bold text-on-mustard">{unreadBadge(unread())}</Text>
-              </View>
-            </If>
-          }
+        <RailTooltip
+          testID={`rail-session-${session.id}`}
+          class={`relative group w-[48px] h-[48px] items-center justify-center border rounded-(--radius-md) ${tileLook()}`}
+          label={sessionTip(session, title(), status(), unread())}
+          name={unread() > 0 ? `${title()} · ${copy().sidebar.unread} ${unread()}` : title()}
+          describedBy={`rail-tip-${session.id}`}
+          current={on()}
+          onPress={() => void runtime.selectSession(session.id)}
+          onContextMenu={(e) => props.onOpenContextMenu(e, session)}
+          onDrag={props.onDragSession ? (phase, point) => props.onDragSession?.(phase, point, session) : undefined}
         >
-          <View testID="rail-badge-waiting" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-warn-text border-[1.5px] border-ground">
-            <Text class="text-[10px] font-bold text-on-warn">{String(status().count)}</Text>
-          </View>
-        </If>
-      </RailTooltip>,
+          <If
+            when={isFileDropSession(session)}
+            else={
+              <If when={session.kind === "project"} else={<SessionAvatar session={session} bots={botsById()} botStatus={botStatusOf} ringColor={token(lit() ? "accent-tint" : "ground")} />}>
+                {/* Bare agent glyph on a soft translucent tile (no glaring white box on dark glass). */}
+                <View
+                  testID="rail-agent"
+                  accessible={false}
+                  class={`relative w-[40px] h-[40px] items-center justify-center rounded-(--radius-card-sm) border ${
+                    on() ? "bg-ink/10 border-brand/35" : "bg-ink/7 border-ink/8"
+                  }`}
+                >
+                  <AgentMark runner={projectAgentOf(session)} size={22} />
+                  <If when={isLiveRun(snapshot().agentRuns[session.id])}>
+                    <View testID="rail-agent-busy" accessible={false} class="absolute -right-[2px] -bottom-[2px] w-[9.5px] h-[9.5px] rounded-full bg-brand border-2 border-ground" />
+                  </If>
+                </View>
+              </If>
+            }
+          >
+            <View testID="rail-file-drop" accessible={false} class="w-[40px] h-[40px] items-center justify-center rounded-(--radius-card-sm) bg-accent-tint">
+              <Icon name="file-down" class="tint-brand" />
+            </View>
+          </If>
+          {/* What waits on you comes before what is merely unread, as in the pinned row. */}
+          <If
+            when={status().count}
+            else={
+              <If when={unread() > 0}>
+                <View testID="rail-badge" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-mustard border-[1.5px] border-ground">
+                  <Text class="text-[10px] font-bold text-on-mustard">{unreadBadge(unread())}</Text>
+                </View>
+              </If>
+            }
+          >
+            <View testID="rail-badge-waiting" accessible={false} class="absolute top-[1px] right-[1px] min-w-[15px] h-[15px] px-[3px] items-center justify-center rounded-(--radius-md) bg-warn-text border-[1.5px] border-ground">
+              <Text class="text-[10px] font-bold text-on-warn">{String(status().count)}</Text>
+            </View>
+          </If>
+        </RailTooltip>
+      </View>,
     );
   };
 

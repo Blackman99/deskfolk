@@ -1,14 +1,13 @@
 /**
- * A project session's portrait in the list (`sidebar/AgentAvatar.svelte`, ADR 0095): its agent's
- * tile in a Bot avatar's place and shape, a size smaller (four fifths of the row's avatar), with the
- * run's status dot on its corner where a Bot's avatar carries its own. The box is the avatar's full
- * size, so the text and the row's height stay a Bot's.
+ * A project session's portrait in the list (`sidebar/AgentAvatar.svelte`, ADR 0095):
+ * - In compact desktop rows (`compact`): a bare 16px brand glyph (`AgentMark`) with no glaring white tile.
+ * - In tiles and phone rows: the agent's tile with an optional status dot on its corner.
  */
 import { cleanup, computed, createMotion, effect, token, View } from "nsh";
 import type { ProjectAgent } from "@real-bot/protocol";
 import type { SessionStatusResult } from "../../m/sidebar/session-status";
 import { LoopsHeld } from "../interface/motion";
-import { AgentLogo } from "../settings/AgentLogo";
+import { AgentLogo, AgentMark } from "../settings/AgentLogo";
 import { narrowWindow } from "../Modal";
 import { tip } from "../tip";
 
@@ -33,11 +32,15 @@ export function AgentAvatar(props: {
   ringColor?: string;
   /** The avatar's edge when it is not the row's (the pinned strip's). */
   edge?: number;
+  /** Bare compact glyph without white tile background or duplicate corner dot (desktop tree rows & live strip). */
+  compact?: boolean;
+  /** Hide the corner status dot when the row already renders its own status indicator. */
+  hideStatusDot?: boolean;
   testID?: string;
 }) {
-  const edge = () => props.edge ?? rowAvatarEdge();
-  const logo = () => Math.round(edge() * 0.8);
-  const shown = () => (props.status && props.status.kind !== "idle" ? props.status : null);
+  const edge = () => props.edge ?? (props.compact ? 18 : rowAvatarEdge());
+  const logo = () => (props.compact ? Math.max(14, edge() - 2) : Math.round(edge() * 0.8));
+  const shown = () => (!props.compact && !props.hideStatusDot && props.status && props.status.kind !== "idle" ? props.status : null);
   // A boolean of its own: the status is a new object with every streamed token, and the effect below
   // restarted the animation each time (eight avatars, half a millisecond each, per token).
   const held = LoopsHeld();
@@ -61,9 +64,16 @@ export function AgentAvatar(props: {
       class="relative items-center justify-center shrink-0"
       style={{ width: edge(), height: edge() }}
     >
-      <View class="overflow-hidden" style={{ width: logo(), height: logo(), borderRadius: logo() * 0.3 }}>
-        <AgentLogo runner={props.agent} size={logo()} />
-      </View>
+      <If
+        when={props.compact}
+        else={
+          <View class="overflow-hidden" style={{ width: logo(), height: logo(), borderRadius: logo() * 0.3 }}>
+            <AgentLogo runner={props.agent} size={logo()} />
+          </View>
+        }
+      >
+        <AgentMark runner={props.agent} size={logo()} />
+      </If>
       <If when={shown()}>
         {(s) => (
           <View

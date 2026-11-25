@@ -75,6 +75,8 @@ export function SessionAvatar(props: {
   statusNote?: string | null;
   /** The colour a stacked member's ring is drawn in, the surface the avatar stands on (the sidebar's by default). */
   ringColor?: string;
+  /** Suppress the corner status dot when the surrounding row already displays a status indicator. */
+  hideStatusDot?: boolean;
   testID?: string;
 }) {
   const size = () => props.size ?? "md";
@@ -203,7 +205,7 @@ export function SessionAvatar(props: {
             </Text>
           </View>
         </If>
-        <If when={status() && status()!.kind !== "idle" ? status() : null}>
+        <If when={!props.hideStatusDot && status() && status()!.kind !== "idle" ? status() : null}>
           {(s) => (
             <View
               testID="avatar-status-dot"

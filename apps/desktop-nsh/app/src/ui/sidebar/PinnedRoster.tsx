@@ -74,13 +74,14 @@ function PinnedItem(props: {
             when={props.session.kind === "project"}
             else={<SessionAvatar session={props.session} bots={props.botsById} botStatus={props.botStatusOf} size="top" ringColor={ring()} />}
           >
-            {/* Its agent's mark, as its row under its directory wears it (ADR 0095). */}
+            {/* Bare agent glyph (no white tile glare on dark glass); the pin card carries the run dot. */}
             <AgentAvatar
               agent={projectAgentOf(props.session)}
               title={t().project.agentNames[projectAgentOf(props.session)]}
               status={props.status}
               ringColor={ring()}
-              edge={34}
+              compact
+              edge={26}
             />
           </If>
         </If>

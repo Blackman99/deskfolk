@@ -26,9 +26,10 @@ Object.defineProperty(runtime, "snapshot", {
     const snap = real.call(runtime);
     const group = snap.sessions.find((s: SessionSummary) => classifySession(s) === "group");
     if (!group) return snap;
+    const baseTurns = snap.turns.filter((t: Turn) => t.id !== "turn-main");
     const turns = working()
       ? [
-          ...snap.turns,
+          ...baseTurns,
           {
             id: "turn-main",
             session_id: group.id,
@@ -40,7 +41,7 @@ Object.defineProperty(runtime, "snapshot", {
             updated_at: "2026-11-01T02:00:01.000Z",
           } as unknown as Turn,
         ]
-      : snap.turns;
+      : baseTurns;
     const holds = hold()
       ? [{ id: "hold-main", scope: "bot", scope_id: snap.bots[0]?.id ?? "bot", action: "cancel", cascade: false, source: "user_button", source_message_id: null, created_at: "2026-11-01T02:10:00.000Z" } as unknown as Hold]
       : snap.holds;

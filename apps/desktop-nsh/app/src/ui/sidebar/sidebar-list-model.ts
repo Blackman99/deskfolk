@@ -5,14 +5,26 @@
  */
 import type { SessionSummary } from "@real-bot/protocol";
 import type { ProjectDirGroup } from "../../m/sidebar/project-groups";
+import type { SidebarSectionKey } from "../../m/sidebar/sidebar-fold-state";
 
 export type ListRow =
   /** A section's heading; `add` is the + of the section (a desktop's only). */
-  | { kind: "ghead"; key: string; title: string; add?: "bots" | "projects"; first: boolean }
+  | {
+      kind: "ghead";
+      key: string;
+      title: string;
+      add?: SidebarSectionKey;
+      collapsible?: SidebarSectionKey;
+      open?: boolean;
+      count?: number;
+      live?: boolean;
+      divider?: boolean;
+      first: boolean;
+    }
   | { kind: "archived-ghead"; key: string; first: true }
   | { kind: "archived-empty"; key: string }
   | { kind: "session"; key: string; session: SessionSummary; variant: "archived" | "file-drop" | "bot"; first: boolean }
-  | { kind: "dir"; key: string; group: ProjectDirGroup; open: boolean; live: boolean }
+  | { kind: "dir"; key: string; group: ProjectDirGroup; open: boolean; live: boolean; count: number }
   | { kind: "project"; key: string; session: SessionSummary; dir: string }
   | { kind: "hint"; key: string; text: string }
   | { kind: "roster-empty"; key: string }
@@ -32,6 +44,9 @@ export type ListInput = {
   /** Null while the list is unfiltered. */
   filtered: boolean;
   isOpen: (dir: string) => boolean;
+  isSectionOpen?: (section: SidebarSectionKey) => boolean;
+  botsLive?: boolean;
+  projectsLive?: boolean;
   isLive: (group: ProjectDirGroup) => boolean;
   renamingSessionId: string | null;
   nothingWorking: boolean;
@@ -45,6 +60,7 @@ export type ListInput = {
 export function listRows(input: ListInput): ListRow[] {
   const rows: ListRow[] = [];
   const first = () => rows.length === 0;
+  const sectionOpen = (section: SidebarSectionKey) => input.filtered || (input.isSectionOpen ? input.isSectionOpen(section) : true);
 
   if (input.viewingArchived) {
     if (!input.phone) rows.push({ kind: "archived-ghead", key: "archived-ghead", first: true });
@@ -53,24 +69,54 @@ export function listRows(input: ListInput): ListRow[] {
     return rows;
   }
 
-  if (input.fileDrop) {
-    rows.push({ kind: "ghead", key: "ghead:file-drop", title: input.labels.fileDrop, first: first() });
-    rows.push({ kind: "session", key: `file-drop:${input.fileDrop.id}`, session: input.fileDrop, variant: "file-drop", first: false });
+  // On desktop file drop lives in the footer (and surfaces in LiveStrip on unread), unless filtered to working/unread.
+  if (input.fileDrop && (input.phone || input.filtered)) {
+    rows.push({ kind: "session", key: `file-drop:${input.fileDrop.id}`, session: input.fileDrop, variant: "file-drop", first: first() });
   }
+
   if (input.showBots && (!input.filtered || input.botRows.length > 0)) {
-    rows.push({ kind: "ghead", key: "ghead:bots", title: input.labels.bots, add: input.phone ? undefined : "bots", first: first() });
+    const open = sectionOpen("bots");
+    rows.push({
+      kind: "ghead",
+      key: "ghead:bots",
+      title: input.labels.bots,
+      add: input.phone ? undefined : "bots",
+      collapsible: input.phone || input.filtered ? undefined : "bots",
+      open,
+      count: input.botRows.length,
+      live: !open && Boolean(input.botsLive),
+      divider: !first(),
+      first: first(),
+    });
+    if (open) {
+      for (const session of input.botRows) rows.push({ kind: "session", key: `bot:${session.id}`, session, variant: "bot", first: false });
+    }
   }
-  for (const session of input.botRows) rows.push({ kind: "session", key: `bot:${session.id}`, session, variant: "bot", first: false });
 
   if (input.showProjects && (!input.filtered || input.projectGroups.length > 0)) {
-    rows.push({ kind: "ghead", key: "ghead:projects", title: input.labels.projects, add: input.phone ? undefined : "projects", first: first() });
-  }
-  for (const group of input.projectGroups) {
-    const open = input.isOpen(group.dir);
-    rows.push({ kind: "dir", key: `dir:${group.dir}`, group, open, live: !open && input.isLive(group) });
-    // A session being renamed stays on screen under a folded directory: its row is the name field.
-    const shown = open ? group.sessions : group.sessions.filter((s) => s.id === input.renamingSessionId);
-    for (const session of shown) rows.push({ kind: "project", key: `project:${session.id}`, session, dir: group.dir });
+    const open = sectionOpen("projects");
+    const totalProjects = input.projectGroups.reduce((sum, g) => sum + g.sessions.length, 0);
+    rows.push({
+      kind: "ghead",
+      key: "ghead:projects",
+      title: input.labels.projects,
+      add: input.phone ? undefined : "projects",
+      collapsible: input.phone || input.filtered ? undefined : "projects",
+      open,
+      count: totalProjects,
+      live: !open && Boolean(input.projectsLive),
+      divider: !first(),
+      first: first(),
+    });
+    for (const group of input.projectGroups) {
+      const hasRenaming = Boolean(input.renamingSessionId && group.sessions.some((s) => s.id === input.renamingSessionId));
+      if (!open && !hasRenaming) continue;
+      const dirOpen = open && input.isOpen(group.dir);
+      rows.push({ kind: "dir", key: `dir:${group.dir}`, group, open: dirOpen, live: !dirOpen && input.isLive(group), count: group.sessions.length });
+      // A session being renamed stays on screen under a folded directory: its row is the name field.
+      const shown = dirOpen ? group.sessions : group.sessions.filter((s) => s.id === input.renamingSessionId);
+      for (const session of shown) rows.push({ kind: "project", key: `project:${session.id}`, session, dir: group.dir });
+    }
   }
 
   if (input.nothingWorking) rows.push({ kind: "hint", key: "hint", text: input.workingHint });

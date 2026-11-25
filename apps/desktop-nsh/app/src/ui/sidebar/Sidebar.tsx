@@ -28,7 +28,8 @@ import { newProjectIn, newProjectInFolder } from "../../m/sidebar/project-action
 import { dirSession, groupProjectSessions, isLiveRun, liveRunSessionIds, type ProjectDirGroup } from "../../m/sidebar/project-groups";
 import { plainPreview } from "../../m/sidebar/preview-text";
 import { classifySession, groupSessions, isFileDropSession, isSessionArchived, youBotPeer } from "../../m/sidebar/session-groups";
-import { agentRunStatus, botWorkStatus, sidebarStatus } from "../../m/sidebar/session-status";
+import { agentRunStatus, botWorkStatus, isWorkingStatus, sidebarStatus } from "../../m/sidebar/session-status";
+import { loadFoldedDirs, loadFoldedSections, saveFoldedDirs, saveFoldedSections, type SidebarSectionKey } from "../../m/sidebar/sidebar-fold-state";
 import { sessionTitle } from "../../m/sidebar/session-title";
 import { sessionUnreadCount } from "../../m/sidebar/unread";
 import { loadWorkingOnly, onlyWorking, saveWorkingOnly, workingOrUnreadIds } from "../../m/sidebar/working-only";
@@ -44,6 +45,8 @@ import { BotAddMenu } from "./BotAddMenu";
 import { CreateFab } from "./CreateFab";
 import { FocusToggle } from "./FocusToggle";
 import { HoldsBar } from "./HoldsBar";
+import { LiveStrip } from "./LiveStrip";
+import { collectLiveItems } from "./live-strip-model";
 import { MobileArchivedHead } from "./MobileArchivedHead";
 import { PinnedRoster } from "./PinnedRoster";
 import { ProjectAddMenu } from "./ProjectAddMenu";
@@ -157,6 +160,8 @@ export function Sidebar(props: {
     const ids = workingIds();
     return ids !== null && shownPins().some((session) => ids.has(session.id));
   };
+  /** File drop session (always addressable from the desktop footer even if pinned or filtered). */
+  const fileDropAny = () => snapshot().sessions.find(isFileDropSession) ?? null;
   const fileDrop = () => (showBots() ? listed().fileDrop : null);
   const botRows = () => (showBots() ? listed().bots : []);
   /** A pinned session has no row to type in: while it is being renamed it stands under its directory again. */
@@ -168,15 +173,32 @@ export function Sidebar(props: {
   };
   const nothingWorking = () => workingIds() !== null && !fileDrop() && botRows().length === 0 && projectGroups().length === 0;
   /** No conversation at all yet, unfiltered: the list says how to start one instead of bare headers. */
-  const rosterEmpty = () => showBots() && workingIds() === null && !fileDrop() && botRows().length === 0 && projectGroups().length === 0 && shownPins().length === 0;
+  const rosterEmpty = () =>
+    showBots() &&
+    workingIds() === null &&
+    (phone() ? !fileDrop() : true) &&
+    botRows().length === 0 &&
+    projectGroups().length === 0 &&
+    shownPins().length === 0;
   /** A phone's projects page with no project session yet says how to start one. */
   const projectsEmpty = () => !showBots() && workingIds() === null && projectGroups().length === 0 && shownPins().length === 0;
   const archivedSessions = () => snapshot().sessions.filter((session) => isSessionArchived(session, botsById()));
 
-  /** Which directories of the 「项目」 section are open: every one until you fold it. */
-  const openDirs = signal<Record<string, boolean>>({});
-  const dirOpen = (dir: string) => openDirs()[dir] ?? true;
-  const toggleDir = (dir: string) => openDirs.set({ ...openDirs(), [dir]: !dirOpen(dir) });
+  /** Folded directories and top-level sections, persisted so only explicitly folded ones stay shut. */
+  const foldedDirs = signal<Record<string, boolean>>(loadFoldedDirs());
+  const dirOpen = (dir: string) => !foldedDirs()[dir];
+  const toggleDir = (dir: string) => {
+    const next = { ...foldedDirs(), [dir]: dirOpen(dir) };
+    foldedDirs.set(next);
+    saveFoldedDirs(next);
+  };
+  const foldedSections = signal<Partial<Record<SidebarSectionKey, boolean>>>(loadFoldedSections());
+  const sectionOpen = (section: SidebarSectionKey) => !foldedSections()[section];
+  const toggleSection = (section: SidebarSectionKey) => {
+    const next = { ...foldedSections(), [section]: sectionOpen(section) };
+    foldedSections.set(next);
+    saveFoldedSections(next);
+  };
 
   /** The 「Bot」 section's +: a new Bot or a new group. */
   const botMenuOpen = signal(false);
@@ -292,6 +314,27 @@ export function Sidebar(props: {
     return botsById().get(peer)?.archived_at ? ` · ${t().top.archived}` : "";
   };
 
+  /** Active sessions mirrored at the top when unfiltered (waiting on you, running, elsewhere, unread file drop). */
+  const liveItems = computed(() => {
+    if (viewingArchived() || workingOnly()) return [];
+    return collectLiveItems({
+      bots: showBots() ? botRows() : [],
+      projects: showProjects() ? listed().project : [],
+      fileDrop: showBots() ? fileDropAny() : null,
+      statusOf,
+      projectStatusOf,
+      elsewhereOf,
+      unreadOf,
+    });
+  });
+
+  const botsLive = () =>
+    botRows().some((s) => {
+      const st = statusOf(s);
+      return isWorkingStatus(st.kind) || Boolean(elsewhereOf(s, st));
+    });
+  const projectsLive = () => projectGroups().some((g) => g.sessions.some((s) => isLiveRun(snapshot().agentRuns[s.id])));
+
   /** The rows, each the object it was while it says the same (the list builds a new one again). */
   const keepRows = createListRowKeeper();
   const rows = computed(() =>
@@ -306,6 +349,9 @@ export function Sidebar(props: {
       projectGroups: projectGroups(),
       filtered: workingIds() !== null,
       isOpen: dirOpen,
+      isSectionOpen: sectionOpen,
+      botsLive: botsLive(),
+      projectsLive: projectsLive(),
       isLive: (group) => group.sessions.some((row) => isLiveRun(snapshot().agentRuns[row.id])),
       renamingSessionId: props.renamingSessionId ?? null,
       nothingWorking: nothingWorking(),
@@ -356,6 +402,7 @@ export function Sidebar(props: {
       }
     },
     sectionMenuOpen: (section) => (section === "bots" ? botMenuOpen() : projectMenuOpen()),
+    toggleSection,
     toggleDir,
     onDirAdd: (group: ProjectDirGroup, anchor) => {
       const again = dirMenuOpen() && dirMenuFor()?.dir === group.dir && !dirMenuFor()?.point;
@@ -463,7 +510,7 @@ export function Sidebar(props: {
                           <View
                             testID="search-wrap"
                             onLayout={(e) => searchWidth.set(e.bounds.size.width)}
-                            class={`flex-row items-center shrink-0 ${phone() ? "gap-[10px] px-4 pb-2" : "gap-2 mx-3 mt-1 mb-[6px]"}`}
+                            class={`flex-row items-center shrink-0 ${phone() ? "gap-[10px] px-4 pb-2" : "gap-2 mx-2 mt-1 mb-[10px]"}`}
                             style={phone() ? { paddingTop: Math.max(8, safeArea().top) } : undefined}
                           >
                             <If when={phone()}>
@@ -483,16 +530,13 @@ export function Sidebar(props: {
                               class={`cursor-pointer select-none flex-1 min-w-0 flex-row items-center justify-between gap-[6px] border ${
                                 phone()
                                   ? "h-[38px] pl-[34px] pr-[14px] rounded-full bg-pane border-line active:bg-row-hover"
-                                  : // On the ground beside the cards a tinted well, not a field (`Sidebar.svelte` `.search:not(:focus)`): a
-                                    // share of the ink over whatever is under it, the window's glass too. As tall as the Svelte one
-                                    // (8 + 19.5 + 8 and its border).
-                                    "h-[37.5px] pl-8 pr-3 rounded-(--radius-md) bg-ink/5.5 border-transparent hover:bg-ink/8"
+                                  : "h-[30px] pl-[28px] pr-2 rounded-(--radius-control) bg-ink/5.5 border-transparent hover:bg-ink/8"
                               }`}
                             >
-                              <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[10px]"}`}>
-                                <Icon name="search" class={SIDE_MUTED_LIGHT_TINT} />
+                              <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[9px]"}`}>
+                                <Icon name="search" size={phone() ? 16 : 14} class={SIDE_MUTED_LIGHT_TINT} />
                               </View>
-                              <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[13px]"}`} style={fold?.text}>{t().sidebar.searchShort}</Text>
+                              <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[12.5px]"}`} style={fold?.text}>{t().sidebar.searchShort}</Text>
                               <If when={!kbdHidden()}>
                                 <View accessible={false} class="shrink-0 px-1 py-[1px] border border-line rounded-(--radius-xs)" style={fold?.text}>
                                   <Text class={`text-[10px] ${SIDE_MUTED_TEXT}`}>{searchShortcutLabel()}</Text>
@@ -537,6 +581,16 @@ export function Sidebar(props: {
                             </View>
                           </If>
                           <HoldsBar holds={myHolds()} label={labelOf} disabled={runtime.connection !== "connected"} onLift={(hold) => runtime.liftHold(hold.id)} />
+                          <LiveStrip
+                            items={liveItems()}
+                            selectedId={runtime.selectedId}
+                            contextMenuSessionId={props.contextMenuSessionId}
+                            botsById={botsById()}
+                            titleOf={titleOf}
+                            onSelect={(session) => void runtime.selectSession(session.id)}
+                            onOpenContextMenu={(at, session) => props.onOpenContextMenu(at, session)}
+                            onDragSession={props.onDragSession}
+                          />
                         </>
                       }
                     >
@@ -558,6 +612,10 @@ export function Sidebar(props: {
             workspaceOpen={props.workspaceOpen}
             workspacePath={snapshot().settings.workspace_path}
             onToggleWorkspace={props.onToggleWorkspace}
+            fileDropActive={Boolean(fileDropAny() && runtime.selectedId === fileDropAny()!.id)}
+            fileDropUnread={fileDropAny() ? unreadOf(fileDropAny()!) : 0}
+            onOpenFileDrop={fileDropAny() ? () => void runtime.selectSession(fileDropAny()!.id) : undefined}
+            onFileDropContextMenu={fileDropAny() ? (at) => props.onOpenContextMenu(at, fileDropAny()!) : undefined}
             onOpenSettings={props.onOpenSettings}
             toolsMenuOpen={props.toolsMenuOpen}
             onToolsMenuOpenChange={props.onToolsMenuOpenChange}

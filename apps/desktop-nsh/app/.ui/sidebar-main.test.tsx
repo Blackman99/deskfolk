@@ -1,5 +1,6 @@
 /** The full session list on the runtime's own conversations: sections, the + menus, projects by directory, pins, rename, the working filter, the archived list, holds and tools. */
 import { expect, test } from "nsh/test";
+import { FILE_DROP_SESSION_ID } from "@real-bot/protocol";
 import { copyFor } from "../src/m/copy";
 import { openStory, seeded } from "./fixture";
 
@@ -218,10 +219,35 @@ test("the footer's tools menu opens, and Roles replaces the list with its page",
   await app.waitUntil(() => logged(app, "settings"));
 });
 
-test("the footer's workspace and the focus switch act", async () => {
+test("the footer's workspace, file drop and the focus switch act", async () => {
   const app = await open();
   await app.press("id:foot-workspace");
   await app.waitUntil(() => logged(app, "workspace"));
+  expect(app.shows("id:foot-file-drop")).toBe(true);
+  await app.press("id:foot-file-drop");
+  await app.waitUntil(() => stateText(app).includes(`selected:${FILE_DROP_SESSION_ID}`));
   await app.press("id:focus-toggle");
   await app.press("id:focus-toggle");
+});
+
+test("live strip mirrors working sessions without moving them, and top-level sections fold and unfold", async () => {
+  const app = await open();
+  try {
+    expect(app.shows("id:live-strip")).toBe(false);
+    await app.press("id:toggle-work");
+    await app.waitFor(`id:live-${seeded.group}`);
+    expect(app.shows(`id:live-${seeded.group} >> text:周报小组`)).toBe(true);
+    await app.press(`id:live-${seeded.group}`);
+    await app.waitUntil(() => stateText(app).includes(`selected:${seeded.group}`));
+    // Folding Bots hides its rows and shows the live indicator on the heading.
+    await app.press("id:section-toggle:bots");
+    await app.waitFor(`id:session-${seeded.group}`, { state: "gone" });
+    expect(app.shows("id:section-live:bots")).toBe(true);
+    await app.press("id:section-toggle:bots");
+    await app.waitFor(`id:session-${seeded.group}`);
+    await app.press("id:toggle-work");
+    await app.waitFor("id:live-strip", { state: "gone" });
+  } finally {
+    if (app.shows("id:live-strip")) await app.press("id:toggle-work").catch(() => {});
+  }
 });
