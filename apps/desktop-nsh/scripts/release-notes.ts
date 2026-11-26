@@ -26,15 +26,26 @@ import { fileURLToPath } from "node:url";
  * AppImage. The note says what ships where, because someone on another platform (Linux on ARM,
  * say) finds no package and should know why.
  */
-const NOTARIZED_NOTE = `---
+const WINDOWS_SIGNED_NOTE =
+  "The Windows installer and binaries are signed via SignPath Foundation (free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)). It installs over an earlier Deskfolk, conversations and settings included.";
+
+const WINDOWS_UNSIGNED_NOTE =
+  "The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). It installs over an earlier Deskfolk, conversations and settings included.";
+
+function signingNote(notarized: boolean, windowsSigned: boolean): string {
+  if (notarized) {
+    return `---
 
 The macOS \`.dmg\` builds are signed with Developer ID and notarized by Apple: they open with a double-click. The app is the native one (no web view); on the Mac it needs macOS 14 or later.
 
-The Windows installer is not signed yet: SmartScreen warns about an unknown publisher (More info → Run anyway). It installs over an earlier Deskfolk, conversations and settings included.
+${windowsSigned ? WINDOWS_SIGNED_NOTE : WINDOWS_UNSIGNED_NOTE}
 
 Linux (x86_64) gets a \`.deb\` and an \`.AppImage\`. There is no package for other platforms. See CHANGELOG.md and ROADMAP.md.`;
-
-const UNSIGNED_NOTE = `---
+  }
+  const windowsLine = windowsSigned
+    ? `${WINDOWS_SIGNED_NOTE} Linux (x86_64) gets a \`.deb\` and an \`.AppImage\`.`
+    : "The Windows installer is not signed either. Linux (x86_64) gets a `.deb` and an `.AppImage`.";
+  return `---
 
 Unsigned macOS snapshot. This is not a supported signed installer.
 
@@ -45,7 +56,8 @@ pnpm install
 pnpm --filter @real-bot/desktop-nsh dev
 \`\`\`
 
-The Windows installer is not signed either. Linux (x86_64) gets a \`.deb\` and an \`.AppImage\`. There is no package for other platforms. See CHANGELOG.md and ROADMAP.md.`;
+${windowsLine} There is no package for other platforms. See CHANGELOG.md and ROADMAP.md.`;
+}
 
 /**
  * The lines under `## <version>`, up to the next `## `. The heading itself stays out: the release
@@ -97,13 +109,14 @@ export function releaseBody(
   changelogZh: string | null,
   version: string,
   notarized = false,
+  windowsSigned = false,
 ): string {
   const en = escapeMentions(changelogSection(changelogEn, version));
   if (!en) return "";
   const zh = changelogZh ? escapeMentions(changelogSection(changelogZh, version)) : "";
   const sections: Section[] = [{ lang: "en", text: en, dropped: 0 }];
   if (zh) sections.push({ lang: "zh", text: zh, dropped: 0 });
-  const note = notarized ? NOTARIZED_NOTE : UNSIGNED_NOTE;
+  const note = signingNote(notarized, windowsSigned);
   let body = assemble(sections, note);
   // A long cycle can outgrow what GitHub accepts. Give up the oldest entries — the bottom of a
   // section — of whichever language is longest, and say how many are only in the changelog.
@@ -163,6 +176,7 @@ if (import.meta.main) {
     readIfPresent(join(root, "CHANGELOG.zh.md")),
     version,
     process.env.MACOS_NOTARIZED === "true",
+    process.env.WINDOWS_SIGNED === "true",
   );
   if (!body) {
     // Releasing without rolling the changelog would ship an empty update card, so stop here

@@ -66,4 +66,4 @@
   <sub>On your phone too: the conversations, the answer, the job's checks, the film</sub>
 </p>
 
-<p align="center"><sub><a href="docs/overview.md">About and install</a> · <a href="ROADMAP.en.md">Roadmap</a> · <a href="docs/development.md">Development</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a> · MIT</sub></p>
+<p align="center"><sub><a href="docs/overview.md">About and install</a> · <a href="ROADMAP.en.md">Roadmap</a> · <a href="docs/development.md">Development</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="SECURITY.md">Security</a> · <a href="docs/code-signing-policy.md">Code signing</a> · MIT</sub></p>

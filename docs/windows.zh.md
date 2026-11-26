@@ -8,7 +8,7 @@ Windows 版是刚起步的实验性预览：能装、能跑，但有几样功能
 
 1. 从[最新 Release](https://github.com/Blackman99/deskfolk/releases/latest)下载 `Deskfolk_<版本>_x64-setup.exe`（只有 x64 安装包）。
 2. 运行它。安装包按当前用户安装，不要管理员权限。
-3. 安装包没有签名，SmartScreen 会提示未知发布者：点「更多信息」→「仍要运行」。
+3. 在 [SignPath Foundation](code-signing-policy.md) 代码签名生效之前，安装包未签名，SmartScreen 会提示未知发布者：点「更多信息」→「仍要运行」。具体某个版本是否已签名以该版本的 Release 说明为准。
 
 从 0.5.0 起是原生版（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)）：没有网页视图，不再需要 WebView2 运行时。安装包装在之前的 Deskfolk 所在的同一个文件夹（`%LOCALAPPDATA%\Deskfolk`）上，开始菜单和桌面的快捷方式照旧，数据目录不动。
 

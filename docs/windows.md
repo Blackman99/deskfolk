@@ -8,7 +8,7 @@ The Windows build is a fresh, experimental preview: it installs and runs, but a 
 
 1. Download `Deskfolk_<version>_x64-setup.exe` from the [latest release](https://github.com/Blackman99/deskfolk/releases/latest) (x64 only).
 2. Run it. It installs for the current user and needs no administrator rights.
-3. The installer is not signed, so SmartScreen warns about an unknown publisher: choose **More info** → **Run anyway**.
+3. Until [SignPath Foundation](code-signing-policy.md) signing is active on a release, SmartScreen warns about an unknown publisher: choose **More info** → **Run anyway**. Check the release notes to see whether a given release is signed.
 
 From 0.5.0 the app is the native one ([ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)): no web view, so it no longer needs the WebView2 runtime. Its installer goes over an earlier Deskfolk in the same folder (`%LOCALAPPDATA%\Deskfolk`), keeping its Start menu and desktop shortcuts, and leaves the data folder alone.
 

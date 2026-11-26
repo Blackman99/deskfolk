@@ -19,7 +19,9 @@ import {
   productVersion,
   RELEASE_BUNDLE_ID,
   setupName,
+  WINDOWS_SIGNABLE_BINARIES,
   windowsFileVersion,
+  windowsPackageMode,
 } from "./package";
 
 /** The names every Deskfolk since 0.1 looks for (`updates.rs` `arch_tag_for`, `pick_dmg`). */
@@ -34,6 +36,28 @@ test("a release image is named the way the update check matches it", () => {
 test("the installer's file version is four numbers, a pre-release tag dropped", () => {
   expect(windowsFileVersion("0.5.0")).toBe("0.5.0.0");
   expect(windowsFileVersion("0.6.0-rc.2")).toBe("0.6.0.0");
+});
+
+test("Windows packaging modes separate staging, installer packing and smoke testing for external signing", () => {
+  expect(WINDOWS_SIGNABLE_BINARIES).toEqual([
+    "Deskfolk.exe",
+    "native/real-bot-daemon.exe",
+    "native/real-bot-pty.exe",
+    "native/real-bot-rtc.exe",
+  ]);
+  expect(windowsPackageMode(["bun", "package.ts", "--release"])).toEqual({ kind: "full" });
+  expect(windowsPackageMode(["bun", "package.ts", "--release", "--stage-only"])).toEqual({ kind: "stage-only" });
+  expect(windowsPackageMode(["bun", "package.ts", "--release", "--from-stage", "/tmp/stage"])).toEqual({
+    kind: "from-stage",
+    stageDir: "/tmp/stage",
+  });
+  expect(windowsPackageMode(["bun", "package.ts", "--release", "--smoke-only", "/tmp/setup.exe"])).toEqual({
+    kind: "smoke-only",
+    setupPath: "/tmp/setup.exe",
+  });
+  expect(() => windowsPackageMode(["bun", "package.ts", "--stage-only", "--from-stage", "/tmp/stage"])).toThrow();
+  expect(() => windowsPackageMode(["bun", "package.ts", "--from-stage"])).toThrow();
+  expect(() => windowsPackageMode(["bun", "package.ts", "--smoke-only", "--out", "/tmp"])).toThrow();
 });
 
 /** The installer checks `CFBundleIdentifier` and `CFBundleShortVersionString` (`verify_bundle`). */

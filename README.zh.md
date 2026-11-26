@@ -66,4 +66,4 @@
   <sub>手机上也一样：会话、回答、这件事的检查、成片</sub>
 </p>
 
-<p align="center"><sub><a href="docs/overview.zh.md">介绍与安装</a> · <a href="ROADMAP.md">路线图</a> · <a href="docs/development.md">开发说明</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="SECURITY.md">安全说明</a> · MIT</sub></p>
+<p align="center"><sub><a href="docs/overview.zh.md">介绍与安装</a> · <a href="ROADMAP.md">路线图</a> · <a href="docs/development.md">开发说明</a> · <a href="CONTRIBUTING.md">参与贡献</a> · <a href="SECURITY.md">安全说明</a> · <a href="docs/code-signing-policy.md">代码签名</a> · MIT</sub></p>

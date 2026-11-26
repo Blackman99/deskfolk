@@ -65,4 +65,4 @@ G-pack is **not run / blocked**, not passed: a buildable qualified sealed runtim
 
 ## Status
 
-From **0.1.0-rc.16**, GitHub Releases ship macOS builds signed with Developer ID and notarized by Apple. `v0.1.0-rc.1` through `v0.1.0-rc.15` were ad-hoc signed and not notarized. The Windows installer is still unsigned.
+From **0.1.0-rc.16**, GitHub Releases ship macOS builds signed with Developer ID and notarized by Apple. `v0.1.0-rc.1` through `v0.1.0-rc.15` were ad-hoc signed and not notarized. For Windows code signing via SignPath Foundation (and the project-wide Code Signing Policy), see [`docs/code-signing-policy.md`](code-signing-policy.md).

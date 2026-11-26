@@ -255,12 +255,16 @@ jobs:
           path: ${{ runner.temp }}/deskfolk/*.dmg
           if-no-files-found: error
 
-  # The Windows installer, built and checked on Windows: NSH builds each desktop on its own OS. It is
-  # not signed (no WINDOWS_SIGN_COMMAND is configured), as 0.4.0's installers were not:
-  # SmartScreen warns about an unknown publisher.
+  # The Windows installer, built and checked on Windows: NSH builds each desktop on its own OS.
+  # On a `v*` tag with SignPath Foundation secrets configured (`SIGNPATH_API_TOKEN` and
+  # `SIGNPATH_ORGANIZATION_ID`), inner binaries and the NSIS installer are signed via SignPath
+  # before smoke-testing (see docs/code-signing-policy.md). Otherwise the installer stays unsigned
+  # and SmartScreen warns about an unknown publisher.
   package-windows:
     name: Package the Windows installer
     needs: [verify]
+    outputs:
+      signed: ${{ steps.signpath.outputs.enabled }}
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -320,15 +324,171 @@ jobs:
           gh release download v0.4.0 --repo "$GITHUB_REPOSITORY" --pattern '*_x64-setup.exe' --dir "$RUNNER_TEMP/previous/tauri" || true
           ls -la "$RUNNER_TEMP"/previous/*
 
+      - name: SignPath signing (when configured)
+        id: signpath
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]] && [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "SignPath Windows code signing is enabled for ${GITHUB_REF_NAME}."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "SignPath Windows code signing is not active (requires a v* tag and SIGNPATH_API_TOKEN + SIGNPATH_ORGANIZATION_ID secrets)."
+          fi
+
       # Installed silently over each of them in turn (each in a folder of its own choosing), launched
       # at login's way with its own daemon, launched again, closed, uninstalled (`--smoke`).
-      - name: Package and check the installer
+      - name: Package and check the installer (unsigned)
+        if: steps.signpath.outputs.enabled != 'true'
         run: |
           upgrade=()
           for previous in "$RUNNER_TEMP"/previous/*/*_x64-setup.exe; do
             [ -f "$previous" ] && upgrade+=(--upgrade-from "$previous")
           done
           bun apps/desktop-nsh/scripts/package.ts --release --smoke "${upgrade[@]}" --out "$RUNNER_TEMP/deskfolk"
+
+      - name: Stage Windows binaries for SignPath
+        if: steps.signpath.outputs.enabled == 'true'
+        run: |
+          bun apps/desktop-nsh/scripts/package.ts --release --stage-only --out "$RUNNER_TEMP/deskfolk"
+          rm -rf "$RUNNER_TEMP/signpath-binaries-in"
+          mkdir -p "$RUNNER_TEMP/signpath-binaries-in/native"
+          cp "$RUNNER_TEMP/deskfolk/stage/Deskfolk.exe" "$RUNNER_TEMP/signpath-binaries-in/Deskfolk.exe"
+          for name in real-bot-daemon.exe real-bot-pty.exe real-bot-rtc.exe; do
+            cp "$RUNNER_TEMP/deskfolk/stage/native/$name" "$RUNNER_TEMP/signpath-binaries-in/native/$name"
+          done
+
+      # Deliberately not prefixed with `deskfolk-` so publish's `download-artifact` (`deskfolk-*`)
+      # never downloads intermediate unsigned artifacts.
+      - name: Upload unsigned Windows binaries for SignPath
+        id: upload-unsigned-binaries
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signpath-unsigned-windows-binaries
+          path: ${{ runner.temp }}/signpath-binaries-in
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign Windows binaries via SignPath
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'deskfolk' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: windows-binaries
+          github-artifact-id: ${{ steps.upload-unsigned-binaries.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath-binaries-out
+
+      - name: Apply and verify signed Windows binaries
+        if: steps.signpath.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $outDir = Join-Path $env:RUNNER_TEMP 'signpath-binaries-out'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'signpath-binaries-unpacked'
+          if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
+          New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
+
+          $zips = Get-ChildItem -Path $outDir -Filter '*.zip' -File
+          if ($zips.Count -gt 0) {
+            Expand-Archive -Path $zips[0].FullName -DestinationPath $unpacked -Force
+          } else {
+            Copy-Item -Path (Join-Path $outDir '*') -Destination $unpacked -Recurse -Force
+          }
+
+          $stage = Join-Path $env:RUNNER_TEMP 'deskfolk/stage'
+          $binaries = @(
+            'Deskfolk.exe',
+            'native/real-bot-daemon.exe',
+            'native/real-bot-pty.exe',
+            'native/real-bot-rtc.exe'
+          )
+          foreach ($rel in $binaries) {
+            $src = Join-Path $unpacked $rel
+            $dst = Join-Path $stage $rel
+            if (-not (Test-Path $src)) { throw "Signed binary missing: $src" }
+            Copy-Item -Path $src -Destination $dst -Force
+            $sig = Get-AuthenticodeSignature -LiteralPath $dst
+            if ($sig.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature on ${rel}: $($sig.Status) ($($sig.StatusMessage))"
+            }
+            Write-Host "Verified signature on ${rel}: $($sig.SignerCertificate.Subject)"
+          }
+
+      - name: Build Windows installer from signed stage
+        if: steps.signpath.outputs.enabled == 'true'
+        run: |
+          bun apps/desktop-nsh/scripts/package.ts --release --from-stage "$RUNNER_TEMP/deskfolk/stage" --out "$RUNNER_TEMP/deskfolk"
+
+      - name: Upload unsigned Windows installer for SignPath
+        id: upload-unsigned-installer
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: signpath-unsigned-windows-installer
+          path: ${{ runner.temp }}/deskfolk/*-setup.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign Windows installer via SignPath
+        if: steps.signpath.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'deskfolk' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: windows-installer
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath-installer-out
+
+      - name: Apply and verify signed Windows installer
+        if: steps.signpath.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $outDir = Join-Path $env:RUNNER_TEMP 'signpath-installer-out'
+          $unpacked = Join-Path $env:RUNNER_TEMP 'signpath-installer-unpacked'
+          if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
+          New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
+
+          $zips = Get-ChildItem -Path $outDir -Filter '*.zip' -File
+          if ($zips.Count -gt 0) {
+            Expand-Archive -Path $zips[0].FullName -DestinationPath $unpacked -Force
+          } else {
+            Copy-Item -Path (Join-Path $outDir '*') -Destination $unpacked -Recurse -Force
+          }
+
+          $signed = Get-ChildItem -Path $unpacked -Filter '*-setup.exe' -File -Recurse | Select-Object -First 1
+          if (-not $signed) { throw "Signed installer missing in $unpacked" }
+          $dst = Join-Path (Join-Path $env:RUNNER_TEMP 'deskfolk') $signed.Name
+          Copy-Item -Path $signed.FullName -Destination $dst -Force
+          $sig = Get-AuthenticodeSignature -LiteralPath $dst
+          if ($sig.Status -ne 'Valid') {
+            throw "Invalid Authenticode signature on $($signed.Name): $($sig.Status) ($($sig.StatusMessage))"
+          }
+          Write-Host "Verified signature on $($signed.Name): $($sig.SignerCertificate.Subject)"
+
+      - name: Check the signed Windows installer
+        if: steps.signpath.outputs.enabled == 'true'
+        run: |
+          setup=( "$RUNNER_TEMP"/deskfolk/*-setup.exe )
+          if [ ! -f "${setup[0]}" ]; then
+            echo "Signed installer missing" >&2
+            exit 1
+          fi
+          upgrade=()
+          for previous in "$RUNNER_TEMP"/previous/*/*_x64-setup.exe; do
+            [ -f "$previous" ] && upgrade+=(--upgrade-from "$previous")
+          done
+          bun apps/desktop-nsh/scripts/package.ts --release --smoke-only "${setup[0]}" "${upgrade[@]}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -446,10 +606,11 @@ jobs:
 
       # The body is this version's CHANGELOG section: the app renders it in the About card when it
       # finds an update, so it has to say what changed rather than point at the file.
-      # MACOS_NOTARIZED picks the signing note under it.
+      # MACOS_NOTARIZED and WINDOWS_SIGNED pick the signing note under it.
       - name: Release notes from CHANGELOG
         env:
           MACOS_NOTARIZED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_ID != '' && secrets.APPLE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+          WINDOWS_SIGNED: ${{ needs.package-windows.outputs.signed == 'true' }}
         run: bun apps/desktop-nsh/scripts/release-notes.ts > "$RUNNER_TEMP/notes.md"
 
       - name: Create the release with the images and the installers

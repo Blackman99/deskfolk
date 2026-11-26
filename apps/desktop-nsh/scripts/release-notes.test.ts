@@ -85,8 +85,23 @@ test("a notarized release says so instead of the unsigned note, names the unsign
   expect(body).toContain("SmartScreen");
   expect(body).toContain("Linux (x86_64) gets a `.deb` and an `.AppImage`");
   expect(body).not.toContain("Unsigned macOS snapshot");
+  expect(body).not.toContain("SignPath");
   expect(body.indexOf("- 新的一条。")).toBeLessThan(body.indexOf("notarized by Apple"));
   expect(releaseBody(CHANGELOG, null, "0.2.0")).not.toContain("notarized by Apple");
+});
+
+/** SignPath attribution appears only when release.yml actually signs Windows builds (WINDOWS_SIGNED). */
+test("a SignPath-signed Windows release replaces the SmartScreen warning with SignPath attribution", () => {
+  const notarizedAndSigned = releaseBody(CHANGELOG, null, "0.2.0", true, true);
+  expect(notarizedAndSigned).toContain("notarized by Apple");
+  expect(notarizedAndSigned).toContain("SignPath Foundation");
+  expect(notarizedAndSigned).toContain("free code signing provided by [SignPath.io](https://signpath.io/)");
+  expect(notarizedAndSigned).not.toContain("SmartScreen");
+
+  const unsignedMacSignedWin = releaseBody(CHANGELOG, null, "0.2.0", false, true);
+  expect(unsignedMacSignedWin).toContain("Unsigned macOS snapshot");
+  expect(unsignedMacSignedWin).toContain("SignPath Foundation");
+  expect(unsignedMacSignedWin).not.toContain("Windows installer is not signed either");
 });
 
 /** One release, one body, two locales: the card picks, so the body has to carry both. */

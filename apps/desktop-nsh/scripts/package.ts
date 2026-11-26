@@ -18,6 +18,7 @@
  *   bun apps/desktop-nsh/scripts/package.ts [--release] [--target aarch64-apple-darwin|x86_64-apple-darwin]
  *                                           [--sign developer-id|adhoc] [--notarize <keychain profile>|env]
  *                                           [--native-from <dir>] [--out <dir>] [--smoke] [--upgrade-from <setup.exe>]
+ *                                           [--stage-only | --from-stage <dir> | --smoke-only <setup.exe>]
  *                                           [--measure <runs>]
  *
  * `--sign developer-id` signs with `APPLE_SIGNING_IDENTITY`, or this keychain's "Developer ID
@@ -40,6 +41,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { windowsSignArgv } from "./build-native";
 import { APP_ICON_FILE, DEV_APP_NAME, DEV_BUNDLE_ID, placeAppIcon } from "./dev-instance";
 import { minimumMacOS } from "./native-package";
 import { cargoPath, nshCli } from "./nsh-cli";
@@ -63,6 +65,47 @@ export function dmgName(version: string, triple: string): string {
 /** The Windows installer's name, the one the update check matches (`updates.rs` `pick_windows_installer`). */
 export function setupName(version: string): string {
   return `Deskfolk_${version}_x64-setup.exe`;
+}
+
+/** Relative paths under the Windows stage directory that carry Authenticode signatures. */
+export const WINDOWS_SIGNABLE_BINARIES = [
+  "Deskfolk.exe",
+  "native/real-bot-daemon.exe",
+  "native/real-bot-pty.exe",
+  "native/real-bot-rtc.exe",
+] as const;
+
+export type WindowsPackageMode =
+  | { kind: "full" }
+  | { kind: "stage-only" }
+  | { kind: "from-stage"; stageDir: string }
+  | { kind: "smoke-only"; setupPath: string };
+
+/**
+ * Selects which phase of Windows release packaging to run: building the staged tree (`--stage-only`),
+ * wrapping a (signed) stage into the NSIS installer (`--from-stage <dir>`), running smoke tests on
+ * an already-built/signed installer (`--smoke-only <setup.exe>`), or all of them in one pass.
+ */
+export function windowsPackageMode(argv: string[]): WindowsPackageMode {
+  const stageOnly = argv.includes("--stage-only");
+  const fromStageIndex = argv.indexOf("--from-stage");
+  const smokeOnlyIndex = argv.indexOf("--smoke-only");
+  const selected = [stageOnly, fromStageIndex !== -1, smokeOnlyIndex !== -1].filter(Boolean).length;
+  if (selected > 1) {
+    throw new Error("--stage-only, --from-stage and --smoke-only are mutually exclusive");
+  }
+  if (stageOnly) return { kind: "stage-only" };
+  if (fromStageIndex !== -1) {
+    const stageDir = argv[fromStageIndex + 1]?.trim();
+    if (!stageDir || stageDir.startsWith("--")) throw new Error("--from-stage needs a directory");
+    return { kind: "from-stage", stageDir };
+  }
+  if (smokeOnlyIndex !== -1) {
+    const setupPath = argv[smokeOnlyIndex + 1]?.trim();
+    if (!setupPath || setupPath.startsWith("--")) throw new Error("--smoke-only needs an installer path");
+    return { kind: "smoke-only", setupPath };
+  }
+  return { kind: "full" };
 }
 
 /** An installer's four-part version (`VIProductVersion`): the release's numbers, a pre-release tag dropped. */
@@ -435,14 +478,20 @@ function makensis(): string {
   throw new Error("no makensis: install NSIS (choco install nsis) or set MAKENSIS");
 }
 
+function signWindowsFile(file: string) {
+  const sign = process.env.REAL_BOT_WINDOWS_SIGN_COMMAND?.trim();
+  if (!sign) return;
+  const argv = windowsSignArgv(sign, file);
+  run(argv[0]!, argv.slice(1), {}, repo);
+}
+
 /**
- * Windows: `Deskfolk_<version>_x64-setup.exe` (scripts/installer.nsi), installing the shell as the
- * Tauri app's main program, the bundle in `app\` and the daemon with its helpers in `native\`.
+ * Builds the Windows staging tree (`stage/app`, `stage/native`, `stage/Deskfolk.exe`, `stage/icon.ico`)
+ * so an external signer such as SignPath can sign the inner `.exe` files before `makensis` packs them.
  */
-function packageReleaseWindows() {
+function stageReleaseWindows(out: string) {
   const triple = "x86_64-pc-windows-msvc";
   const version = productVersion(repo);
-  const out = resolve(arg("--out") ?? join(root, "build", "release-windows"));
   const stage = join(out, "stage");
   const nsh = nshCli({ build: true });
   const cargo = cargoPath();
@@ -469,7 +518,22 @@ function packageReleaseWindows() {
   cpSync(join(root, "target", "release", "deskfolk-nsh.exe"), join(stage, "Deskfolk.exe"));
   checkIdentity(join(stage, "Deskfolk.exe"));
   checkVersionInfo(join(stage, "Deskfolk.exe"), version);
+  signWindowsFile(join(stage, "Deskfolk.exe"));
   cpSync(join(repo, "apps/desktop-nsh/assets/icons/icon.ico"), join(stage, "icon.ico"));
+
+  if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `stage=${stage}\n`, { flag: "a" });
+  return { stage, version };
+}
+
+/**
+ * Packs a staged Windows tree into `Deskfolk_<version>_x64-setup.exe` (`scripts/installer.nsi`).
+ */
+function packWindowsInstaller(stage: string, out: string) {
+  const version = productVersion(repo);
+  for (const rel of ["app/bundle.nshc", "icon.ico", ...WINDOWS_SIGNABLE_BINARIES]) {
+    if (!existsSync(join(stage, rel))) throw new Error(`stage is missing ${rel}`);
+  }
+  mkdirSync(out, { recursive: true });
 
   step("the installer (makensis)");
   const setup = join(out, setupName(version));
@@ -480,9 +544,19 @@ function packageReleaseWindows() {
     `/DOUTFILE=${setup}`,
     join(root, "scripts", "installer.nsi"),
   ]);
+  signWindowsFile(setup);
   console.log(`${setup} ${size(setup)}`);
   if (process.env.GITHUB_OUTPUT) writeFileSync(process.env.GITHUB_OUTPUT, `setup=${setup}\n`, { flag: "a" });
   return { setup, version };
+}
+
+/**
+ * Windows: `Deskfolk_<version>_x64-setup.exe` (scripts/installer.nsi), installing the shell as the
+ * Tauri app's main program, the bundle in `app\` and the daemon with its helpers in `native\`.
+ */
+function packageReleaseWindows(out: string = resolve(arg("--out") ?? join(root, "build", "release-windows"))) {
+  const { stage } = stageReleaseWindows(out);
+  return packWindowsInstaller(stage, out);
 }
 
 /** A tool the Linux packaging needs: its path from the environment variable, or from `PATH`. */
@@ -1237,12 +1311,25 @@ async function measure(app: string, runs: number) {
 if (import.meta.main) {
   const release = process.argv.includes("--release");
   if (release && process.platform === "win32") {
-    const { setup } = packageReleaseWindows();
-    if (process.argv.includes("--smoke")) {
-      // Once over each earlier installer named (the latest release's, the last Tauri app's), or
-      // once on a machine with none.
-      const earlier = process.argv.flatMap((a, i) => (a === "--upgrade-from" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+    const mode = windowsPackageMode(process.argv);
+    const out = resolve(arg("--out") ?? join(root, "build", "release-windows"));
+    const earlier = process.argv.flatMap((a, i) => (a === "--upgrade-from" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+    if (mode.kind === "stage-only") {
+      stageReleaseWindows(out);
+    } else if (mode.kind === "smoke-only") {
+      const setup = resolve(mode.setupPath);
+      if (!existsSync(setup)) throw new Error(`--smoke-only: ${setup} does not exist`);
       for (const from of earlier.length ? earlier : [undefined]) await smokeWindows(setup, from);
+    } else {
+      const { setup } =
+        mode.kind === "from-stage"
+          ? packWindowsInstaller(resolve(mode.stageDir), out)
+          : packageReleaseWindows(out);
+      if (process.argv.includes("--smoke")) {
+        // Once over each earlier installer named (the latest release's, the last Tauri app's), or
+        // once on a machine with none.
+        for (const from of earlier.length ? earlier : [undefined]) await smokeWindows(setup, from);
+      }
     }
   } else if (release && process.platform === "linux") {
     const { deb, appImage } = packageReleaseLinux();

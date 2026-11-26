@@ -77,6 +77,10 @@ SQLite、附件与工具结果没有应用层加密承诺；依赖本机账户�
 - 日志与截图也可能包含密钥、账号、内部 URL 或私人路径，公开前逐项脱敏。
 - 保留贡献和第三方代码所需的授权声明。
 
+## 发布签名 / Code signing
+
+发布包的代码签名策略（macOS Developer ID 公证与 Windows SignPath Foundation 开源代码签名）和隐私声明见 [docs/code-signing-policy.md](docs/code-signing-policy.md)。
+
 ## English summary
 
 Deskfolk is WIP for local experimentation on macOS (Windows and Linux are experimental previews; Linux has no remote access yet), with no stable-version security support or response-time guarantee. Report vulnerabilities through GitHub **Security → Report a vulnerability** when enabled. If unavailable, open an Issue requesting a private contact channel **without disclosing vulnerability details**. Maintainers must enable private reporting before public release; no dedicated security email is currently designated.
