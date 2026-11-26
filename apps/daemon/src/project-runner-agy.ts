@@ -22,7 +22,7 @@ import { acpContextUsage, carryContextLimit } from "./agents/agent-context";
 import { initializeAgy } from "./agents/agy-acp";
 import { resolveAgent, type ResolvedAgent } from "./agents/runtime";
 import { inMemoryDir, type AgentDecision } from "./claude-code/policy";
-import { AGENT_CREDENTIALS_REFUSAL, agentRecordDirs } from "./engine/agent/credentials";
+import { AGENT_CREDENTIALS_REFUSAL, AGENT_KEYCHAIN_REFUSAL, agentRecordDirs } from "./engine/agent/credentials";
 import { READ_ONLY_REFUSAL } from "./permission-gate";
 import { placeOfCall } from "./claude-code/tool-place";
 import { classifyAcpError, offers, pathsOf, textOfContent, textOfRaw, usageOf } from "./engine/agent/drivers/acp";
@@ -147,6 +147,9 @@ export function overstepLine(what: string, why: string, en: boolean): string {
 function stopReason(decision: AgentDecision, en: boolean): string {
   if (decision.kind !== "deny") return en ? "the permission mode asks first" : "权限模式要求先问你";
   if (decision.reason === AGENT_CREDENTIALS_REFUSAL) return en ? "your agents' own settings and credentials are off limits" : "本机 Agent 自己的设置和凭据碰不得";
+  if (decision.reason === AGENT_KEYCHAIN_REFUSAL) {
+    return en ? "the keychain items that sign your agents in and hold this app's keys are off limits" : "钥匙串里 Agent 的登录和应用自己的密钥碰不得";
+  }
   if (decision.reason === READ_ONLY_REFUSAL) return en ? "the permission mode is read-only" : "权限模式是只读";
   return decision.reason;
 }
@@ -437,7 +440,8 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
     let replaying = false;
 
     const brain = () => (live.acpSession ? [agyBrainDir(live.acpSession, home)] : []);
-    const decide = (tool: Tool) => {
+    /** What the rules say of a call: one it asks about before making it, or (`ran`) one it reports already under way. */
+    const decide = (tool: Tool, ran: boolean) => {
       const action = agyActionOf(tool, project.dir);
       const own = brain();
       // The consult tool of a session of yours always passes; a consultant only looks, so no MCP tool passes for it (ADR 0116).
@@ -453,8 +457,9 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (live.mode === "plan" && action.appName === "write_file") {
         return { action, decision: { kind: "deny" as const, reason: en ? "plan mode is on: nothing changes before the plan is approved" : "计划模式开着：计划批准前什么都不改" } };
       }
-      // It cannot be asked first, so the agents' folders are judged file by file (ADR 0111 addendum 2026-11-24).
-      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own, readableDirs: records, ownAgentDirs: [agyHomeDir(home)] }) };
+      // It cannot be asked first, so the agents' folders are judged file by file (ADR 0111 addendum 2026-11-24) and the
+      // keychain item by item; a call already under way is not stopped over advice on how to make it (addendum 2026-11-26).
+      return { action, decision: decideAction(action, { mode: "work", workspace: project.dir, configDirs, permission, openDirs: own, readableDirs: records, ownAgentDirs: [agyHomeDir(home)], ran }) };
     };
 
     const ended = (tool: Tool, ok: boolean, exitCode?: number | null) => {
@@ -527,7 +532,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       // Under way and never asked about: checked now, by the rules a question would have met.
       if (!tool.asked && !tool.checked && tool.status && tool.status !== "pending") {
         tool.checked = true;
-        const { action, decision } = decide(tool);
+        const { action, decision } = decide(tool, true);
         // Outside a prompt too: after a background command ended, agy may go on by itself.
         if (decision.kind !== "allow" && !overstep) {
           const what = action.appName === "shell" ? (action.command ?? tool.title) : `${tool.title || action.vendorTool}`;
@@ -600,7 +605,7 @@ export function createAgyProjectRunner(deps: AgyProjectDeps): ProjectRunner {
       if (method !== "session/request_permission") throw new Error(`${method} is not offered by Deskfolk`);
       const tool = noteTool(p.toolCall ?? {});
       tool.asked = true;
-      const { decision } = decide(tool);
+      const { decision } = decide(tool, false);
       const allow = decision.kind === "allow" || (decision.kind === "ask" && (await askYou(live, decision.approval)) === "allow");
       const pick = (p.options ?? []).find((option) => option.kind === (allow ? "allow_once" : "reject_once"))
         ?? (p.options ?? []).find((option) => option.kind?.startsWith(allow ? "allow" : "reject"));

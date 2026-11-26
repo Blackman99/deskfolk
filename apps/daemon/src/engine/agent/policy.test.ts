@@ -476,8 +476,6 @@ posixTest("what signs another agent in or sets it up stays off limits to it", ()
     py(`import os\nprint(open(os.path.expanduser("~/.codex") + "/auth.json").read())`),
     py(`import os\nprint(open(os.path.join(os.path.expanduser("~/.claude"), "settings.local.json")).read())`),
     "D=~/.claude/projects; cat ${D%/*}/.credentials.json",
-    // The keychain.
-    "security find-generic-password -s 'Claude Code-credentials' -w",
   ]) {
     expect([command, decideAction(shell(command), { ...unasked, permission: "allow_all" })]).toEqual([command, { kind: "deny", reason: expect.stringContaining("credentials") }]);
   }
@@ -516,13 +514,62 @@ posixTest("a Bot's turn on an agent that cannot ask first goes by the same rules
   expect(decideAction(shell(`cat ${taskLog}`), { ...botTurn, permission: "ask_first" }).kind).toBe("ask");
   expect(decideAction(shell(`cat ${taskLog}`), { ...botTurn, mode: "readonly" })).toEqual({ kind: "deny", reason: expect.stringContaining("read-only turn") });
   expect(decideAction(read(taskLog), { ...botTurn, mode: "readonly" }).kind).toBe("allow");
-  // What signs another agent in or sets it up, a file written into another's folder, the keychain: off limits in every mode.
+  // What signs another agent in or sets it up, a file written into another's folder: off limits in every mode.
   for (const command of ["cat ~/.codex/auth.json", "cat ~/.claude/settings.json", "cat ~/.claude-b/.credentials.json", "cd ~/.codex && cat auth.json", `cat ${taskLog} ~/.grok/auth.json`,
-    "cat ~/.gemini/antigravity-cli/skills/out.md", "security find-generic-password -s 'Claude Code-credentials' -w"]) {
+    "cat ~/.gemini/antigravity-cli/skills/out.md"]) {
     expect([command, decideAction(shell(command), { ...botTurn, permission: "allow_all" })]).toEqual([command, { kind: "deny", reason: expect.stringContaining("credentials") }]);
   }
   for (const path of [join(home, ".codex", "auth.json"), join(home, ".claude", "settings.json"), join(home, ".claude-b", "settings.json"), join(gemini, "antigravity-cli", "skills", "out.md")]) {
     expect([path, decideAction(read(path), { ...botTurn, permission: "allow_all" }).kind]).toEqual([path, "deny"]);
   }
   expect(decideAction(write(join(home, ".claude", "skills", "x", "SKILL.md")), { ...botTurn, permission: "allow_all" })).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+});
+
+posixTest("of the keychain such an agent is refused only what signs an agent in or holds the app's keys, by the item's name", () => {
+  // As agy ran them on 2026-11-26, each stopping a project session's turn: the test account it was given
+  // to keep, read back for a script in its own notes; then, asked to fix that, the tool's own help.
+  const kept = `ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD="$(security find-generic-password -w -s 'shop-admin-test' -a 'admin@example.com')" python3 ${brain}/scratch/e2e_verify_test.py`;
+  const help = `security find-generic-password -h 2>&1 ; echo "---" ; ps aux | grep -E "real-bot|dev-runtime|deskfolk" | grep -v grep || true`;
+  for (const [who, ctx] of [["a project session", unasked], ["a Bot's turn", botTurn]] as const) {
+    for (const command of [kept, help, "security find-internet-password -s staging.example.com -a deploy -w", "security add-generic-password -U -s shop-admin-test -a admin@example.com -w x"]) {
+      expect([who, command, decideAction(shell(command), ctx)]).toEqual([who, command, expect.objectContaining({ kind: "allow" })]);
+      // Such an ask is a command like any other: the permission mode still has its say.
+      expect([who, command, decideAction(shell(command), { ...ctx, permission: "ask_first" }).kind]).toEqual([who, command, "ask"]);
+    }
+    for (const command of [
+      "security find-generic-password -s 'Claude Code-credentials' -w", "security find-generic-password -s \"Claude Code-credentials-1a2b3c4d\" -w",
+      "security find-generic-password -s com.real-bot.daemon -a credentials -w", "S='Codex Auth'; security find-generic-password -s \"$S\" -w",
+      // All it holds, theirs with the rest.
+      "security dump-keychain -d", "security export -k login.keychain-db -t identities -o /tmp/x.p12",
+    ]) {
+      expect([who, command, decideAction(shell(command), { ...ctx, permission: "allow_all" })]).toEqual([who, command, { kind: "deny", reason: expect.stringContaining("keychain") }]);
+    }
+  }
+  // An agent that is refused before it acts asks the keychain for nothing, as before.
+  for (const ctx of [base, session, { ...botTurn, ownAgentDirs: undefined }]) {
+    for (const command of [kept, help, "security find-generic-password -s 'Claude Code-credentials' -w"]) {
+      expect([command, decideAction(shell(command), { ...ctx, permission: "allow_all" })]).toEqual([command, { kind: "deny", reason: expect.stringContaining("credentials") }]);
+    }
+  }
+});
+
+posixTest("a call checked after it ran is not stopped over advice on how to make it; what it may not cross still stops it", () => {
+  const search = "grep -rn TODO /";
+  const nowhere = "/zz-no-such-top-folder/work/notes.md";
+  for (const ctx of [unasked, botTurn, { ...botTurn, ownAgentDirs: undefined }]) {
+    // Asked about before it runs, an agent is told to search less and where the workspace is.
+    expect(decideAction(shell(search), ctx)).toEqual({ kind: "deny", reason: expect.stringContaining("whole disk") });
+    expect(decideAction(read(nowhere), ctx)).toEqual({ kind: "deny", reason: expect.stringContaining("does not exist") });
+    // Once it has run that helps nobody: it goes by the permission mode, as any call.
+    const ran: ActionContext = { ...ctx, ran: true };
+    expect(decideAction(shell(search), ran)).toMatchObject({ kind: "allow", effect: true });
+    expect(decideAction(read(nowhere), ran)).toMatchObject({ kind: "allow", effect: false });
+    expect(decideAction(shell(search), { ...ran, permission: "ask_first" }).kind).toBe("ask");
+    expect(decideAction(shell(search), { ...ran, permission: "read_only" })).toEqual({ kind: "deny", reason: expect.not.stringContaining("whole disk") });
+    expect(decideAction(write(nowhere), { ...ran, permission: "ask_first" }).kind).toBe("ask");
+    // A read-only turn of held work, and what signs an agent in.
+    expect(decideAction(shell(search), { ...ran, mode: "readonly" })).toEqual({ kind: "deny", reason: expect.stringContaining("read-only turn") });
+    expect(decideAction(shell("cat ~/.codex/auth.json"), { ...ran, permission: "allow_all" })).toEqual({ kind: "deny", reason: expect.stringContaining("credentials") });
+    expect(decideAction(shell("security find-generic-password -s 'Claude Code-credentials' -w"), { ...ran, permission: "allow_all" }).kind).toBe("deny");
+  }
 });

@@ -203,3 +203,87 @@ Implementation: `engine/agent/credentials.ts` (`isAgentSecretPath`, `namesAgentS
 上一条补记的取舍里写着「Bot 不变」。当天跑在 Antigravity 上的 Bot 做长任务，一轮被停了两次，停在 agy `cat` 它自己笔记文件夹里的后台任务日志上（`brain/<会话>/.system_generated/tasks/task-N.log`）。Antigravity 的 Bot 现在也按上面这套规则判，只是没有「这个会话自己的 brain 文件夹每种模式下都能写」那一条；`agyHomeDir`、`agyBrainDir` 搬到了 `engine/agent/drivers/agy.ts`。细节见 [ADR 0079 的 2026-11-24 补记](0079-local-agents.md)。Codex、Grok、Claude Code 的项目会话和别的 Agent 的 Bot 仍然不变。
 
 The addendum above lists "Bots are unchanged" among its trade-offs. That day a Bot run by Antigravity on a long job had a turn stopped twice, on agy's `cat` of a background task's log in its own notes (`brain/<session>/.system_generated/tasks/task-N.log`). A Bot on Antigravity now goes by the rules above too, without "the session's own brain folder can be written in every mode"; `agyHomeDir` and `agyBrainDir` moved to `engine/agent/drivers/agy.ts`. Details in [ADR 0079's addendum of 2026-11-24](0079-local-agents.md). Codex, Grok and Claude Code project sessions, and Bots on the other agents, are still unchanged.
+
+## 补记 2026-11-26：钥匙串按项的名字认；做完的调用不为「怎么做」的提示而停 / Addendum 2026-11-26: the keychain is judged item by item; a call already made is not stopped over advice
+
+2026-11-26 早上两个 Antigravity 项目会话各被停了一次，都写着「本机 Agent 自己的设置和凭据碰不得」：
+
+- 08:32，另一个项目里。你给了它一个测试后台的账号和密码，说「你帮我搞就行，记下来这个账号」。agy 把密码存进了钥匙串（项名是它自己起的），随后用一条 `ADMIN_PASSWORD="$(security find-generic-password -w -s '<它存的那一项>' …)" python3 <它自己笔记里的脚本>` 读回来跑端到端测试，这一轮停在这一步。
+- 08:37，real-bot 里。你把那一行发给它，说「不要出现这种情况，修复」。它第一步跑 `security find-generic-password -h` 看这个命令的帮助，又被同一句话停下。
+
+库里核对过：11-24 的两条补记上线（运行时 11-25 05:47 重启）之后，agy 一共只被停过这两次。两次都不是 Agent 的文件夹，是钥匙串那一格：命令里出现 `security find-generic-password`、`find-internet-password`、`dump-keychain` 或 `export`，就算「向钥匙串要密钥」，不看要的是哪一项，`-h` 也算。11-24 的补记把这一格原样留下了（「钥匙串照旧谁的都不行」）。这和前五次是同一种错：按一个宽的表面特征拦（那时是整个文件夹，这次是命令的名字），不是按要护的东西拦。停下时那一行又是同一句话，所以每换一格，看上去都是上次没修好。
+
+所以这次不只改这一格，把 agy 会被停下的每一格都过了一遍，也就是 `project-runner-agy.ts` 的 `decide` 和 `engine/agent/external-runner.ts` 的 `audit` 能给出的每一种不放行：
+
+- 读写别家 Agent 的登录文件、设置文件，用文件工具往别家的文件夹里写：不变（11-24 的补记）。
+- 向钥匙串要密钥：改，见 1。
+- 权限模式本来就要先问或不许的（改动先问、只读）：不变，这是你设的。
+- 计划模式下计划批准前的改动；参谋调用 MCP 工具；Bot 的事被停住时那一轮只读：不变，这是这些模式本来的意思。
+- 命令会递归搜整个家目录或整块磁盘（[ADR 0040](0040-agent-kernel-the-job-owns-state.md) 的那道拒绝）：改，见 2。
+- 文件路径的顶层目录不存在（多半是把工作区里的路径写成了 `/work/…`），Windows 上没有盘符的路径：改，见 2。
+- 要求把命令放到后台跑的调用（输入里带 `is_background` / `run_in_background`）：不变，agy 碰不到这一格。Bot 的轮次不许后台任务（[ADR 0092](0092-permission-modes.md)）；agy 不这样报，它的命令是等久了自己转成后台任务，输入里没有这个标记，项目会话的规则也不看它。
+
+1. **钥匙串按项的名字认。** 碰不得的是签入 Agent 的那几项和应用自己的密钥，按它们的服务名认：应用自己的 `com.real-bot.daemon`（`KEYCHAIN_SERVICE`）；Claude Code 的 `Claude Code-credentials`（账号目录的那几项，名字后面带一段哈希，[ADR 0061](0061-claude-agent-runner.md) 实测过）；Codex 把登录放进钥匙串时用的 `Codex Auth` 和 `Codex MCP Credentials`（它的源码里这样写）。一条命令向钥匙串要一项，并且整条命令里写了这些名字之一（写在要的那一项上，或者写在拼出这次请求的变量里），才算。要别的任何一项都不是谁的登录：你交给它记下的测试账号、项目的签名和公证配置，和别的命令一样按权限模式走；什么都不要的调用（`-h`）也一样。不去解析 `-s`、`-a` 这些参数，那又是在认写法。
+   - 把钥匙串里的东西一起要出来的照旧不行，写没写名字都一样：`security dump-keychain`、`security export`；Linux 上是 `secret-tool search`、`kwallet-query` 和直接走 D-Bus 的 Secret Service、KWallet。Linux 上 `secret-tool lookup` 按名字认。
+   - 钥匙串的文件本身（`~/Library/Keychains` 这些）照旧碰不得。
+   - 停下时那一行有它自己的话：「钥匙串里 Agent 的登录和应用自己的密钥碰不得」，和文件那一格分开，看得出是哪一格。
+2. **已经做了的调用，不为「怎么做」的提示而停。** 「别递归搜整个家目录」「这个路径哪儿都不是」是写给动手前被拒的 Agent 的：它听了换个做法接着干。对一步已经做完的调用，这句提示没有用，为它停下一轮也挡不住什么，那一行还会把一段写给 Agent 的英文当成原因摆给你。所以事后才检查的调用（`ActionContext.ran`）不看这几条，按权限模式走；凭据、权限模式、只读轮照旧停。agy 自己先来问的调用（`session/request_permission`）照旧按原规则答，这类拒绝在那里还是「不」。
+   - 这一条不只是 agy 的。`external-runner.ts` 的 `audit` 对每个 Agent 都是事后检查（OpenCode、你自己接的 ACP Agent 没问就做了的调用），同样不看这几条；它们动手前来问的调用不变。
+
+钥匙串这条只改 Antigravity（它的项目会话，和跑在它上面的 Bot）。Codex、Grok、Claude Code 的 Bot 和项目会话照旧：任何向钥匙串要密钥的命令都在动手前被拒，它们接着干。那里的拒绝是真挡得住的，改成按名字认就是把规则放宽，等你说。
+
+取舍：
+- agy 现在能用 `security` 读出钥匙串里不属于 Agent、也不属于应用的项。应用原来也挡不住这些读，只是事后停下这一轮。macOS 自己还有一道：一项不是 `security` 存进去的，`security` 去读时系统会弹窗问你（钥匙串项自己的访问控制，这次没有另测）；`security` 存进去的项不弹窗就读得到，agy 自己存的、你的脚本用 `security add-generic-password` 存的都在内。
+- 名字表只收查实过的：应用自己的、Claude Code 的、Codex 的。Antigravity 自己的登录在它的文件夹里，那是它自己的。Grok、OpenCode、ZCode 的登录在文件里，按文件名认；它们要是另有钥匙串项，这张表认不出。
+- 只认写出来的名字。不写服务名的要法（`security find-generic-password -a "$USER" -w`）、把名字拆开写、换一个程序去读钥匙串（Python 的 `keyring`），都拦不住；后两种原来也拦不住。和文件那一格一样，这是减速带，不是沙箱。
+- 认的是命令的文字，不是它真的在做什么，所以只是提到这些字眼的命令一样会停：搜索的模式或 heredoc 里写着 `security dump-keychain`，或者一条命令里既有 `security find-generic-password` 又有表里的名字（比如在这个仓库里搜这条规则自己的测试）。停下时那一行会说是钥匙串这一格。
+- 做完的全盘搜索不再停下这一轮，它要搜多久是 Agent 自己的事（agy 的命令等久了自己转后台）。应用记下的 Bot 命令里，按今天的规则算这种搜索的有 15 条（`find / -name ffmpeg` 之类），这台电脑上的 agy 会话里也有一条（`find ~ -maxdepth 4 -name '*codex*'`）。跑在 Antigravity 上的 Bot 或它的项目会话哪天再跑一条，按旧规则就是下一次被停。
+
+验证：
+- 库里存着的那两行，原样过规则，项目会话和 Bot 两种上下文，自动和全部允许：旧规则 4 次都拒，新规则 4 次都放。改动先问下是「要问」，那是权限模式的事。
+- 这台电脑上读得出来的 230 个 agy 会话（终端里的、Bot 的也算，2026-08-31 到 2026-11-26）的 12595 步调用，按项目会话的事后检查过新旧两套规则：旧规则停 3 步：就是这两步，加上更早一个会话里一条搜整个家目录的 `find ~ -maxdepth 4 -name '*codex*'`（放在项目会话里，它就是下一次被停）；新规则停 0 步，没有只被新规则停下的。
+- 应用记下的 27042 条 Bot 命令（跑在 Antigravity 上的轮次占 1076 条），按事后检查过新旧两套规则：新规则没有多停任何一条；旧规则会停的 15 条全盘搜索不再停。
+- 真 agy 这次没有跑：真机核对花它的额度，这次还要往你的登录钥匙串里临时存、删一条测试项，照 `docs/development.md` 先问你。两个运行器的测试里，是 agy 的替身照原样报出这两条命令（`project-sessions-agy.test.ts`、`agent-runner-agy.test.ts`）。
+
+实现：`keychains.ts`（`asksKeychainForAgentSecret` 和名字表）、`engine/agent/policy.ts`（`ActionContext.ran`；钥匙串单独判）、`engine/agent/credentials.ts`（`AGENT_KEYCHAIN_REFUSAL`；`namesAgentSecret` 不再管钥匙串）、`project-runner-agy.ts`（`decide(tool, ran)`、`stopReason`）、`engine/agent/external-runner.ts`（`audit`）；测试在 `keychains.test.ts`、`engine/agent/policy.test.ts`、`project-sessions-agy.test.ts` 和 `agent-runner-agy.test.ts`。
+
+On the morning of 2026-11-26 two Antigravity project sessions were each stopped once, both with "your agents' own settings and credentials are off limits":
+
+- 08:32, in another project. You gave it an account and password for a test back office and said to take care of it and keep the account. agy stored the password in the keychain (under an item name of its own choosing), then read it back to run an end-to-end test, with one `ADMIN_PASSWORD="$(security find-generic-password -w -s '<the item it stored>' …)" python3 <a script in its own notes>`. The turn stopped at that step.
+- 08:37, in real-bot. You sent it that line and said this must not happen, fix it. Its first step was `security find-generic-password -h`, to read the command's help, and the same sentence stopped it again.
+
+Checked against the database: since the two addenda of 11-24 went live (the runtime restarted on 11-25 at 05:47), these are the only two stops of agy. Neither was about an agent's folder. Both hit the keychain: a command with `security find-generic-password`, `find-internet-password`, `dump-keychain` or `export` in it counted as "asking the keychain for a secret", whichever item it asked for, `-h` included. The addendum of 11-24 had left that cell as it was ("the keychains stay shut, whoever's secret it is"). It is the mistake of the five stops before: a rule that goes by a broad surface feature (then a whole folder, now a command's name) and not by what it protects. And the line a stopped turn ends with was the same sentence again, so each new cell read as the last fix not having worked.
+
+So this time every cell that can stop agy was gone through, not that one alone: every answer other than "allow" that `decide` in `project-runner-agy.ts` and `audit` in `engine/agent/external-runner.ts` can give.
+
+- Reading or writing another agent's sign-in or settings file, writing into another agent's folder with a file tool: as they were (addendum of 11-24).
+- Asking the keychain for a secret: changed, see 1.
+- What the permission mode asks about or refuses anyway (ask first, read-only): as it was; that is your setting.
+- A change before the plan is approved in plan mode; an MCP tool called by a consultant; a Bot's read-only turn of work that a stop holds: as they were; that is what those modes mean.
+- A command that would search your whole home folder or the whole disk recursively (the refusal of [ADR 0040](0040-agent-kernel-the-job-owns-state.md)): changed, see 2.
+- A file path whose top folder does not exist (most often a workspace path written as `/work/…`), and on Windows a path with no drive: changed, see 2.
+- A call that asks to run its command in the background (`is_background` / `run_in_background` in its input): as it was, and agy cannot reach it. A Bot's turn runs nothing in the background ([ADR 0092](0092-permission-modes.md)); agy does not report one that way — a command that outlives its wait becomes a background task of agy's own, with no such mark in its input — and a project session's rules do not read the mark.
+
+1. **The keychain is judged by the item's name.** Off limits are the items that sign an agent in and the app's own keys, known by their service names: the app's `com.real-bot.daemon` (`KEYCHAIN_SERVICE`); Claude Code's `Claude Code-credentials` (an account directory's item has a hash after the name, measured in [ADR 0061](0061-claude-agent-runner.md)); and `Codex Auth` and `Codex MCP Credentials`, which Codex uses where it keeps its sign-in in the keyring (as its source names them). A command counts only when it asks the keychain for an item and writes one of those names anywhere in it: as the item asked for, or in a variable the ask is built from. An ask for any other item is nobody's sign-in — a test account you gave it to keep, a project's signing or notarising profile — and goes by the permission mode as any command does; so does a call that asks for nothing (`-h`). The `-s` and `-a` arguments are not parsed: that would be telling spellings apart again.
+   - Asking for all the keychain holds is refused as before, with or without a name: `security dump-keychain`, `security export`; on Linux `secret-tool search`, `kwallet-query`, and the Secret Service or KWallet over D-Bus. On Linux `secret-tool lookup` goes by the name.
+   - The keychain's own files (`~/Library/Keychains` and the like) stay off limits.
+   - The line a stopped turn ends with has words of its own here, "the keychain items that sign your agents in and hold this app's keys are off limits", apart from the files' sentence, so it shows which cell it was.
+2. **A call already made is not stopped over advice on how to make it.** "Do not search your whole home folder recursively" and "this path is nowhere" are written for an agent refused before it acts: it takes the hint and carries on another way. To a call that has run the hint is of no use, stopping the turn over it holds nothing back, and the line would hand you a paragraph of English written for the agent as the reason. So a call checked only after the fact (`ActionContext.ran`) is not held to those, and goes by the permission mode; credentials, the permission mode and a read-only turn stop it as before. A call agy asks about first (`session/request_permission`) is answered by the rules as they were, and there such a refusal is still a no.
+   - This one is not agy's alone. `audit` in `external-runner.ts` checks after the fact for every agent (a call OpenCode or an ACP agent of your own made without asking), and skips the same; what they ask about before acting is unchanged.
+
+The keychain rule changes for Antigravity only (its project sessions, and Bots run by it). Bots and project sessions on Codex, Grok and Claude Code are as before: any command that asks the keychain for a secret is refused before it runs, and they carry on. There the refusal does hold the read back, so going by the name would loosen the rule; that is yours to say.
+
+Trade-offs:
+- agy can now read, with `security`, keychain items that are neither an agent's nor the app's. The app never held those reads back either; it only stopped the turn afterwards. macOS has a guard of its own: when `security` reads an item it did not store itself, the system asks you in a dialog (the item's own access control; not measured again this time). An item `security` did store is read without one, which covers what agy stored and what a script of yours stored with `security add-generic-password`.
+- The name list holds only what was confirmed: the app's, Claude Code's, Codex's. Antigravity's own sign-in is in its folder, which is its own. Grok, OpenCode and ZCode keep their sign-in in files, known by file name; a keychain item of theirs, if there is one, is not on this list.
+- Only a written name is known. An ask that names no service (`security find-generic-password -a "$USER" -w`), a name written in pieces, or another program reading the keychain (Python's `keyring`) are not stopped; the last two never were. As with the files, this is a speed bump, not a sandbox.
+- The rule reads a command's text, not what it does, so a command that only mentions these words is stopped all the same: `security dump-keychain` in a search pattern or a heredoc, or `security find-generic-password` beside a listed name in one command (a search for this rule's own tests in this repository, say). The line then says it was the keychain.
+- A search of the whole disk that has already started no longer stops the turn; how long it takes is the agent's own business (agy moves a command that outlives its wait to the background). 15 of the Bot commands on record count as such a search by today's rules (`find / -name ffmpeg` and the like), and so does one in the agy sessions on this computer (`find ~ -maxdepth 4 -name '*codex*'`). The day a Bot on Antigravity or a project session of it ran another, the old rules would have made it the next stop.
+
+Checked:
+- The two stored lines, as the database keeps them, through the rules as a project session and as a Bot, in auto and allow-all: refused all 4 times by the old rules, allowed all 4 times by the new. Under ask first the answer is "ask", which is the permission mode's.
+- The 12595 calls of the 230 agy sessions on this computer that can be read (its terminal sessions and Bots' too, 2026-08-31 to 2026-11-26), through the old rules and the new as a project session's check after the fact: the old rules stop 3, these two and a `find ~ -maxdepth 4 -name '*codex*'` over the whole home folder from an earlier session (in a project session it would have been the next stop); the new rules stop 0, and nothing is stopped by the new rules alone.
+- The 27042 Bot commands the app has on record (1076 of them from turns run by Antigravity), through the old rules and the new as a check after the fact: the new rules stop nothing the old ones let through, and the 15 whole-disk searches the old rules would stop no longer do.
+- A real agy was not run this time: a live check spends its quota, and this one would also store and delete a throwaway item in your login keychain, so by `docs/development.md` you are asked first. In both runners' tests a stand-in agy reports the two commands as they were (`project-sessions-agy.test.ts`, `agent-runner-agy.test.ts`).
+
+Implementation: `keychains.ts` (`asksKeychainForAgentSecret` and the name list), `engine/agent/policy.ts` (`ActionContext.ran`; the keychain judged apart), `engine/agent/credentials.ts` (`AGENT_KEYCHAIN_REFUSAL`; `namesAgentSecret` no longer covers the keychain), `project-runner-agy.ts` (`decide(tool, ran)`, `stopReason`), `engine/agent/external-runner.ts` (`audit`); tests in `keychains.test.ts`, `engine/agent/policy.test.ts`, `project-sessions-agy.test.ts` and `agent-runner-agy.test.ts`.

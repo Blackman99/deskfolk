@@ -212,6 +212,49 @@ test("agy uses its own folder as in its terminal: the skills it ships with, its 
   expect(h.lines(id).at(-1)?.body).toBe("Antigravity 没先问就做了「File auth.json」（本机 Agent 自己的设置和凭据碰不得），这一轮停在这里；那一步可能已经执行了");
 });
 
+test("agy reads back from the keychain what you gave it to keep; an agent's sign-in there still stops the turn, in words of its own", async () => {
+  // As agy ran them on 2026-11-26, each stopping the turn: the test account it was told to keep, read back
+  // for a script in its own notes; then, asked to fix that, the tool's own help.
+  const brain = agyBrainDir("agy-session-1", homedir());
+  const kept = `ADMIN_EMAIL='admin@example.com' ADMIN_PASSWORD="$(security find-generic-password -w -s 'shop-admin-test' -a 'admin@example.com')" python3 ${brain}/scratch/e2e_verify_test.py`;
+  const help = `security find-generic-password -h 2>&1 ; echo "---" ; ps aux | grep -E "real-bot|dev-runtime|deskfolk" | grep -v grep || true`;
+  const claude = "security find-generic-password -s 'Claude Code-credentials' -w";
+  const h = start([
+    { prompts: [[{ tool: { kind: "execute", title: "e2e", rawInput: { CommandLine: kept } } }, { tool: { kind: "execute", title: "help", rawInput: { CommandLine: help } } }, { say: "The test passed." }]] },
+    { prompts: [[{ tool: { kind: "execute", title: "claude", rawInput: { CommandLine: claude } } }, { say: "Read it." }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "你帮我搞就行，记下来这个账号");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(false);
+  expect(h.lines(id).at(-1)?.body).toBe("The test passed.");
+  await h.say(id, "看看 Claude Code 是怎么登录的");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("failed");
+  expect(h.lines(id).at(-1)?.body).toBe(`Antigravity 没先问就做了「${claude}」（钥匙串里 Agent 的登录和应用自己的密钥碰不得），这一轮停在这里；那一步可能已经执行了`);
+});
+
+test("a call agy already made is not stopped over advice on how to make it; asked first, the advice is a no", async () => {
+  // A search of the whole disk and a path that is nowhere: refusals written for an agent that has not acted yet.
+  const search = { kind: "execute", title: "search", rawInput: { CommandLine: "grep -rn TODO /" } };
+  const h = start([
+    { prompts: [[{ tool: search }, { tool: { kind: "read", title: "File notes.md", rawInput: { Path: "/zz-no-such-top-folder/notes.md" } } }, { say: "Looked." }]] },
+    { prompts: [[{ ask: search }, { say: "Not searched." }]] },
+  ]);
+  const id = await h.open();
+  await h.say(id, "find the TODOs");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(0).some((entry) => entry.notification === "session/cancel")).toBe(false);
+  expect(h.lines(id).at(-1)?.body).toBe("Looked.");
+  await h.say(id, "again");
+  await h.settled(id);
+  expect((await h.run(id))?.status).toBe("completed");
+  expect(h.log(1).find((entry) => entry.asked)?.answer).toEqual({ outcome: { outcome: "selected", optionId: "no" } } as never);
+  expect(h.lines(id).at(-1)?.body).toBe("Not searched.");
+});
+
 test("what agy asks about is answered by the rules, on a card under ask first", async () => {
   const h = start([{ prompts: [[{ ask: { kind: "execute", title: "npm test", rawInput: { CommandLine: "npm test" } } }, { say: "Tested." }]] }]);
   h.store.patchSettings({ permission_mode: "ask_first" });

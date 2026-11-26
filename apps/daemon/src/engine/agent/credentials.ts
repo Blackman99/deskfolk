@@ -4,9 +4,10 @@
  * than one on Claude Code reads of `~/.codex`. Refused outright, never carded: an approval would be
  * you letting one agent read another's (or its own) credentials. The one agent that cannot be made
  * to ask first (Antigravity, a Bot on it or a project session of it) is judged file by file instead
- * ({@link isAgentSecretPath}, {@link namesAgentSecret}): refusing it stops its turn after the call
- * has run. Pure, like the rest of the policy: home, platform and the listed account directories come
- * in, so the rules are tested on a fake disk.
+ * ({@link isAgentSecretPath}, {@link namesAgentSecret}), and in the keychain item by item
+ * (`asksKeychainForAgentSecret`): refusing it stops its turn after the call has run. Pure, like the
+ * rest of the policy: home, platform and the listed account directories come in, so the rules are
+ * tested on a fake disk.
  */
 import { posix, win32 } from "node:path";
 import { asksKeychainForSecret, isKeychainPath } from "../../keychains";
@@ -14,6 +15,13 @@ import { isAbsoluteHostPath, isWithinPath, workspaceRelative } from "../../works
 
 /** What an agent hears when a call reaches one of your agents' own settings or credentials. */
 export const AGENT_CREDENTIALS_REFUSAL = "your local agents' own settings and credentials are off limits";
+
+/**
+ * The same for the agent that cannot be made to ask first, when a command asks the keychain for what
+ * signs an agent in or for this app's keys (`asksKeychainForAgentSecret`): told apart, so the line a
+ * stopped turn ends with can say it was the keychain.
+ */
+export const AGENT_KEYCHAIN_REFUSAL = "the keychain items that sign your local agents in and hold this app's keys are off limits";
 
 /**
  * Each agent's own directories and files under your home folder, as POSIX-style relative paths.
@@ -461,14 +469,14 @@ function agentFolderMentions(command: string, home: string, platform: NodeJS.Pla
 /**
  * Whether a command names a file that signs another of your agents in or sets it up
  * ({@link isAgentSecretPath}), for a session to which the agents' folders are otherwise open. One
- * of three: it asks the keychain for a secret; or a path it writes into an agent's folder is such a
- * file, as written or where its links lead (`real`); or it works from inside another agent's folder
- * or builds its own paths on one — a `cd` there, the folder in a variable, a loop or a `$(…)`, or
- * handed as a string to a program — and writes such a file's name anywhere
- * ({@link namesAgentSettingsFile}, as for any command that builds its own paths), since what it
- * reaches cannot be read off it. A whole path by itself — `ls ~/.claude/skills`,
- * `rg x ~/.claude/skills apps/x/config.json` — builds nothing, and a name elsewhere in the command
- * is some other file's.
+ * of two: a path it writes into an agent's folder is such a file, as written or where its links
+ * lead (`real`); or it works from inside another agent's folder or builds its own paths on one — a
+ * `cd` there, the folder in a variable, a loop or a `$(…)`, or handed as a string to a program — and
+ * writes such a file's name anywhere ({@link namesAgentSettingsFile}, as for any command that builds
+ * its own paths), since what it reaches cannot be read off it. A whole path by itself —
+ * `ls ~/.claude/skills`, `rg x ~/.claude/skills apps/x/config.json` — builds nothing, and a name
+ * elsewhere in the command is some other file's. What it asks the keychain for is judged apart, by
+ * the item's name (`asksKeychainForAgentSecret`).
  *
  * Nothing counts in the folders that are the session's own: its agent's (`ownDirs`) and the ones
  * open to it (`open`: its notes and plans). Whatever is built there is its own business; a path
@@ -480,7 +488,6 @@ export function namesAgentSecret(
   command: string, home: string, platform: NodeJS.Platform, configDirs: string[], ownDirs: string[],
   folders: { open: (abs: string) => boolean; read: (abs: string) => boolean; real: (abs: string) => string | null },
 ): boolean {
-  if (asksKeychainForSecret(command, platform)) return true;
   const mentions = agentFolderMentions(command, home, platform, configDirs);
   if (mentions.length === 0) return false;
   const win = platform === "win32";

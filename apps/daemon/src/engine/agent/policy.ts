@@ -4,9 +4,11 @@
  * one, run a command, fetch from the web, something else — and then decided exactly as a Claude
  * Agent turn's are (ADR 0061, `claude-code/policy.ts`): reads run, a write or a command goes as the
  * Bot's permission mode says (ADR 0092), the same recursive-search refusal, nothing in the
- * background, and never any agent's own credentials: the whole of each agent's folder, or, for an
- * agent that cannot be made to ask first, what signs another agent in or sets it up
- * (`ownAgentDirs`). Pure, like Claude's.
+ * background, and never any agent's own credentials: the whole of each agent's folder and any ask
+ * of the keychain, or, for an agent that cannot be made to ask first, what signs another agent in
+ * or sets it up, in its folder or in the keychain (`ownAgentDirs`). A call checked only once it is
+ * under way (`ran`) is judged by the lines it crossed, not by advice on how to make it. Pure, like
+ * Claude's.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { posix } from "node:path";
@@ -15,7 +17,8 @@ import { classifyPath, classifyShell, isWithinPath, nodePathHost, type PathHost 
 import type { PermissionMode } from "@real-bot/protocol";
 import { anchorAt, expandHome, gateChange, gitBashToWindows, inMemoryDir, type AgentDecision } from "../../claude-code/policy";
 import { FILE_WRITE_KIND, SHELL_KIND } from "../../permission-gate";
-import { AGENT_CREDENTIALS_REFUSAL, isAgentCredentialPath, isAgentSecretPath, namesAgentSecret, namesAgentSettingsFile, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
+import { asksKeychainForAgentSecret } from "../../keychains";
+import { AGENT_CREDENTIALS_REFUSAL, AGENT_KEYCHAIN_REFUSAL, isAgentCredentialPath, isAgentSecretPath, namesAgentSecret, namesAgentSettingsFile, touchesAgentCredentials, withoutHomeGlobs, withoutOpenDirs, withoutQuotedHomes } from "./credentials";
 
 /** What a call of an agent's own does, as the app counts it. */
 export type AppActionName = "shell" | "write_file" | "read_file" | "list_dir" | "web" | "other";
@@ -66,9 +69,20 @@ export type ActionContext = {
    * nothing back. For it its own agent's folders are its own, as in its terminal, and your other
    * agents' folders are read as any folder outside the workspace: only what signs one of them in or
    * sets it up is off limits, file by file (`isAgentSecretPath`, `namesAgentSecret`). A file written
-   * into another agent's folder is still refused: that changes how the other is set up.
+   * into another agent's folder is still refused: that changes how the other is set up. The keychain
+   * goes the same way (addendum 2026-11-26): only an ask for what signs an agent in or for the app's
+   * own keys, by the item's name, or for all it holds (`asksKeychainForAgentSecret`).
    */
   ownAgentDirs?: string[];
+  /**
+   * The call is already under way or over: an agent that did not ask is checked as it reports the
+   * call (ADR 0111 addendum 2026-11-26). What the rules say about how to make a call — search a
+   * smaller folder than your whole home, name a path that is somewhere — is advice for an agent
+   * refused before it acts, and no line of yours: to a call that has run it is of no use, and
+   * stopping the turn over it would hold nothing back. Such a call goes by the permission mode, as
+   * any other; credentials, the permission mode and a read-only turn stop it as ever.
+   */
+  ran?: boolean;
   /** The folders in a folder, links to folders too; this machine's disk when absent. */
   foldersIn?: (dir: string) => string[];
 };
@@ -135,6 +149,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
   if (action.background) return { kind: "deny", reason: "background tasks are not available here: run it in the foreground and wait for it" };
   if (appName === "shell") {
     const command = action.command ?? "";
+    // The keychain, for an agent that cannot be made to ask first: what signs an agent in or holds the app's keys, by the item's name.
+    if (own && asksKeychainForAgentSecret(command, platform)) return { kind: "deny", reason: AGENT_KEYCHAIN_REFUSAL };
     const refused = own
       ? namesAgentSecret(command, home, platform, configDirs, own, {
         open: (abs) => inMemoryDir(abs, ctx.openDirs ?? [], host),
@@ -143,7 +159,8 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
       })
       : touchesAgentCredentials(command, home, platform, configDirs) && !namesOnlyWhatOpens(command, ctx, host, home, configDirs);
     if (refused) return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
-    const hit = recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
+    // Advice on where to search is for a command not yet run.
+    const hit = ctx.ran ? null : recursiveSearchGuard(ctx.workspace, command, action.cwd, host);
     if (hit) return { kind: "deny", reason: searchGuardMessage(hit) };
     const classified = classifyShell(ctx.workspace, command, action.cwd, host, platform === "win32" ? "bash" : undefined);
     return gateChange(ctx.permission, { kind: "allow", effect: true, appName, target: command },
@@ -168,12 +185,13 @@ export function decideAction(action: AppAction, ctx: ActionContext): AgentDecisi
       })
       : spellings.some((path) => isAgentCredentialPath(path, home, platform, configDirs));
     if (!open && shut) return { kind: "deny", reason: AGENT_CREDENTIALS_REFUSAL };
-    if (platform === "win32" && /^[\\/](?![\\/])/.test(raw)) {
+    // How to name a path is advice too: a call that has run opened what it opened.
+    if (!ctx.ran && platform === "win32" && /^[\\/](?![\\/])/.test(raw)) {
       return { kind: "deny", reason: `${raw} is not a Windows path: name files with their drive (C:\\…). The workspace root is ${ctx.workspace} and this call's directory is ${action.cwd}.` };
     }
     const classified = classifyPath(ctx.workspace, abs, host);
     const top = platform !== "win32" && abs.startsWith("/") ? abs.split("/").find(Boolean) : undefined;
-    if (classified.zone !== "inside" && top && !(ctx.exists ?? existsSync)(`/${top}`)) {
+    if (!ctx.ran && classified.zone !== "inside" && top && !(ctx.exists ?? existsSync)(`/${top}`)) {
       return { kind: "deny", reason: `${abs} does not exist and is not in the workspace. The workspace root is ${ctx.workspace} and this call's directory is ${action.cwd}: put a workspace path after the root and use the absolute path.` };
     }
     targets.push({ shown: classified.zone === "inside" ? classified.rel : classified.abs, abs: classified.abs });

@@ -303,6 +303,27 @@ test("what signs another agent in still stops agy's turn, and so does a command 
   expect(asks.lines("bot")).toEqual([]);
 }, 30_000);
 
+test("of the keychain agy is stopped only at what signs an agent in, and never over a search it has already started", async () => {
+  // As a project session's agy ran them on 2026-11-26: the test account it was given to keep, read back
+  // for a script in its own notes, then the tool's own help. A Bot's turn goes by the same rules.
+  const h = await harness([[
+    unaskedCommand(`PASS="$(security find-generic-password -w -s 'shop-admin-test' -a 'admin@example.com')" python3 ${AGY_OWN}/brain/14e7d9e6/scratch/e2e_verify_test.py`),
+    unaskedCommand("security find-generic-password -h 2>&1"),
+    // Advice for an agent that has not acted yet: this one has.
+    unaskedCommand("grep -rn TODO /"),
+    { say: "测过了" },
+  ]]);
+  await h.post("用那个测试账号跑一遍");
+  expect(h.failKind()).toBeUndefined();
+  expect(h.lines("bot")).toEqual(["测过了"]);
+  expect(h.seen().filter((entry) => entry.unasked).length).toBe(3);
+
+  const claude = await harness([[unaskedCommand("security find-generic-password -s 'Claude Code-credentials' -w", 3_000), { say: "看到了" }]], { permissionMode: "allow_all" });
+  await claude.post("看看 Claude Code 是怎么登录的");
+  expect(claude.failKind()).toBe("agent_unguarded");
+  expect(claude.lines("bot")).toEqual([]);
+}, 30_000);
+
 test("an agy older than 1.5.4 is never started: the turn fails as too old, naming the version it needs", async () => {
   const h = await harness([[{ say: "x" }]], { version: "1.4.2" });
   await h.post("hi");

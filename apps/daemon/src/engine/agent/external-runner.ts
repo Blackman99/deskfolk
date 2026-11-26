@@ -11,7 +11,10 @@
  * then, and one its permission mode would have asked about or refused (ADR 0092), or one that touched
  * an agent's credentials, stops the turn (`agent_unguarded`). For an agent that asks about nothing
  * (Antigravity) every refusal is such a stop, so its driver names the agent's own folders
- * (`ownDirs`) and the rules leave those to it, as in its terminal (addendum 2026-11-24).
+ * (`ownDirs`) and the rules leave those to it, as in its terminal (addendum 2026-11-24), and of the
+ * keychain refuse it only what signs an agent in or holds the app's keys (addendum 2026-11-26). A
+ * call checked after it ran is not stopped over advice on how to make it (`ran`): a search of the
+ * whole home folder, a path that is nowhere.
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -354,7 +357,8 @@ export async function runExternalSession(input: {
   /** A call the app only hears of as it runs: checked now; one that needed your OK and ran unasked stops the turn. */
   const audit = (callId: string, action: AppAction): boolean => {
     if (pending.has(callId)) return true;
-    const decision = decideAction(action, policyContext());
+    // It has run: judged by the lines it crossed, not by advice on how to make the call (ADR 0079 addendum 2026-11-26).
+    const decision = decideAction(action, { ...policyContext(), ran: true });
     if (decision.kind === "allow") {
       // Never asked about, so no step of yours looked before it; the ones after it still do (ADR 0105).
       pending.set(callId, { appName: decision.appName, effect: decision.effect, startedAt: Date.now(), gated: false, call: stepCallOf(action),
