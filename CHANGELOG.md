@@ -6,6 +6,12 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+(none)
+
+## 0.7.0 — 2026-11-26
+
+Project sessions gain a shared Git & GitHub pane (diff, worktrees, commit graph, issues and PRs), read-only consultants from other agents or models (with a composer switch and per-account selection), and context window usage on desktop and phone. On the phone, the composer folds into one +, PDFs load on demand and open from bytes, and multi-display Macs show one screen at a time. The sidebar adds a live mirror strip and collapsible sections, composer drafts persist across reloads, and Antigravity gets quota-reset pickup, subscription tier, spend estimates, and cleaner folder/keychain rules. Signed and notarized for macOS; the Windows and Linux packages are unsigned.
+
 ### Project sessions now have a Git & GitHub pane (diff, worktrees, commit graph, issues & PRs)
 
 - Added a shared read-only `Git` workbench pane per project directory (ADR 0118), reachable from the project session header's branch badge and `Git` action button, the session context menu, and the sidebar project directory menu.
@@ -34,6 +40,19 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - Every other place it can be stopped was gone through as well. Two refusals only tell an agent how to make a call another way: do not search your whole home folder or disk recursively, and this path's top folder does not exist. They help an agent refused before it acts; to a call that has run they are of no use, and a stop holds nothing back. A call checked after the fact is no longer stopped over those two, for every agent; credentials, the permission mode and a read-only turn stop it as before.
 - Codex, Grok and Claude Code are unchanged: any command asking the keychain for a secret is refused before it runs, and they carry on.
 - Checked: the two stored lines through the rules as they were kept, refused by the old rules and allowed by the new. The 12595 calls of the 230 agy sessions on this computer went through both sets of rules: the old stop these two and one `find` over the whole home folder, the new stop none. The 27042 Bot commands the app has on record went through both too, and the new rules stop nothing more. After you were asked, a real agy in an isolated runtime (a project session, auto mode) did what was done that day: stored a made-up account in the keychain, read it back to run a script in its notes, looked at `security find-generic-password -h` and removed the item, 5 calls and an answer in 26 seconds, no stop; the same line on the old code stopped at the read, with the line in the screenshot.
+
+### Composer drafts persist across reloads
+
+- Unsent composer text is now saved per conversation in `localStorage`, so switching windows, reloading, or restarting keeps what you were typing without conversations overwriting one another. Drafts for deleted conversations are pruned automatically.
+
+### Sidebar live strip, collapsible sections, and compact rows
+
+- Added a top "Active" mirror strip in the sidebar that surfaces every conversation waiting on you, actively running/replying, or carrying unread remote file drops — while keeping sessions in their home sections so the list below never jumps.
+- Sidebar sections can now be collapsed and session rows use a denser layout to fit more conversations on screen.
+
+### Project sessions show context window usage
+
+- Project sessions now display a context window usage ring beside Send in the composer (turning yellow from three quarters and red from nine tenths, or dashed when the model did not report its window size), with exact used/limit tokens on hover. Claude Code project sessions also backfill context usage from their session JSONL records.
 
 ### On a phone a project session's context usage sits at the top right, and a tap shows it in full
 
@@ -98,7 +117,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 - **Visual clarity and dark mode**: dialogs and drag previews now use themed shadow tokens with a subtle rim in dark mode; waiting-for-you count badges use higher-contrast backgrounds (`bg-warn-text`) in light mode; code blocks and chips inside your own message bubbles now derive from `--you-text` so light custom bubble colours stay readable; the Task Map's empty state wears a themed pill over dark night skies; flow-board anomaly cards translate `call_failed` / `interrupted` into readable copy and clear wrapped bottom toolbars.
 - **Project sessions and narrow/phone screens**: `ProjectChat` now includes the history loading skeleton, branded empty state, "New messages" divider, hover copy/more pill, message right-click/long-press menu, scroll-to-bottom button, and waiting-item jump bar. On narrow screens, `ArtifactPreview` folds action pills into the top bar when there is no notice, and the phone sidebar displays dismissible chips while "Working only" or "Focus mode" is active.
 - **Desktop workspace, consistency and keyboard**: workbench tab `⋯` buttons appear on hover or when open (no longer colliding with truncated `…` titles); tooltips are a themed card capped in width and lines, so a long command or working step wraps instead of running off the screen, one command's hint shows at a time and closes when the list scrolls, and an empty hint no longer shows a blank bubble; empty Kanban columns compact to give active columns room without wrapping status pills; the 720 px settings/picker breakpoint is unified with the 680 px phone breakpoint; modal footer buttons follow macOS order (primary rightmost), field validation errors use red `danger` styling consistently, deleting an MCP server now asks for confirmation, and the expanded Usage card has an explicit Hide button.
-- **Shortcuts, native menu bar and accessibility**: added macOS menu bar items for `Settings… (⌘,)`, `Workspace (⌘O)`, `Search… (⌘K)`, `Toggle Sidebar (⌘B)` and `Equalise (⌘⌥0)` (`⌘O`/`⌘B` also work via the menu while typing in the composer), bound `⌘⇧K` (yielding to terminal clear off macOS), enabled reduced motion on the flow canvas, added focus-visible rings on buttons/icon buttons and arrow-key navigation to context menus, and completed English copy for previously Chinese-only editor placeholders.
+- **Shortcuts, native menu bar and accessibility**: added macOS menu bar items for `Settings… (⌘,)`, `Workspace (⌘O)`, `Search… (⌘K)`, `Toggle Sidebar (⌘B)` and `Equalise (⌘⌥0)` (`⌘O`/`⌘B` also work via the menu while typing in the composer), bound `⌘⇧K` (yielding to terminal clear off macOS), enabled reduced motion on the flow canvas, added focus-visible rings on buttons/icon buttons and arrow-key navigation to context menus, kept scroll position steady in live step lists and running subagent popups, and completed English copy for previously Chinese-only editor placeholders.
 
 ### A Mac with several displays: the remote screen shows one at a time
 
@@ -110,7 +129,7 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 - Say "have Codex look at this plan too" or "ask Grok what it thinks" in a project session, and the agent brings in a consultant: another agent (Claude Code, Codex, Antigravity or Grok) or another model, talking the plan over in the same directory. A consultant only looks; its answers go back to the agent that asked it, and so do its questions; the agent can go several rounds with the same one.
 - Each consultation is a row under that run's reply, with the agent's logo and the model, opening onto what it was asked and what it answered. Consultants are not in the sidebar or search, and they stop when you press Stop.
-- A Consult switch sits beside plan mode in the composer: choose up to three consultants (which agent, which model, what thinking level), and while it is on, every line you send has the agent ask them first, each on its own, then tell you their views and its own conclusion.
+- A Consult switch sits beside plan mode in the composer: choose up to three consultants (which agent, which account when an agent has several, which model, what thinking level), and while it is on, every line you send has the agent ask them first, each on its own, then tell you their views and its own conclusion.
 - While a consultant works, the agent's working line and the consultant's row say what it is at (the call it is on, the subagents it waits on, or the last thing it said), and opened it shows what it has said and the subagents it started so far. Before, a consultant at work for minutes read "It has not done anything yet" until it answered. A Claude Code consultant whose subagents went to the background is also waited on until it says what they found: before, its "they are still reading" went back to the agent as its answer.
 
 ### On a phone the composer's buttons go into one +

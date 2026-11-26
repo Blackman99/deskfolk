@@ -57,7 +57,7 @@ export function AboutTab(props: { locale: "zh" | "en" }) {
             </Text>
             <Text class="text-[12px] leading-[1.35] text-ink-muted">{t().settings.aboutDescription}</Text>
             <Text testID="about-version" class="font-mono text-[12px] text-ink-muted">
-              {t().settings.version(checker.version ?? "0.6.0")}
+              {t().settings.version(checker.version ?? "0.7.0")}
             </Text>
           </View>
           <If when={checker.available}>

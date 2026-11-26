@@ -2,7 +2,7 @@
   "name": "@real-bot/desktop-nsh",
   "license": "MIT",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "engines": {
     "node": ">=22"
