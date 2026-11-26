@@ -244,7 +244,7 @@ export function ProjectSessionRow(props: {
                     onPress={() => props.onTogglePin?.()}
                     class="cursor-pointer select-none group w-[22px] h-[22px] rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9]"
                   >
-                    <Icon name="pin" size={13} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
+                    <Icon name="pin" size={12} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
                   </View>
                   <View
                     role="button"
@@ -254,7 +254,7 @@ export function ProjectSessionRow(props: {
                     onPress={(e) => props.onContextMenu(at(e))}
                     class="cursor-pointer select-none group w-[22px] h-[22px] rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9]"
                   >
-                    <Icon name="more" size={13} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
+                    <Icon name="more" size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
                   </View>
                 </View>
               </View>

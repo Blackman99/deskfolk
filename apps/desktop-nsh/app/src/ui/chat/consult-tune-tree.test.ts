@@ -91,7 +91,7 @@ test("picking a non-default account emits config_dir; picking the default accoun
   const client = {
     claudeCodeModels: async (configDir?: string | null) => {
       asked.push(configDir ?? null);
-      return { models: [], checked_at: "", error: null };
+      return { config_dir: configDir ?? null, models: [], checked_at: "", error: null };
     },
   };
   const tree = consultTuneTree({ t, agents: agentsMulti, claude: claudeMulti, client, onPick: (m) => picks.push(m) });

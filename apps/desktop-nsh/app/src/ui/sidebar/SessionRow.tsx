@@ -266,7 +266,7 @@ export function SessionRow(props: {
               onPress={() => props.onTogglePin?.()}
               class={`cursor-pointer select-none group rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9] ${compact() ? "w-[24px] h-[24px]" : "w-[26px] h-[26px]"}`}
             >
-              <Icon name="pin" size={compact() ? 14 : 16} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
+              <Icon name="pin" size={compact() ? 12 : 16} class={props.pinned ? "tint-brand" : `${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
             <View
               role="button"
@@ -276,7 +276,7 @@ export function SessionRow(props: {
               onPress={(e) => props.onContextMenu(at(e))}
               class={`cursor-pointer select-none group rounded-(--radius-control-sm) items-center justify-center hover:bg-row-hover active:scale-[0.9] ${compact() ? "w-[24px] h-[24px]" : "w-[26px] h-[26px]"}`}
             >
-              <Icon name="more" size={compact() ? 14 : 16} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
+              <Icon name="more" size={compact() ? 12 : 16} class={`${SIDE_MUTED_TINT} group-hover:tint-ink`} />
             </View>
           </View>
         </View>

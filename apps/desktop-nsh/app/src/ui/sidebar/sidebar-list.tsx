@@ -166,8 +166,8 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           onPress={() => e.toggleDir(group().dir)}
           class={`cursor-pointer select-none group flex-1 min-w-0 flex-row items-center gap-[5px] px-[8px] py-[3px] rounded-(--radius-sm) hover:bg-row-hover ${phone() ? "min-h-[44px] pl-[14px]" : "min-h-[28px]"}`}
         >
-          <Icon name={p.row.open ? "chevron-down" : "chevron-right"} size={11} class={SIDE_MUTED_TINT} />
-          <Icon name="folder" size={14} class="tint-ink-secondary" />
+          <Icon name={p.row.open ? "chevron-down" : "chevron-right"} size={12} class={SIDE_MUTED_TINT} />
+          <Icon name="folder" size={16} class="tint-ink-secondary" />
           <Text testID="project-dir-name" class="flex-1 min-w-0 line-clamp-1 text-[12.5px] font-semibold text-ink-secondary">{group().label}</Text>
           <If when={p.row.live}>
             <View testID="project-dir-live" accessible={false} class="shrink-0 w-[6px] h-[6px] rounded-full bg-brand" />
@@ -188,7 +188,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
           onPress={() => e.onDirAdd(group(), add)}
           class={`cursor-pointer select-none group shrink-0 items-center justify-center mr-[4px] rounded-(--radius-sm) hover:bg-line-subtle ${phone() ? "w-[40px] h-[40px]" : "w-[24px] h-[24px]"} ${hoverOnly() ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : ""}`}
         >
-          <Icon name="plus" size={14} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
+          <Icon name="plus" size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
         </View>
       </View>
     );
@@ -221,7 +221,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
               onPress={() => e.toggleSection(key())}
               class="cursor-pointer select-none flex-row items-center gap-[4px] py-[2px] pr-[6px] rounded-(--radius-xs) hover:bg-row-hover"
             >
-              <Icon name={isOpen() ? "chevron-down" : "chevron-right"} size={10} class={SIDE_MUTED_TINT} />
+              <Icon name={isOpen() ? "chevron-down" : "chevron-right"} size={12} class={SIDE_MUTED_TINT} />
               <Text class={`text-[11.5px] font-semibold ${SIDE_MUTED_TEXT}`}>{p.row.title}</Text>
               <If when={!isOpen() && (p.row.count ?? 0) > 0}>
                 <Text class={`text-[11px] font-medium ${SIDE_MUTED_TEXT}`}>{String(p.row.count)}</Text>
@@ -246,7 +246,7 @@ export function SidebarList(props: { rows: ListRow[]; env: SidebarListEnv }) {
               onPress={() => e.onSectionAdd(which(), plus)}
               class="cursor-pointer select-none w-[22px] h-[22px] rounded-(--radius-sm) items-center justify-center hover:bg-line-subtle group"
             >
-              <Icon name="plus" size={14} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
+              <Icon name="plus" size={12} class={`${SIDE_MUTED_TINT} group-hover:tint-brand`} />
             </View>
           )}
         </If>

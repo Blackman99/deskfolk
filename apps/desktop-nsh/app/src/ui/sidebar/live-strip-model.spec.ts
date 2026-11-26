@@ -40,7 +40,7 @@ describe("collectLiveItems", () => {
       project_dir: "/code/real-bot",
       participants: [],
     });
-    const fileDrop = makeSession({ id: FILE_DROP_SESSION_ID, participants: [{ member: USER_MEMBER, left_at: null }] });
+    const fileDrop = makeSession({ id: FILE_DROP_SESSION_ID, participants: [{ member: USER_MEMBER, joined_at: "2026-11-25T01:00:00.000Z", left_at: null }] });
 
     const items = collectLiveItems({
       bots: [idleBot, runningBot, elsewhereBot],
@@ -59,7 +59,7 @@ describe("collectLiveItems", () => {
   });
 
   test("omits file drop when it has no unread messages", () => {
-    const fileDrop = makeSession({ id: FILE_DROP_SESSION_ID, participants: [{ member: USER_MEMBER, left_at: null }] });
+    const fileDrop = makeSession({ id: FILE_DROP_SESSION_ID, participants: [{ member: USER_MEMBER, joined_at: "2026-11-25T01:00:00.000Z", left_at: null }] });
     const items = collectLiveItems({
       bots: [],
       projects: [],

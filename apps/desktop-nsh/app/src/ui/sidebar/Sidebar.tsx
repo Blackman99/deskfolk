@@ -541,7 +541,7 @@ export function Sidebar(props: {
                               }`}
                             >
                               <View accessible={false} class={`absolute top-0 bottom-0 items-center justify-center ${phone() ? "left-3" : "left-[9px]"}`}>
-                                <Icon name="search" size={phone() ? 16 : 14} class={SIDE_MUTED_LIGHT_TINT} />
+                                <Icon name="search" size={phone() ? 16 : 12} class={SIDE_MUTED_LIGHT_TINT} />
                               </View>
                               <Text class={`${SIDE_MUTED_TEXT} ${phone() ? "text-[14px]" : "text-[12.5px]"}`} style={fold?.text}>{t().sidebar.searchShort}</Text>
                               <If when={!kbdHidden()}>

@@ -40,6 +40,7 @@ test("the defaults keep the conversation in view: its things beside it, terminal
     usage: "tab",
     roles: "tab",
     map: "side-right",
+    git: "side-right",
   });
 });
 
