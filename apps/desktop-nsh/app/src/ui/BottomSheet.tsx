@@ -17,7 +17,7 @@ import { Dialog, Sheet } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
 import { reduceMotion } from "./interface/motion";
-import { shadow } from "./styles";
+import { SCRIM_BLUR, shadow } from "./styles";
 import { WheelLayer } from "../platform/wheel-layer";
 import { runtime } from "../runtime";
 
@@ -96,7 +96,7 @@ function SlidingSheet(props: { p: BottomSheetProps }) {
         testID="bottom-sheet-backdrop"
         accessibilityLabel={p.closeLabel}
         class="absolute inset-0 bg-modal-backdrop"
-        style={shown() ? { opacity: 1, ...(still ? {} : FADE) } : { opacity: 0 }}
+        style={{ ...SCRIM_BLUR, ...(shown() ? { opacity: 1, ...(still ? {} : FADE) } : { opacity: 0 }) }}
         onPress={() => p.onClose()}
       />
       <View
@@ -124,6 +124,7 @@ function LiftingSheet(props: { p: BottomSheetProps }) {
         else p.onClose();
       }}
       backdropClass="bg-modal-backdrop"
+      backdropStyle={SCRIM_BLUR}
       popupClass={`bg-pane rounded-t-[16px] max-h-[86%] ${p.class ?? ""}`}
       popupStyle={{ boxShadow: shadow("lg"), paddingBottom: safeArea().bottom }}
     >

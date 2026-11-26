@@ -16,7 +16,7 @@ import { context, Scroll, Text, View, type JSX } from "nsh";
 import { Dialog } from "nsh/base";
 import { Icon, type IconName } from "./Icon";
 import { IconButton } from "./IconButton";
-import { shadow } from "./styles";
+import { SCRIM_BLUR, shadow } from "./styles";
 import { widthAtMost, viewportSize } from "../platform/viewport";
 import { WheelLayer } from "../platform/wheel-layer";
 
@@ -106,6 +106,7 @@ export function Modal(props: {
         if (!e.open) dismiss();
       }}
       backdropClass={page() ? "bg-pane" : "bg-modal-backdrop"}
+      backdropStyle={page() ? undefined : SCRIM_BLUR}
       class={`m-auto bg-pane overflow-hidden ${page() ? "" : "rounded-(--radius-xl) border border-line"}`}
       style={{
         width: cardWidth(),

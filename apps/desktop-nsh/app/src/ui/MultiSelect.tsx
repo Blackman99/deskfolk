@@ -8,7 +8,7 @@ import { platform, signal, Text, View, type JSX } from "nsh";
 import { Combobox } from "nsh/base";
 import { normalizeOptions, toggleValue, type NormalizedSelectOption, type SelectOption } from "../m/select-options.ts";
 import { Icon } from "./Icon";
-import { shadow } from "./styles";
+import { SCRIM_BLUR, shadow } from "./styles";
 
 export function MultiSelect(props: {
   values?: string[];
@@ -98,6 +98,7 @@ export function MultiSelect(props: {
       popupClass={`bg-pane border border-line rounded-(--radius-md) p-1 ${phone() ? "rounded-b-none" : "max-h-[264px]"}`}
       popupStyle={{ boxShadow: shadow("menu") }}
       backdropClass="bg-modal-backdrop"
+      backdropStyle={SCRIM_BLUR}
       groupClass="px-[10px] pt-2 pb-[3px] text-[11px] text-ink-muted"
       itemClass={`cursor-pointer select-none disabled:cursor-default group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-2" : "px-[10px] py-[7px]"}`}
       empty={

@@ -10,7 +10,7 @@ import { Select as BaseSelect } from "nsh/base";
 import { normalizeOptions, type SelectOption } from "../m/select-options.ts";
 import { copy } from "../runtime";
 import { Icon } from "./Icon";
-import { shadow } from "./styles";
+import { SCRIM_BLUR, shadow } from "./styles";
 
 export type { SelectOption };
 
@@ -72,6 +72,7 @@ export function Select(props: {
       popupClass={`bg-pane border border-line rounded-(--radius-md) p-1 max-w-[420px] ${phone() ? "rounded-b-none" : "max-h-[230px]"}`}
       popupStyle={{ boxShadow: shadow("menu") }}
       backdropClass="bg-modal-backdrop"
+      backdropStyle={SCRIM_BLUR}
       groupClass={`px-[10px] pt-2 pb-[3px] text-ink-muted ${phone() ? "text-[12px]" : "text-[11px]"}`}
       itemClass={`cursor-pointer select-none disabled:cursor-default group flex-row items-center rounded-(--radius-sm) focus:bg-line-subtle selected:bg-accent-tint disabled:opacity-[0.45] ${phone() ? "min-h-[48px] px-3 py-[10px]" : sm() ? "px-2 py-[5px]" : "px-[10px] py-[7px]"}`}
       empty={

@@ -30,7 +30,7 @@ import { WorkspaceView } from "../overlays/WorkspaceView";
 import { CallEditor } from "../settings/CallEditor";
 import { RolesPage } from "../settings/RolesPage";
 import { SpendView } from "../spend/SpendView";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { TaskMap } from "../taskmap/TaskMap";
 import { GitPane } from "../lazy-views";
 import { UsageTab } from "../usage/UsageTab";
@@ -242,6 +242,7 @@ export function PaneContentHost(props: {
                       testID="pane-side-scrim"
                       accessibilityLabel={t().common.close}
                       class="flex-1 bg-modal-backdrop"
+                      style={SCRIM_BLUR}
                       onPress={() => props.onCloseSide(s().id)}
                     />
                     <View

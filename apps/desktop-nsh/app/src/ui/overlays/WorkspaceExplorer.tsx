@@ -1,20 +1,20 @@
 /**
  * The narrow host for the workspace (`WorkspaceExplorer.svelte`): a page that slides in from the
- * right, dims what is behind it and closes on a press outside. On a wide desktop window the same
- * `WorkspaceView` is a pane instead, with none of this around it.
+ * right, dims and blurs what is behind it (`SCRIM_BLUR`) and closes on a press outside. On a wide
+ * desktop window the same `WorkspaceView` is a pane instead, with none of this around it.
  *
  * It is an `Overlay` over the window (a fixed box); the part left of the pane is the backdrop, so
  * a press there closes it and one inside the pane never does. On a phone the pane is the whole
  * width and height and nothing dims: the bottom bar is hidden while the workspace is open (the
  * workspace left the bar for the tools), so stopping 60 points above it left an empty strip. Not
- * carried over: the backdrop blur and the slide animation (`pageSlide`).
+ * carried over: the slide animation (`pageSlide`).
  */
 import { Overlay, safeArea, View, type JSX } from "nsh";
 import { viewportSize } from "../../platform/viewport";
 import type { MessengerApi } from "../../m/messenger-api.ts";
 import { copy } from "../../runtime";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { WorkspaceView, type WorkspaceHandle, type WorkspacePreviewProps } from "./WorkspaceView";
 import { WheelLayer } from "../../platform/wheel-layer";
 
@@ -69,6 +69,7 @@ export function WorkspaceExplorer(props: {
             accessible={false}
             onPress={requestClose}
             class={`flex-1 ${narrow() ? "" : "bg-modal-backdrop"}`}
+            style={narrow() ? undefined : SCRIM_BLUR}
           />
           <View
             testID="workspace-pane"

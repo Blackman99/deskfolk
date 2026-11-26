@@ -12,7 +12,7 @@ import { routineScheduleLabel } from "../../m/panels/routine-form.ts";
 import { Icon } from "../Icon";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { SmallFace } from "./EventFace";
 import type { CalLocale } from "./calendar-dates";
 import { WheelLayer } from "../../platform/wheel-layer";
@@ -36,6 +36,7 @@ export function RoutineDetail(props: {
         if (!e.open) props.onClose();
       }}
       backdropClass="bg-modal-backdrop"
+      backdropStyle={SCRIM_BLUR}
       class="m-auto bg-pane overflow-hidden rounded-(--radius-lg) border border-line"
       style={{ width: width(), maxHeight: Math.round(viewportSize().height * 0.9), boxShadow: shadow("lg") }}
     >

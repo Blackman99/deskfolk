@@ -46,7 +46,7 @@ import { parseHostRelay, type HostRelayField } from "../../m/remote/pairing-host
 import { IconButton } from "../IconButton";
 import { MobileNavigation, type Destination } from "../MobileNavigation";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { AboutTab } from "./AboutTab";
 import { AgentsTab, type AgentsTabController } from "./AgentsTab";
 import { AutosaveState } from "./AutosaveState";
@@ -691,6 +691,7 @@ export function SettingsModal(props: {
             if (!e.open && closable()) props.closeSettings();
           }}
           backdropClass={!shown() ? "bg-transparent" : phone() ? "bg-pane" : "bg-modal-backdrop"}
+          backdropStyle={shown() && !phone() ? SCRIM_BLUR : undefined}
           class={`m-auto ${shown() ? "bg-pane" : ""} overflow-hidden ${phone() ? "" : "rounded-(--radius-xl) border border-line"}`}
           style={{
             width: width(),

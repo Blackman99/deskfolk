@@ -6,6 +6,10 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### A dialog's scrim blurs what it covers
+
+- The dimmed scrim behind dialogs, sheets, drawers and the search now also blurs what it covers a little (4 px), on the desktop and on the phone's page. On macOS the blur is a plain one at that radius, not the system's frosted material. Linux draws the dimming only.
+
 ### Project session Git & GitHub views on phone and remote web
 
 - Project sessions now open the read-only Git & GitHub view (Changes, History graph, GitHub PRs/Issues, and Repo → Worktree hierarchy switcher) as a full-screen page (`?s=<id>&o=git`) on phones and hosted tablets, reachable from the conversation header's Git button, the session context menu, and the sidebar project directory menu.

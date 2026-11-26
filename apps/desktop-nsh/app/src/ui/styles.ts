@@ -4,7 +4,7 @@
  * theme token, used as a class: `bg-pane`, `text-ink`, `border-line`, `rounded-(--radius-md)`;
  * `--accent` is `brand` and `--muted` is `ink-muted` (NSH's own `accent` / `muted` mean other things).
  */
-import { colorScheme, token } from "nsh";
+import { colorScheme, platform, token, type ViewStyle } from "nsh";
 import { SHADOWS } from "./shadows.generated";
 
 export type ShadowName = keyof (typeof SHADOWS)["light"];
@@ -13,6 +13,23 @@ export type ShadowName = keyof (typeof SHADOWS)["light"];
 export function shadow(name: ShadowName): string {
   return SHADOWS[colorScheme() === "dark" ? "dark" : "light"][name];
 }
+
+/**
+ * The scrim of a dialog, a sheet or a drawer (`bg-modal-backdrop`) blurs what it covers a little:
+ * its `backdropStyle`, or its `style` where the scrim is a view of our own. Only where it paints
+ * that tint: a phone's whole-page dialog and a backdrop left transparent take none.
+ *
+ * On macOS NSH draws a `backdropFilter` blur as AppKit's material (`NSVisualEffectView`, popover),
+ * whose radius and tint are AppKit's: a flat grey slab over the window, not a slight blur. A view
+ * with a `maskImage` draws a plain blur at its own radius instead, so there the scrim carries a mask
+ * that keeps all of it. There, too, a scrim that rests below full opacity (its own or a parent's)
+ * draws no blur at all, only its tint; a fade that ends at full opacity blends it in. The web and
+ * Windows draw the blur as asked; Linux draws none.
+ */
+export const SCRIM_BLUR: ViewStyle = {
+  backdropFilter: "blur(4px)",
+  ...(platform.os === "macos" ? { maskImage: "linear-gradient(#000, #000)" } : {}),
+};
 
 /**
  * A colour the mirrored modules give as CSS (`var(--av-3-bg)`, the avatar palettes) as the theme's

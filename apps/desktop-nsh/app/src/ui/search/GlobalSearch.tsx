@@ -24,7 +24,7 @@ import { Icon, type IconName } from "../Icon";
 import { IconButton } from "../IconButton";
 import { narrowWindow } from "../Modal";
 import { SessionAvatar } from "../SessionAvatar";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { tip } from "../tip";
 import { WheelLayer } from "../../platform/wheel-layer";
 
@@ -203,6 +203,7 @@ export function GlobalSearch(props: {
         if (!e.open) close();
       }}
       backdropClass={phone() ? "bg-pane" : "bg-modal-backdrop"}
+      backdropStyle={phone() ? undefined : SCRIM_BLUR}
       class={`bg-pane overflow-hidden ${phone() ? "" : "rounded-(--radius-lg) border border-line"}`}
       style={{
         width: cardWidth(),

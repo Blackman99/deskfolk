@@ -22,7 +22,7 @@ import type { GroupDetailDraft } from "../../m/panels/group-edit";
 import { classifySession, youBotPeer, type SessionGroup } from "../../m/sidebar/session-groups";
 import { copy, runtime } from "../../runtime";
 import { narrowWindow } from "../Modal";
-import { shadow } from "../styles";
+import { SCRIM_BLUR, shadow } from "../styles";
 import { GroupPane } from "./GroupPane";
 import { ProfilePane, type ProfilePaneApi } from "./ProfilePane";
 import { SettingsHead } from "./SettingsHead";
@@ -210,6 +210,7 @@ export function SessionSettingsDrawer(props: SessionSettingsDrawerProps) {
               testID="profile-backdrop"
               accessible={false}
               class="flex-1 bg-modal-backdrop"
+              style={SCRIM_BLUR}
               onPress={() => {
                 if (props.danger.drawerHasDanger) return;
                 runtime.closeSessionSettings();

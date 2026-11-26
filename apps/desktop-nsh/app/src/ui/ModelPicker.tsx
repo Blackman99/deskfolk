@@ -22,7 +22,7 @@ import { ModelSourceMark } from "./ModelSourceMark";
 import { ModelRow, SearchField } from "./model-picker/Rows";
 import { ResultsList, SheetLevel, SourceModels } from "./model-picker/Lists";
 import { createPicker } from "./model-picker/state";
-import { shadow } from "./styles";
+import { SCRIM_BLUR, shadow } from "./styles";
 
 /** The tallest a list in the popover grows before it scrolls: the messenger's panel is 460 under its search and specials. */
 const LIST_MAX = 380;
@@ -250,6 +250,7 @@ export function ModelPicker(props: {
             }
           }}
           backdropClass="bg-modal-backdrop"
+          backdropStyle={SCRIM_BLUR}
           popupClass="bg-pane rounded-t-[16px]"
           popupStyle={{ minHeight: "52%", maxHeight: "86%", boxShadow: shadow("lg") }}
         >
