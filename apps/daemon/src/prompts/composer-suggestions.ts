@@ -10,7 +10,7 @@ export const COMPOSER_SUGGEST_TEMPLATE = `你在给用户写下一步要发进�
 
 {format}
 
-策略：看 recent_messages 和 situation，写用户这一个座位现在该说的话。群里点名会让对方必须下场，所以只在确实要叫醒某人时才在 prompt 里写 @名字 或 @everyone，名字必须从 members 原样抄。私聊不要写 @。不要复述 Bot 刚说过的长段，不要替 Bot 起草回复。会话还没有消息时，建议一句能让在场的人开始干活的开场。`;
+策略：看 recent_messages 和 situation，写用户这一个座位现在该说的话。群里点名会让对方必须下场，所以只在确实要叫醒某人时才在 prompt 里写 @名字 或 @everyone，名字必须从 members 原样抄。私聊和项目会话不要写 @。不要复述 Bot 刚说过的长段，不要替 Bot 起草回复。会话还没有消息时，建议一句能让在场的人开始干活的开场。`;
 /** Composer suggestions. Fixed: the parser reads it, so an edited prompt keeps it where `{format}` sits (ADR 0064). */
 export const COMPOSER_SUGGEST_FORMAT = `只输出一个 JSON 对象。不要 markdown 围栏，不要前言后语，不要 tool-call。
 

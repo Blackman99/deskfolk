@@ -42,7 +42,7 @@ import type { ComposerEditorHandle } from "./ComposerEditor";
 import type { SendFlight } from "./send-flight";
 import { ComposerEditor } from "../lazy-views";
 import { ComposerQuote } from "./ComposerQuote";
-import { ComposerSuggestions } from "./ComposerSuggestions";
+import { ComposerSuggestions, SuggestButton } from "./ComposerSuggestions";
 import { ScrollBottomButton } from "./ScrollBottomButton";
 import { SendButton } from "./SendButton";
 import { StopMenu } from "./StopMenu";
@@ -99,6 +99,8 @@ export function Composer(props: {
   fileDragOver?: boolean;
   /** The conversation's flight: a line of words alone flies from here into the transcript (`send-flight`). */
   flight?: SendFlight;
+  /** Reports the suggestion bar's laid-out size (used by stories to verify it does not collapse). */
+  onSuggestionsLayout?: (size: { width: number; height: number }) => void;
 }) {
   const MOD_ENTER = formatShortcut(["mod", "Enter"]);
   const snapshot = () => runtime.snapshot;
@@ -376,9 +378,7 @@ export function Composer(props: {
       <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[760px]"}`}>
         <WaitingJump hidden={props.hiddenWaiting ?? NO_WAITING} onJump={(id) => props.onJumpWaiting?.(id)} />
         <If when={d().canSuggest && view() && d().suggestionsShown}>
-          <View role="group" accessibilityLabel={copy().chat.suggestNext} class="self-start max-w-full min-w-0">
-            <ComposerSuggestions suggestions={view()!.composerSuggestions.slice()} onPickPrompt={props.onPickPrompt} />
-          </View>
+          <ComposerSuggestions suggestions={view()!.composerSuggestions.slice()} docked={docked()} onPickPrompt={props.onPickPrompt} onLayout={props.onSuggestionsLayout} />
         </If>
 
         <View class="w-full relative">
@@ -486,13 +486,12 @@ export function Composer(props: {
                   <VoiceButton voice={voice} disabled={!connected()} />
                 </If>
                 <If when={d().canSuggest && !(docked() && (d().hasContent || d().suggestBlocked))}>
-                  <ToolButton
-                    testID="suggest-button"
-                    icon={view()?.suggestionsLoading ? "spinner" : "sparkles"}
+                  <SuggestButton
+                    sizeClass={tool()}
                     label={suggestTitleOf(d(), Boolean(view()?.suggestionsLoading), copy())}
                     disabled={d().suggestBlocked}
                     active={d().suggestionsShown}
-                    busy={Boolean(view()?.suggestionsLoading)}
+                    loading={Boolean(view()?.suggestionsLoading)}
                     onPress={toggleSuggestions}
                   />
                 </If>

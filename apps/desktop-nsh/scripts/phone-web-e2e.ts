@@ -1028,7 +1028,7 @@ try {
     /** The row's buttons where they are drawn, in CSS pixels. */
     const rowFrames = () =>
       page.evaluate(() =>
-        ["project-plus", "project-plan", "project-consult", "voice-button", "stop-menu", "stop-button", "send-button"].flatMap((id) =>
+        ["project-plus", "project-plan", "project-consult", "voice-button", "suggest-button", "stop-menu", "stop-button", "send-button"].flatMap((id) =>
           [...document.querySelectorAll(`[data-testid="${id}"]`)]
             .map((el) => el.getBoundingClientRect())
             .filter((r) => r.width > 0 && r.height > 0)

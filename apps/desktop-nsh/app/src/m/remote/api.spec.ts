@@ -733,3 +733,20 @@ test("a phone reads and sets up Claude Code over the relay, and no setup holds a
   ]);
   expect(api.pendingRequests()).toHaveLength(0);
 });
+
+test("composerSuggestions passes its abort signal down to the remote transport", async () => {
+  const api = new RemoteApi(enrollment);
+  let seenSignal: AbortSignal | undefined;
+  Reflect.set(api, "transport", {
+    rpc: async (request: RemoteRequest, _uploads: unknown, _progress: unknown, options?: { signal?: AbortSignal }) => {
+      seenSignal = options?.signal;
+      expect(request.method).toBe("GET");
+      expect(request.path).toBe("/v1/sessions/01ARZ3NDEKTSV4RRFFQ69G5FAY/composer-suggestions");
+      return { v: 1, id: request.id, status: 200, body: { items: [{ id: "s1", label: "继续", prompt: "继续下一步" }] } } satisfies RemoteResponse;
+    },
+  });
+  const abort = new AbortController();
+  const items = await api.composerSuggestions("01ARZ3NDEKTSV4RRFFQ69G5FAY", abort.signal);
+  expect(items).toEqual([{ id: "s1", label: "继续", prompt: "继续下一步" }]);
+  expect(seenSignal).toBe(abort.signal);
+});

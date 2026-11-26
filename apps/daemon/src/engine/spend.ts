@@ -6,6 +6,7 @@
  * all; a call that never answered and brought no usage is not recorded, since there is nothing to
  * bill and no reply to account for.
  */
+import { basename } from "node:path";
 import type { MappedUsage } from "../completions";
 import type { Spend, SpendKind, SpendPurpose } from "@real-bot/protocol";
 import { estimateAgentCost } from "../agents/agent-prices";
@@ -89,6 +90,8 @@ export function createSpend(deps: SpendDeps): SpendTracker {
       const session = store.getSession(sessionId);
       if (session.kind === "group") {
         sessionName = session.name;
+      } else if (session.kind === "project") {
+        sessionName = session.name ?? (session.project_dir ? basename(session.project_dir) : null);
       } else {
         const names = store
           .presentBotIds(sessionId)

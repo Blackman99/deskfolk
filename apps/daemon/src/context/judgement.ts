@@ -1,8 +1,9 @@
 /** What the judgement and composer-suggestion calls read, and reading the judgement back. */
-import { USER_MEMBER, type Message } from "@real-bot/protocol";
+import { isHiddenTranscriptKind, PROJECT_AGENT_AUTHOR, USER_MEMBER, type Message } from "@real-bot/protocol";
 import { askTranscriptText } from "../ask";
 import { COMPOSER_SUGGEST_BODY, COMPOSER_SUGGEST_RECENT, type ComposerSuggestPayload } from "../prompts/composer-suggestions";
 import { parsePlanSpec, type Store } from "../store";
+import { AGENT_NAMES } from "../store/project-sessions";
 import { takeCodePoints } from "../text";
 import { botDisplayName, botDuties, BRIEF_LIMIT, LATEST_USER_LIMIT, oneLineClip } from "./common";
 import { planFacts } from "./plan-facts";
@@ -10,6 +11,51 @@ import { situationFacts } from "./situation";
 
 export function assembleComposerSuggestUser(store: Store, sessionId: string): string {
   const session = store.getSession(sessionId);
+  const project = session.kind === "project" ? store.projectOf(sessionId) : null;
+  if (project) {
+    const agentName = AGENT_NAMES[project.agent];
+    const members: ComposerSuggestPayload["members"] = [
+      "user",
+      { name: agentName, duties: `项目目录 ${project.dir} 的本机编程 Agent` },
+    ];
+    const authorOf = (author: string) =>
+      author === USER_MEMBER ? "user" : author === PROJECT_AGENT_AUTHOR ? agentName : author === "app" ? "app" : botDisplayName(store, author);
+    // Project sessions mark agent replies and imported lines `hidden_from_bots = 1`, so read the
+    // visible transcript via `listMessages` rather than `listMainMessages`.
+    const recent = store
+      .listMessages(sessionId, { limit: COMPOSER_SUGGEST_RECENT * 2 })
+      .items.filter((m) => !isHiddenTranscriptKind(m.kind) && !m.withdrawn_at)
+      .slice(0, COMPOSER_SUGGEST_RECENT)
+      .reverse()
+      .map((m) => {
+        const clipped = takeCodePoints(m.kind === "ask" ? askTranscriptText(m) : m.body, COMPOSER_SUGGEST_BODY);
+        const row: ComposerSuggestPayload["recent_messages"][number] = {
+          id: m.id,
+          author: authorOf(m.author),
+          kind: m.kind,
+          body: clipped.text,
+          created_at: m.created_at,
+        };
+        if (clipped.truncated) row.truncated = true;
+        return row;
+      });
+    const latest = [...recent].reverse().find((m) => m.kind === "user" || m.author === "user");
+    const run = store.latestAgentRun(sessionId);
+    const seats = run && (run.status === "running" || run.status === "waiting_approval") ? [agentName] : [];
+    const last = recent[recent.length - 1];
+    const payload: ComposerSuggestPayload = {
+      session: { id: session.id, kind: session.kind, name: session.name },
+      members,
+      situation: {
+        seats,
+        waker: last ? last.author : "user",
+        latest_user: latest ? latest.body.replace(/\s+/g, " ").trim().slice(0, LATEST_USER_LIMIT) || null : null,
+      },
+      plan: null,
+      recent_messages: recent,
+    };
+    return JSON.stringify(payload);
+  }
   const present = store.presentParticipants(sessionId);
   const members: ComposerSuggestPayload["members"] = [];
   for (const p of present) {

@@ -43,11 +43,13 @@ export function composerAnswerReadable(raw: string): boolean {
 export function parseComposerSuggestions(
   raw: string,
   rosterNames: readonly string[],
+  opts?: { checkMentions?: boolean },
 ): ParsedComposerSuggestion[] {
   const parsed = extractJsonObject(raw);
   if (!parsed) return [];
   const rows = parsed.suggestions;
   if (!Array.isArray(rows)) return [];
+  const checkMentions = opts?.checkMentions !== false;
   const names = [...rosterNames];
   const out: ParsedComposerSuggestion[] = [];
   const seen = new Set<string>();
@@ -57,8 +59,10 @@ export function parseComposerSuggestions(
     const obj = row as Record<string, unknown>;
     const prompt = cleanLine(obj.prompt, COMPOSER_SUGGEST_PROMPT);
     if (prompt.length < 2) continue;
-    const mentions = parseMentions(prompt, names);
-    if (mentions.unresolved.length > 0) continue;
+    if (checkMentions) {
+      const mentions = parseMentions(prompt, names);
+      if (mentions.unresolved.length > 0) continue;
+    }
     const label = cleanLine(obj.label, COMPOSER_SUGGEST_LABEL) || prompt.slice(0, COMPOSER_SUGGEST_LABEL);
     const key = prompt.toLowerCase();
     if (seen.has(key)) continue;

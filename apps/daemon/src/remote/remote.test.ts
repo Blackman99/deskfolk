@@ -692,6 +692,44 @@ test("composer and model probe recheck revocation after credential waits; probes
   await expect(pending).rejects.toThrow(); expect(calls).toBe(2); held.mockRestore();
 });
 
+test("remote composer-suggestions works for project sessions over the encrypted link", async () => {
+  let seenUser = "";
+  const f = await fixture({
+    judge: async (input) => {
+      const content = input.messages.find((m) => m.role === "user")?.content;
+      seenUser = typeof content === "string" ? content : "";
+      return {
+        content: JSON.stringify({
+          suggestions: [{ label: "跑测试", prompt: "跑一遍 @real-bot/protocol 的测试" }],
+        }),
+        toolCalls: [],
+        hadToolCalls: false,
+        usage: null,
+        failKind: null,
+      };
+    },
+    complete: async () => { throw new Error("unused"); },
+  });
+  await f.store.patchSettings({
+    endpoint_base_url: "http://127.0.0.1:9/v1",
+    endpoint_api_key: "fixture-only",
+    endpoint_models: ["fixture-model"],
+    endpoint_default_model: "fixture-model",
+  });
+  const d = await f.pair(), c = await f.connect(d);
+  const project = f.store.createProjectSession({ dir: "/tmp/phone-proj", agent: "claude_code", configDir: null, locale: "zh" });
+  f.store.postMessage(project.id, { body: "检查一下远程接口" });
+  f.store.insertAgentLine(project.id, { kind: "bot", body: "已经检查完毕，协议字段一致。" });
+
+  const res = await c.rpc({ v: 1, id: ulid(), method: "GET", path: `/v1/sessions/${project.id}/composer-suggestions` });
+  expect(res.status).toBe(200);
+  expect((res.body.items as Array<{ label: string; prompt: string }>).map((item) => [item.label, item.prompt])).toEqual([
+    ["跑测试", "跑一遍 @real-bot/protocol 的测试"],
+  ]);
+  expect(seenUser).toContain("已经检查完毕，协议字段一致。");
+  expect(seenUser).toContain("Claude Code");
+});
+
 test("strict remote history accepts the shared timestamp-plus-ID pagination cursor", async () => {
   const f = await fixture(), d = await f.pair(), c = await f.connect(d), bot = f.store.createBot({ name: "History", duties: "", boundaries: "" });
   for (let n = 0; n < 3; n++) f.store.postMessage(bot.direct_session.id, { body: `message${n}` });

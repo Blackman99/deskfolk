@@ -18,9 +18,10 @@
  * rather than floating over it (see `ChatStage`); Shift+Tab is a window key while the conversation
  * is mounted, as NSH tells an input nothing of a key it does not take.
  */
-import { cleanup, keymap, signal, Text, View } from "nsh";
+import { cleanup, effect, keymap, platform, signal, Text, View } from "nsh";
 import type { PasteEvent } from "nsh/types";
 import { speechReady, type SessionSummary } from "@real-bot/protocol";
+import { justSent } from "../../m/chat/composer-mode";
 import { ComposerAttachments as StagedFiles, uploadedShare } from "../../m/chat/composer-attachments.svelte";
 import { splitDraggedPaths } from "../../m/chat/attachments";
 import type { WorkspaceDragItem } from "../../m/workspace-drag.svelte";
@@ -35,6 +36,8 @@ import { shadow } from "../styles";
 import { tip } from "../tip";
 import { AgentTune } from "./AgentTune";
 import { ComposerPlus, Deeper, PlusSwitch } from "./ComposerPlus";
+import { ComposerSuggestions, SuggestButton } from "./ComposerSuggestions";
+import { suggestTitleOf } from "./composer-state";
 import { ConsultChip, ConsultPill, consultNames, type ConsultHandle } from "./ConsultPill";
 import { ProjectContextPill } from "./ProjectContextPill";
 import { ComposerAttachments } from "./ComposerAttachments";
@@ -94,6 +97,7 @@ export function ProjectComposer(props: {
   const sendFailed = signal(false);
   const width = signal(0);
   let editor: ComposerEditorHandle | null = null;
+  let sentAt: number | null = null;
 
   // --- what goes with your next line ---
   const files = new StagedFiles({
@@ -151,6 +155,7 @@ export function ProjectComposer(props: {
     landed?.(sent);
     sendFailed.set(!sent);
     if (!sent) return;
+    sentAt = performance.now();
     // What was staged goes once the Mac has it, as in a Bot's composer.
     const gone = new Set([...rows, ...pathRows].map((row) => row.id));
     target.stagedAttachments = target.stagedAttachments.filter((row) => !gone.has(row.id));
@@ -194,6 +199,41 @@ export function ProjectComposer(props: {
   const docked = settled(() => width() > 0 && width() <= 480);
   const compact = settled(() => width() > 0 && width() <= 440);
   const edge = () => (width() <= 680 ? 12 : 24);
+
+  // --- ✨ suggestions ---
+  const suggestionsShown = () => view().composerSuggestions.length > 0 || Boolean(view().suggestionsEmpty);
+  const suggestWaiting = () => s().live();
+  const suggestBlocked = () => !view().suggestionsLoading && !suggestionsShown() && (!connected() || suggestWaiting() || Boolean(view().sending));
+  const suggestSize = () => (docked() && !platform.desktop ? "w-[40px] h-[40px]" : "w-[34px] h-[34px]");
+  /** Send greyed with nothing to send steps aside on a phone row for ✨ or Stop (matches `Composer`). */
+  const sendStepsAside = () => docked() && !sendable() && !view().sending && (s().live() || s().stopItems().length > 0 || !suggestBlocked());
+
+  /** One press drafts once; pressing again while drafts are out or on the way puts them away. */
+  function toggleSuggestions(): void {
+    const current = view();
+    if (current.suggestionsLoading || suggestionsShown()) {
+      runtime.dismissComposerSuggestions(props.selected.id);
+      return;
+    }
+    if (justSent(sentAt, performance.now())) return;
+    void runtime.suggestComposer(props.selected.id);
+  }
+
+  function pickSuggestion(prompt: string): void {
+    view().draft = prompt;
+    sendFailed.set(false);
+    setTimeout(() => editor?.focus(), 0);
+  }
+
+  // "Nothing to suggest" answers the press; it is not worth keeping on screen.
+  effect(() => {
+    const current = view();
+    if (!current.suggestionsEmpty) return;
+    const timer = setTimeout(() => {
+      current.suggestionsEmpty = false;
+    }, 4000);
+    return () => clearTimeout(timer);
+  });
   /**
    * A phone: the + holds the clip, plan mode, the consultants and the model. Their sheets are opened
    * through these handles: the model's and the consultants' from inside the +'s sheet, whose content
@@ -290,6 +330,9 @@ export function ProjectComposer(props: {
     >
       <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[800px]"}`}>
         <WaitingJump hidden={props.hiddenWaiting ?? NO_WAITING} onJump={(id) => props.onJumpWaiting?.(id)} />
+        <If when={suggestionsShown()}>
+          <ComposerSuggestions suggestions={view().composerSuggestions.slice()} docked={docked()} onPickPrompt={pickSuggestion} />
+        </If>
         <View class="w-full relative">
         {/* Focused, it keeps its focus border under the pointer, as a Bot's composer does (`Composer`). */}
         <View
@@ -453,6 +496,16 @@ export function ProjectComposer(props: {
               <If when={voiceOffered() || voice.busy}>
                 <VoiceButton voice={voice} disabled={!connected()} />
               </If>
+              <If when={!(docked() && (sendable() || suggestBlocked()))}>
+                <SuggestButton
+                  sizeClass={suggestSize()}
+                  label={suggestTitleOf({ suggestionsShown: suggestionsShown(), suggestWaiting: suggestWaiting() }, Boolean(view().suggestionsLoading), t())}
+                  disabled={suggestBlocked()}
+                  active={suggestionsShown()}
+                  loading={Boolean(view().suggestionsLoading)}
+                  onPress={toggleSuggestions}
+                />
+              </If>
               <If when={s().stopItems().length > 0}>
                 <StopMenu items={s().stopItems()} disabled={!connected()} onPick={s().pickStop} />
               </If>
@@ -461,7 +514,7 @@ export function ProjectComposer(props: {
                 connected={connected()}
                 primaryAction={{ kind: "send", disabled: !sendable() || Boolean(view().sending) || !connected() }}
                 directStop={s().live() && s().stopItems().length === 0}
-                stepsAside={false}
+                stepsAside={sendStepsAside()}
                 sending={view().sending}
                 upload={view().upload}
                 onStop={() => void s().stop()}

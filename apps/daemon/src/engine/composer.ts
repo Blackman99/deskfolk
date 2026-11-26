@@ -41,9 +41,10 @@ export function createComposer(deps: ComposerDeps): Composer {
     signal: AbortSignal = new AbortController().signal,
     guard?: () => void,
   ): Promise<ComposerSuggestion[]> {
-    store.getSession(sessionId);
-    // These draft what the user would send; in a Bot↔Bot direct they have nothing to draft.
+    const session = store.getSession(sessionId);
+    // These draft what the user would send; in a Bot↔Bot direct or hidden consultant session they have nothing to draft.
     if (!store.isPresent(sessionId, USER_MEMBER)) return [];
+    if (session.kind === "project" && store.projectOf(sessionId)?.parentId) return [];
     if (signal.aborted) return [];
     const chosen = (await deps.builtinTarget?.("composer").catch(() => null)) ?? null;
     let target: BuiltinTarget;
@@ -149,7 +150,7 @@ export function createComposer(deps: ComposerDeps): Composer {
         }
       })
       .filter((name): name is string => Boolean(name));
-    const suggestions = parseComposerSuggestions(result.content ?? "", roster);
+    const suggestions = parseComposerSuggestions(result.content ?? "", roster, { checkMentions: session.kind !== "project" });
     recordRun("ok", null, suggestions.length, result.content ?? null);
     return suggestions;
   }

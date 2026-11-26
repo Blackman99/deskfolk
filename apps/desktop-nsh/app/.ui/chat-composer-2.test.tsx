@@ -77,12 +77,21 @@ test("an archived group shows the notice and no box", async () => {
   expect(app.shows("id:attach-button")).toBe(false);
 });
 
-test("suggestions draft their line into the box", async () => {
+test("suggestions are laid out with non-zero height and draft their line into the box", async () => {
   const app = await open();
   expect(app.shows("id:suggest-chip")).toBe(false);
   await app.press("id:story-suggest");
+  await app.waitFor("id:composer-suggestions");
+  await app.waitUntil(() => {
+    const raw = app.texts().find((t) => t.startsWith("suggest-size:"))?.slice("suggest-size:".length) ?? "";
+    const [w, h] = raw.split("x").map(Number);
+    return Number.isFinite(w) && Number.isFinite(h) && w! > 200 && h! >= 24;
+  });
   await app.press("text:换个语气");
   await app.waitUntil(() => draft(app) === "换个更轻松的语气");
+  // Pressing ✨ while chips are shown puts them away.
+  await app.press("id:suggest-button");
+  await app.waitFor("id:suggest-chip", { state: "gone" });
 });
 
 test("a press that finds nothing to suggest says so where the chips would be, then lets it go", async () => {

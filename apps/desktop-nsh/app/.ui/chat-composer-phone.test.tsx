@@ -136,4 +136,17 @@ test("on a phone a Bot's direct has the + too: the clip and the Bot's model, who
   expect(app.shows("id:composer-plus")).toBe(false);
 });
 
+test("on a phone a project session has ✨ in place of empty Send; picking a suggestion fills the draft and brings Send back", async () => {
+  const app = await project();
+  await app.waitFor("id:suggest-button", { timeout: 5_000 });
+  expect(app.shows("id:send-button")).toBe(false);
+  await app.press("id:suggest-button");
+  await app.waitFor("id:composer-suggestions", { timeout: 5_000 });
+  await app.waitFor("text:跑全套测试", { timeout: 5_000 });
+  await app.press("text:跑全套测试");
+  await app.waitUntil(() => app.texts().includes("跑一遍测试并汇报结果"), { timeout: 5_000 });
+  await app.waitFor("id:send-button", { timeout: 5_000 });
+  expect(app.shows("id:suggest-button")).toBe(false);
+});
+
 const said = (app: { texts(): string[] }): string => app.texts().find((x) => /^(sent:|tune:|answer:|stop)/.test(x)) ?? "";

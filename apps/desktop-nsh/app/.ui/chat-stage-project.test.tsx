@@ -517,3 +517,28 @@ test("on a phone width the consultants' settings open in a BottomSheet from the 
   await app.press("id:consult-sheet >> id:bottom-sheet-close");
   await app.waitFor("id:consult-menu", { state: "gone", timeout: 5_000 });
 });
+
+test("a project session has ✨ input suggestions: pressing ✨ shows chips, picking one fills the box, and a live run blocks ✨", async () => {
+  const app = await project();
+  await app.waitFor("id:suggest-button", { timeout: 5_000 });
+  expect(app.enabled("id:suggest-button")).toBe(true);
+  expect(app.shows("id:suggest-chip")).toBe(false);
+
+  await app.press("id:suggest-button");
+  await app.waitFor("id:composer-suggestions", { timeout: 5_000 });
+  await app.waitFor("text:跑全套测试", { timeout: 5_000 });
+  expect(app.shows("text:检查类型")).toBe(true);
+
+  // Picking a chip fills the project composer's draft, ready to send.
+  await app.press("text:检查类型");
+  await app.waitUntil(() => app.texts().includes("检查 @real-bot/protocol 里的类型定义"), { timeout: 5_000 });
+
+  // Pressing ✨ while chips are out puts them away.
+  await app.press("id:suggest-button");
+  await app.waitFor("id:suggest-chip", { state: "gone", timeout: 5_000 });
+
+  // While the agent run is live, ✨ waits until the reply ends.
+  await app.press("id:story-run");
+  await app.waitFor("id:project-working", { timeout: 10_000 });
+  expect(app.enabled("id:suggest-button")).toBe(false);
+});

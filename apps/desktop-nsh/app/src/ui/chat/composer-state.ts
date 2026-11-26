@@ -133,7 +133,7 @@ export function deriveComposer(input: {
 }
 
 /** The ✨ button's name: what one press would do now. */
-export function suggestTitleOf(d: ComposerDerived, loading: boolean, t: Copy): string {
+export function suggestTitleOf(d: Pick<ComposerDerived, "suggestionsShown" | "suggestWaiting">, loading: boolean, t: Copy): string {
   if (loading) return t.composer.suggestStop;
   if (d.suggestionsShown) return t.composer.suggestHide;
   return d.suggestWaiting ? t.composer.suggestWait : t.composer.suggest;

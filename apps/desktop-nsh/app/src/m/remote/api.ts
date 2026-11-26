@@ -847,13 +847,12 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
     onProgress?: FileProgressHandler,
   ): Promise<T> {
-    void signal;
     const splitPath = split(path);
     if (method === "GET" || isNonReceiptPath(path)) {
       return this.send({
         id: id ?? ulid(), method, path: splitPath.path, query: splitPath.query,
         body: method === "GET" ? undefined : jsonBody(body), fingerprint: "", pending: false, returnEtag,
-      }) as Promise<T>;
+      }, undefined, undefined, signal ? { signal } : undefined) as Promise<T>;
     }
     const payload = jsonBody(body) ?? {};
     const fingerprint = JSON.stringify([payload, conditional]);
@@ -883,12 +882,13 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     row: PendingRemote,
     uploads?: Array<{ filename: string; size: number; sha256: string; bytes: Uint8Array }>,
     onProgress?: FileProgressHandler,
+    options?: RpcOptions,
   ): Promise<unknown> {
     try {
       const response = await this.dispatch({
         v: 1, id: row.id, method: row.method, path: row.path, query: row.query,
         body: row.method === "GET" ? undefined : row.body, ifMatch: row.ifMatch,
-      }, uploads, onProgress);
+      }, uploads, onProgress, options);
       return this.applyResponse(row, response);
     } catch (error) {
       if (!(error instanceof ApiError) || (error.status === 503 && error.code === "request_unknown")) {

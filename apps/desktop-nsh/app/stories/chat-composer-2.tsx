@@ -95,6 +95,7 @@ const heard = signal("");
 const sentLog = signal("sent:0");
 const readBack = signal("");
 const jumped = signal("");
+const suggestSize = signal("0x0");
 let sentCount = 0;
 
 export default function ChatComposer2Story() {
@@ -214,6 +215,7 @@ export default function ChatComposer2Story() {
         <Text testID="story-sent" class="text-[12px] text-ink-muted">{sentLog()}</Text>
         <Text testID="story-readback" class="text-[12px] text-ink-muted">{`read:${readBack()}`}</Text>
         <Text testID="story-jumped" class="text-[12px] text-ink-muted">{`jumped:${jumped()}`}</Text>
+        <Text testID="story-suggest-size" class="text-[12px] text-ink-muted">{`suggest-size:${suggestSize()}`}</Text>
         <View class="h-[260px] justify-end bg-pane border border-line rounded-(--radius-md)" style={{ width: narrow() ? 400 : undefined }}>
           <Composer
             selected={session()}
@@ -222,6 +224,7 @@ export default function ChatComposer2Story() {
               const v = view();
               if (v) v.draft = prompt;
             }}
+            onSuggestionsLayout={(size) => suggestSize.set(`${Math.round(size.width)}x${Math.round(size.height)}`)}
             showScrollBottom={scrollShown()}
             onScrollToBottom={() => scrollShown.set(false)}
             hiddenWaiting={hidden()}

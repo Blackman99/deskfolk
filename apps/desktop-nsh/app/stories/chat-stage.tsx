@@ -428,6 +428,14 @@ const realClaudeCode = local.claudeCode!;
 local.claudeCode = function (this: unknown, ...args: unknown[]) {
   return fakeMultiAccounts() ? Promise.resolve(STORY_CLAUDE_MULTI) : realClaudeCode.apply(this, args);
 };
+const realSuggestions = local.composerSuggestions!;
+local.composerSuggestions = function (this: unknown, ...args: unknown[]) {
+  if (args[0] !== PROJECT_ID) return realSuggestions.apply(this, args);
+  return Promise.resolve([
+    { id: "pj-s1", label: "跑全套测试", prompt: "跑一遍测试并汇报结果" },
+    { id: "pj-s2", label: "检查类型", prompt: "检查 @real-bot/protocol 里的类型定义" },
+  ]);
+};
 const realCommands = api.projectCommands!;
 api.projectCommands = function (this: unknown, ...args: unknown[]) {
   if (args[0] !== PROJECT_ID) return realCommands.apply(this, args);

@@ -759,4 +759,79 @@ describe("turn engine on the local API", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ items: [] });
   });
+
+  test("GET composer-suggestions works for project sessions, reads hidden_from_bots replies, and skips consultants", async () => {
+    let seenUserPayload: Record<string, unknown> | null = null;
+    let calls = 0;
+    const fixture = await startFixture(({ body }) => {
+      if (isComposerSuggestRequest(body)) {
+        calls += 1;
+        const messages = body.messages as Array<{ role: string; content?: string }>;
+        seenUserPayload = JSON.parse(messages.find((m) => m.role === "user")?.content ?? "{}") as Record<string, unknown>;
+        return Response.json({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: JSON.stringify({
+                  suggestions: [
+                    { label: "补单测", prompt: "给 @real-bot/protocol 改动补单测" },
+                    { label: "跑测试", prompt: "跑一遍全部测试确认通过" },
+                  ],
+                }),
+              },
+            },
+          ],
+          usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 },
+        });
+      }
+      return sse(textChunks("ok"));
+    });
+    const h = await startApi();
+    await fetch(`${h.origin}/v1/providers`, {
+      method: "POST",
+      headers: auth(h),
+      body: JSON.stringify({ name: "local", base_url: `${fixture.origin}/v1`, api_key: "sk-test", models: ["test-model"], make_default: true }),
+    });
+    const project = h.store.createProjectSession({ dir: "/tmp/demo-project", agent: "claude_code", configDir: null, locale: "zh" });
+    h.store.postMessage(project.id, { body: "把登录接口的类型修一下" });
+    h.store.insertAgentLine(project.id, { kind: "bot", body: "已经把登录接口的返回类型改好了。" });
+
+    const res = await fetch(`${h.origin}/v1/sessions/${project.id}/composer-suggestions`, { headers: auth(h) });
+    expect(res.status).toBe(200);
+    const page = (await res.json()) as { items: Array<{ label: string; prompt: string }> };
+    expect(page.items.map((row) => row.prompt)).toEqual([
+      "给 @real-bot/protocol 改动补单测",
+      "跑一遍全部测试确认通过",
+    ]);
+    expect(seenUserPayload).not.toBeNull();
+    expect((seenUserPayload!.session as { kind: string }).kind).toBe("project");
+    expect(seenUserPayload!.members).toEqual([
+      "user",
+      { name: "Claude Code", duties: "项目目录 /tmp/demo-project 的本机编程 Agent" },
+    ]);
+    const recent = seenUserPayload!.recent_messages as Array<{ author: string; body: string }>;
+    expect(recent.map((m) => [m.author, m.body])).toEqual([
+      ["user", "把登录接口的类型修一下"],
+      ["Claude Code", "已经把登录接口的返回类型改好了。"],
+    ]);
+    // Spend row records the project session name (folder basename when unnamed).
+    const spend = h.store.db.query<{ kind: string; session_name: string | null }, []>(
+      `SELECT kind, session_name FROM spend WHERE kind = 'composer_suggest'`,
+    ).all();
+    expect(spend).toEqual([{ kind: "composer_suggest", session_name: "demo-project" }]);
+
+    // Hidden consultant sessions have no user composer and make no model call.
+    const consultant = h.store.createConsultantSession({
+      parentId: project.id,
+      agent: "codex",
+      model: null,
+      effort: null,
+      name: "Codex consultant",
+    });
+    const consultRes = await fetch(`${h.origin}/v1/sessions/${consultant.id}/composer-suggestions`, { headers: auth(h) });
+    expect(consultRes.status).toBe(200);
+    expect(await consultRes.json()).toEqual({ items: [] });
+    expect(calls).toBe(1);
+  });
 });

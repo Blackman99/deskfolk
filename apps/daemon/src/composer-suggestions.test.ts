@@ -41,3 +41,16 @@ test("parseComposerSuggestions returns empty on junk", () => {
   expect(parseComposerSuggestions('{"suggestions": "nope"}', ROSTER)).toEqual([]);
   expect(parseComposerSuggestions("[]", ROSTER)).toEqual([]);
 });
+
+test("parseComposerSuggestions keeps @ tokens when checkMentions is false (project sessions)", () => {
+  const parsed = parseComposerSuggestions(
+    JSON.stringify({
+      suggestions: [
+        { label: "检查协议包", prompt: "检查 @real-bot/protocol 里的类型定义" },
+      ],
+    }),
+    [],
+    { checkMentions: false },
+  );
+  expect(parsed.map((row) => row.prompt)).toEqual(["检查 @real-bot/protocol 里的类型定义"]);
+});
