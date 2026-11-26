@@ -23,6 +23,21 @@ import type {
   ProjectPathLookup,
   ClaudeCodeCommandList,
   AgentReplay,
+  GitChangesResponse,
+  GitCommitDetail,
+  GitDiffBase,
+  GitDiffResponse,
+  GitHubIssueDetail,
+  GitHubIssueListResponse,
+  GitHubListFilter,
+  GitHubPrDetail,
+  GitHubPrListResponse,
+  GitHubRelatedResponse,
+  GitHubRepoStatus,
+  GitLogResponse,
+  GitProjectTreeResponse,
+  GitRepoSummary,
+  GitWorktreesResponse,
   PlanReplay,
   SessionReplay,
   AgentRun,
@@ -798,6 +813,194 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   editMessage(id: string, body: string): Promise<Message> {
     return this.patch<Message>(`/v1/messages/${encodeURIComponent(id)}`, { body } satisfies EditMessageRequest);
+  }
+
+  // --- Project session Git & GitHub views (ADR 0118) ---
+
+  gitSummary(
+    sessionId: string,
+    opts: { repo?: string | null; worktree?: string | null; quick?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitRepoSummary> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.quick) q.set("quick", "1");
+    const qs = q.toString();
+    return this.get<GitRepoSummary>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  gitChanges(
+    sessionId: string,
+    opts: { base?: GitDiffBase; repo?: string | null; worktree?: string | null; scope?: "repo" | "dir" } = {},
+    signal?: AbortSignal,
+  ): Promise<GitChangesResponse> {
+    const q = new URLSearchParams();
+    if (opts.base) q.set("base", opts.base);
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.scope) q.set("scope", opts.scope);
+    const qs = q.toString();
+    return this.get<GitChangesResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git/changes${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  gitDiff(
+    sessionId: string,
+    opts: { path: string; base?: GitDiffBase; commit?: string | null; repo?: string | null; worktree?: string | null },
+    signal?: AbortSignal,
+  ): Promise<GitDiffResponse> {
+    const q = new URLSearchParams({ path: opts.path });
+    if (opts.base) q.set("base", opts.base);
+    if (opts.commit) q.set("commit", opts.commit);
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    return this.get<GitDiffResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git/diff?${q.toString()}`, signal);
+  }
+
+  gitTree(
+    sessionId: string,
+    opts: { refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitProjectTreeResponse> {
+    const q = new URLSearchParams();
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitProjectTreeResponse>(
+      `/v1/project-sessions/${encodeURIComponent(sessionId)}/git/tree${qs ? `?${qs}` : ""}`,
+      signal,
+    );
+  }
+
+  gitWorktrees(
+    sessionId: string,
+    opts: { repo?: string | null } = {},
+    signal?: AbortSignal,
+  ): Promise<GitWorktreesResponse> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    const qs = q.toString();
+    return this.get<GitWorktreesResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git/worktrees${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  gitLog(
+    sessionId: string,
+    opts: { scope?: "branch" | "all"; limit?: number; skip?: number; repo?: string | null; worktree?: string | null } = {},
+    signal?: AbortSignal,
+  ): Promise<GitLogResponse> {
+    const q = new URLSearchParams();
+    if (opts.scope) q.set("scope", opts.scope);
+    if (opts.limit !== undefined) q.set("limit", String(opts.limit));
+    if (opts.skip !== undefined && opts.skip > 0) q.set("skip", String(opts.skip));
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    const qs = q.toString();
+    return this.get<GitLogResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git/log${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  gitCommit(
+    sessionId: string,
+    oid: string,
+    opts: { repo?: string | null; worktree?: string | null } = {},
+    signal?: AbortSignal,
+  ): Promise<GitCommitDetail> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    const qs = q.toString();
+    return this.get<GitCommitDetail>(
+      `/v1/project-sessions/${encodeURIComponent(sessionId)}/git/commits/${encodeURIComponent(oid)}${qs ? `?${qs}` : ""}`,
+      signal,
+    );
+  }
+
+  githubStatus(
+    sessionId: string,
+    opts: { repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubRepoStatus> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubRepoStatus>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/github${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  githubRelated(
+    sessionId: string,
+    opts: { repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubRelatedResponse> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubRelatedResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/github/related${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  githubPulls(
+    sessionId: string,
+    opts: { filter?: GitHubListFilter; q?: string; repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubPrListResponse> {
+    const q = new URLSearchParams();
+    if (opts.filter) q.set("filter", opts.filter);
+    if (opts.q) q.set("q", opts.q);
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubPrListResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/github/pulls${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  githubIssues(
+    sessionId: string,
+    opts: { filter?: GitHubListFilter; q?: string; repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubIssueListResponse> {
+    const q = new URLSearchParams();
+    if (opts.filter) q.set("filter", opts.filter);
+    if (opts.q) q.set("q", opts.q);
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubIssueListResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/github/issues${qs ? `?${qs}` : ""}`, signal);
+  }
+
+  githubPrDetail(
+    sessionId: string,
+    number: number,
+    opts: { repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubPrDetail> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubPrDetail>(
+      `/v1/project-sessions/${encodeURIComponent(sessionId)}/github/pulls/${number}${qs ? `?${qs}` : ""}`,
+      signal,
+    );
+  }
+
+  githubIssueDetail(
+    sessionId: string,
+    number: number,
+    opts: { repo?: string | null; worktree?: string | null; refresh?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<GitHubIssueDetail> {
+    const q = new URLSearchParams();
+    if (opts.repo) q.set("repo", opts.repo);
+    if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.refresh) q.set("refresh", "1");
+    const qs = q.toString();
+    return this.get<GitHubIssueDetail>(
+      `/v1/project-sessions/${encodeURIComponent(sessionId)}/github/issues/${number}${qs ? `?${qs}` : ""}`,
+      signal,
+    );
   }
 
   /** Takes back a line of yours no Bot has read yet (ADR 0069): it comes back marked so. */

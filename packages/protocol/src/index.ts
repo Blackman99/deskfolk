@@ -12,6 +12,8 @@ export * from "./providers.ts";
 export * from "./connectors.ts";
 export * from "./bots.ts";
 export * from "./project-sessions.ts";
+export * from "./git.ts";
+export * from "./github.ts";
 export * from "./bot-replay.ts";
 export * from "./sessions.ts";
 export * from "./messages.ts";

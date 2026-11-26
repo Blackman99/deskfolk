@@ -6,6 +6,14 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### Project sessions now have a Git & GitHub pane (diff, worktrees, commit graph, issues & PRs)
+
+- Added a shared read-only `Git` workbench pane per project directory (ADR 0118), reachable from the project session header's branch badge and `Git` action button, the session context menu, and the sidebar project directory menu.
+- **Repo → Worktree hierarchy switcher**: a persistent breadcrumb in the pane header opens a single grouped popover listing every repository discovered under the project directory and its in-boundary worktrees (with lazy dirty/ahead/behind counts, paired Deskfolk project session chips, and new-session / terminal / folder actions). Switching repos or worktrees stays on your active view in place without jumping tabs, while highlighting non-default worktrees with a one-click return button.
+- **Changes**: inspect uncommitted, staged, unstaged, or vs-mainline (`merge-base`) changes with a filterable file list and NSH's native `DiffView` (unified/split toggle, soft wrap, binary/large-file guards, and one-click open in preview).
+- **History (Git Graph)**: virtualised commit graph with per-row Canvas lane rendering, branch/tag/HEAD/worktree badges, pagination, search, and a commit detail + per-file diff inspector.
+- **GitHub**: read-only via your local `gh` CLI (no tokens stored by Deskfolk), showing the current branch's PR (with CI checks, review decision, and closing issues), issues/PRs referenced in branch commits or conversation links, repository PR/Issue filters, Markdown detail view, "Quote to composer", and graceful degradation when offline, signed out, or non-GitHub.
+
 ### Saying "stop" no longer pauses a Bot's routines
 
 - After you said "stop" in a direct (or stopped one Bot in a group), that Bot's routines stopped too until you spoke to it again, and then the missed run fired ahead of what you had just asked: one "stop for now" could keep a daily routine from running for days. A stop now ends only the work running at the time; the routine still fires when next due, including after you stop one of its runs. "Stop every Bot" and stopping the routine's own job still pause it.

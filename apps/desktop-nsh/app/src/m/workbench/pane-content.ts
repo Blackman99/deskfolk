@@ -6,7 +6,7 @@
  * strings turn back into something the app understands, and it is the only place that knows both
  * sides.
  */
-import type { Attachment, TicketStatus } from "@real-bot/protocol";
+import { isGitPaneView, type Attachment, type GitPaneView, type TicketStatus } from "@real-bot/protocol";
 import type { TraceFocus } from "../overlays/task-trace.ts";
 import { traceViewOf, type TraceViewKind } from "../overlays/trace-view.ts";
 import { TICKET_STATUS_ORDER } from "../overlays/plan-board.ts";
@@ -65,7 +65,21 @@ export type PaneContent =
    * a Bot conversation took part in, wherever its Bots did it. One per conversation; `taskId` is the
    * plan, as the flow's tab names its job — null or absent, the conversation's own pick.
    */
-  | { kind: "map"; sessionId: string; taskId?: string | null };
+  | { kind: "map"; sessionId: string; taskId?: string | null }
+  /**
+   * A project's Git & GitHub pane (ADR 0118): changes diff, commit graph, and GitHub issues/PRs,
+   * with a persistent repo -> worktree hierarchy switcher. Shared per project directory (`project:<dir>`).
+   */
+  | {
+      kind: "git";
+      sessionId: string;
+      projectDir: string;
+      view?: GitPaneView;
+      worktree?: string | null;
+      repo?: string | null;
+      /** One-shot nonce asking the pane to open its repo/worktree switcher popover. */
+      pickerNonce?: number | null;
+    };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -82,6 +96,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "usage",
   "roles",
   "map",
+  "git",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -138,6 +153,14 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       return {};
     case "map":
       return content.taskId ? { sessionId: content.sessionId, taskId: content.taskId } : { sessionId: content.sessionId };
+    case "git": {
+      const params: Record<string, string> = { sessionId: content.sessionId, projectDir: content.projectDir };
+      if (content.view && content.view !== "changes") params.view = content.view;
+      if (content.worktree) params.worktree = content.worktree;
+      if (content.repo) params.repo = content.repo;
+      if (content.pickerNonce) params.pickerNonce = String(content.pickerNonce);
+      return params;
+    }
   }
 }
 
@@ -175,6 +198,18 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
       return { kind: "roles" };
     case "map":
       return p.sessionId ? { kind: "map", sessionId: p.sessionId, ...(p.taskId ? { taskId: p.taskId } : {}) } : null;
+    case "git":
+      return p.sessionId && p.projectDir
+        ? {
+            kind: "git",
+            sessionId: p.sessionId,
+            projectDir: p.projectDir,
+            ...(isGitPaneView(p.view) ? { view: p.view } : {}),
+            ...(p.worktree ? { worktree: p.worktree } : {}),
+            ...(p.repo ? { repo: p.repo } : {}),
+            ...(nonceOf(p.pickerNonce) ? { pickerNonce: nonceOf(p.pickerNonce) } : {}),
+          }
+        : null;
     default:
       return null;
   }
@@ -190,6 +225,7 @@ export function contentSessionId(content: PaneContent): string | null {
     case "chat":
     case "trace":
     case "map":
+    case "git":
       return content.sessionId;
     case "preview":
       return content.sessionId;

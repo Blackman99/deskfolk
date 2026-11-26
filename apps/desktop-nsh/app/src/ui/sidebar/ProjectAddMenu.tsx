@@ -14,7 +14,7 @@
  * `bind:open` is `open` with `onOpenChange`; `anchor` is the + view's ref (or null).
  */
 import { effect, keymap, signal, Overlay, Text, View, type JSX, type ViewRef } from "nsh";
-import type { ProjectAgent } from "@real-bot/protocol";
+import type { GitPaneView, ProjectAgent } from "@real-bot/protocol";
 import { PROJECT_AGENTS } from "../../m/sidebar/project-groups";
 import { copy } from "../../runtime";
 import { BottomSheet, SheetItem, SheetSeparator } from "../BottomSheet";
@@ -43,6 +43,8 @@ type ProjectAddMenuProps = {
   onOpenDir?: () => void;
   /** A terminal started in the directory; only a directory's menu has one. */
   onOpenTerminal?: () => void;
+  /** Open the directory's Git & GitHub pane onto a view or the repo/worktree switcher (ADR 0118). */
+  onOpenGit?: (target: GitPaneView | "picker") => void;
   /** Where a right-click opened it: it hangs there instead of under the +. */
   point?: { x: number; y: number } | null;
 };
@@ -73,6 +75,14 @@ function groupsOf(props: ProjectAddMenuProps): Entry[][] {
   if (props.onOpenDir) dir.push({ id: "dir", testID: "project-add-open-dir", label: t.project.openDir, icon: "folder", run: props.onOpenDir });
   if (props.onOpenTerminal) dir.push({ id: "terminal", testID: "project-add-open-terminal", label: t.project.openTerminal, icon: "terminal", run: props.onOpenTerminal });
   if (dir.length) out.push(dir);
+  if (props.onOpenGit) {
+    out.push([
+      { id: "git-changes", testID: "project-add-git-changes", label: t.git.openChanges, icon: "git-branch", run: () => props.onOpenGit!("changes") },
+      { id: "git-graph", testID: "project-add-git-graph", label: t.git.openGraph, icon: "history", run: () => props.onOpenGit!("graph") },
+      { id: "git-worktrees", testID: "project-add-git-worktrees", label: t.git.openWorktrees, icon: "layers", run: () => props.onOpenGit!("picker") },
+      { id: "git-github", testID: "project-add-git-github", label: t.git.openGitHub, icon: "globe", run: () => props.onOpenGit!("github") },
+    ]);
+  }
   return out;
 }
 

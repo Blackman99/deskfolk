@@ -4,9 +4,10 @@
  * reach. The actions are the tab's, the same list its ⋯ and right-click offer, so the two never
  * disagree. The phone keeps its own header (`ChatHeader`).
  */
-import { signal, Text, View } from "nsh";
+import { effect, signal, Text, untracked, View } from "nsh";
 import type { SessionSummary } from "@real-bot/protocol";
 import { waitingInSession } from "../../m/chat/waiting";
+import { projectGitStore } from "../../m/git/git-store.svelte";
 import { dirDisplay, isLiveRun, projectAgentOf } from "../../m/sidebar/project-groups";
 import { classifySession, isFileDropSession, youBotPeer } from "../../m/sidebar/session-groups";
 import { botWorkStatus, sidebarStatus } from "../../m/sidebar/session-status";
@@ -56,6 +57,19 @@ export function PaneChatBar(props: {
   const projectLive = () => kind() === "project" && isLiveRun(snapshot().agentRuns[props.session.id]);
   /** With its reply done it is live only for its background tasks (ADR 0095, 25). */
   const projectAtRest = () => projectLive() && snapshot().agentRuns[props.session.id]?.idle === true;
+  const projectDir = () => (kind() === "project" ? (props.session.project_dir ?? null) : null);
+  const gitAction = () => props.actions.find((a) => a.id === "git");
+  effect(() => {
+    const dir = projectDir();
+    const sid = props.session.id;
+    const connected = runtime.connection === "connected";
+    if (!dir || !connected) return;
+    untracked(() => void projectGitStore.ensure(runtime.client, sid, dir, { quick: true }));
+  });
+  const gitSummary = () => {
+    const dir = projectDir();
+    return dir ? (projectGitStore.get(dir)?.summary ?? null) : null;
+  };
   const peerId = () => (kind() === "you-bot" ? youBotPeer(props.session) : null);
   const peerModel = () => {
     const id = peerId();
@@ -155,10 +169,57 @@ export function PaneChatBar(props: {
                         </If>
                       }
                     >
-                      <View tooltip={tip(props.session.project_dir ?? "")} class="min-w-0 shrink">
-                        <Text testID="bar-presence" class="text-[12px] text-ink-muted line-clamp-1">
-                          {`${t().project.agentNames[projectAgentOf(props.session)]} · ${dirDisplay(props.session.project_dir)}`}
-                        </Text>
+                      <View class="flex-row items-center gap-[6px] min-w-0 shrink">
+                        <View tooltip={tip(props.session.project_dir ?? "")} class="min-w-0 shrink">
+                          <Text testID="bar-presence" class="text-[12px] text-ink-muted line-clamp-1">
+                            {`${t().project.agentNames[projectAgentOf(props.session)]} · ${dirDisplay(props.session.project_dir)}`}
+                          </Text>
+                        </View>
+                        <If when={gitSummary()?.is_repo ? gitSummary() : null}>
+                          {(gs) => {
+                            const multiParent = () => gs().default_worktree === null && gs().repos.length > 1;
+                            const label = () =>
+                              multiParent()
+                                ? t().git.reposCount(gs().repos.length)
+                                : gs().branch ?? (gs().detached ? gs().head_oid?.slice(0, 7) ?? t().git.detachedHead : "");
+                            return (
+                              <View
+                                role="button"
+                                testID="bar-git-branch"
+                                accessibilityLabel={t().git.openChanges}
+                                tooltip={tip(
+                                  multiParent()
+                                    ? t().git.openWorktrees
+                                    : gs().dirty_count > 0
+                                      ? t().git.dirtyBadge(gs().dirty_count)
+                                      : t().git.clean,
+                                )}
+                                onPress={() => {
+                                  const dir = props.session.project_dir;
+                                  if (dir && runtime.paneOpener) {
+                                    runtime.paneOpener({
+                                      kind: "git",
+                                      sessionId: props.session.id,
+                                      projectDir: dir,
+                                      repo: null,
+                                      worktree: null,
+                                      ...(multiParent() ? { pickerNonce: Date.now() } : {}),
+                                    });
+                                  } else {
+                                    gitAction()?.run();
+                                  }
+                                }}
+                                class="cursor-pointer select-none flex-row items-center gap-[4px] px-[6px] h-[18px] rounded-(--radius-xs) bg-chip hover:bg-row-hover shrink-0"
+                              >
+                                <Icon name={multiParent() ? "layers" : "git-branch"} size={12} class="tint-ink-muted" />
+                                <Text class="font-mono text-[11px] text-ink-secondary line-clamp-1">{label()}</Text>
+                                <If when={!multiParent() && gs().dirty_count > 0}>
+                                  <Text class="font-mono text-[11px] font-semibold text-brand">{`· ${gs().dirty_count}`}</Text>
+                                </If>
+                              </View>
+                            );
+                          }}
+                        </If>
                       </View>
                     </If>
                   }
@@ -202,7 +263,7 @@ export function PaneChatBar(props: {
                 <If when={action().icon}>
                   {(icon) => <Icon name={icon()} size={16} class={action().active ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"} />}
                 </If>
-                <If when={roomy() && (action().id === "trace" || action().id === "map")}>
+                <If when={roomy() && (action().id === "trace" || action().id === "map" || action().id === "git")}>
                   <Text class={`text-[13px] font-semibold ${action().active ? "text-brand" : "text-ink-muted group-hover:text-ink"}`}>{action().label}</Text>
                 </If>
               </View>

@@ -7,7 +7,7 @@ import { state } from "../../lib/reactive";
  * to read from that Shell instance, and never snapshots them. The handlers are arrow fields
  * because the shell hands them to components as callbacks.
  */
-import type { Attachment, Bot, SessionSummary } from "@real-bot/protocol";
+import type { Attachment, Bot, GitPaneView, SessionSummary } from "@real-bot/protocol";
 import type { ShellDangerConfirm } from "../overlays/danger-confirm.svelte.ts";
 import type { ShellArtifact } from "../overlays/shell-artifact.svelte.ts";
 import type { MessengerRuntime } from "../runtime.svelte.ts";
@@ -130,6 +130,25 @@ export class ShellSessionMenu {
     const runtime = this.getRuntime();
     if (isFileDropSession(session)) return;
     runtime.paneOpener?.({ kind: "map", sessionId: session.id });
+  };
+
+  /**
+   * The project's Git & GitHub pane (ADR 0118): changes diff, commit graph, and GitHub issues/PRs,
+   * with a persistent repo -> worktree switcher. Shared per project directory, desktop workbench only in v1.
+   */
+  handleMenuShowGit = (session: SessionSummary, target?: GitPaneView | "picker"): void => {
+    const dir = session.kind === "project" ? session.project_dir : null;
+    if (!dir) return;
+    if (target === "picker") {
+      this.getRuntime().paneOpener?.({ kind: "git", sessionId: session.id, projectDir: dir, pickerNonce: Date.now() });
+      return;
+    }
+    this.getRuntime().paneOpener?.({
+      kind: "git",
+      sessionId: session.id,
+      projectDir: dir,
+      ...(target ? { view: target } : {}),
+    });
   };
 
   /**

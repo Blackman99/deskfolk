@@ -54,6 +54,7 @@ Bot 长活的定位：交出去，离开，回来看结果。把一件多天、�
 - 读、命令和改动按权限模式走，先问的那一步在执行前出批准卡，各个 Agent 的凭据一律不让碰（[ADR 0092](docs/adr/0092-permission-modes.md)）；计划模式和斜杠命令（[ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md)）；Agent 问你的问题放在对话最后，一次问的几个合成一张卡，一次答一题。
 - 任务地图：Agent 干活的过程画成项目目录的小镇（[ADR 0096](docs/adr/0096-task-map.md)）。额度用完时换另一个账号接着做，或等额度恢复（[ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)）。
 - 请参谋：Agent 请另一个 Agent 或模型在同一个目录里一起讨论方案，参谋只看不改；输入框里的参谋开关开着时，你说的每句话都先请选好的参谋各看一遍，再把他们的意见和 Agent 自己的结论一起告诉你（[ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)）。
+- Git 与 GitHub 视图：每个项目目录共用一个只读 Git 窗格，提供改动 Diff（原生 `DiffView`）、工作树与关联会话总览、提交历史图，以及经本机 `gh` 查到的分支 PR、CI 检查与关联 Issue（[ADR 0118](docs/adr/0118-project-session-git-and-github-views.md)）。
 - 手机上的页面就是桌面应用的 web 包，项目会话在手机上一样能看、能回、能批准。
 
 接下来见「当前重点」第 2 条。

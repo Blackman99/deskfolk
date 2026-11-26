@@ -54,6 +54,7 @@ Groundwork in place:
 - Reads, commands and edits go by the permission mode, a step that asks first puts up an approval card before it runs, and every agent's credentials stay out of reach ([ADR 0092](docs/adr/0092-permission-modes.md)); plan mode and slash commands ([ADR 0098](docs/adr/0098-plan-mode-and-commands-in-project-sessions.md)); the agent's questions wait at the end of the conversation, several asked at once as one card, one question at a time.
 - The task map: an agent's work drawn as a town of the project's folders ([ADR 0096](docs/adr/0096-task-map.md)). When usage runs out, carry on with another account or wait for the reset ([ADR 0110](docs/adr/0110-out-of-usage-another-account-or-the-reset.md)).
 - Consultants: an agent asks another agent or model in to talk a plan over in the same folder, the consultant only reading; with the consult switch on in the composer, every line you send is first put to the consultants you chose, and you get their views and the agent's own conclusion together ([ADR 0116](docs/adr/0116-consultants-in-project-sessions.md)).
+- Git & GitHub views: a project-scoped read-only Git pane offering working/mainline diffs (`DiffView`), linked worktrees with their active sessions, a commit history graph, and associated GitHub PRs, checks, and issues via the local `gh` CLI ([ADR 0118](docs/adr/0118-project-session-git-and-github-views.md)).
 - The phone's page is the desktop app's web build, so project sessions on the phone can be read, answered and approved the same way.
 
 Next: see item 2 of Current focus.

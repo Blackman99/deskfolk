@@ -191,6 +191,7 @@ function ShellBody(props: { s: ShellState }) {
                     onOpenContextMenu={openMenuAt}
                     onTogglePin={s.sessionMenu.handleMenuTogglePin}
                     onOpenProjectDir={(session) => void s.sessionMenu.handleMenuOpenProjectDir(session)}
+                    onOpenProjectGit={(session, view) => s.sessionMenu.handleMenuShowGit(session, view)}
                     onToggleWorkspace={artifact.toggleWorkspaceExplorer}
                     onOpenRoutines={artifact.openRoutinesFromUi}
                     onOpenSpend={artifact.openSpendFromUi}
@@ -395,7 +396,18 @@ function ShellWorkbench(props: { s: ShellState; onApi: (api: WorkbenchApi) => vo
     if (content?.kind !== "chat") return [];
     const session = s.sessionsById().get(content.sessionId);
     if (session?.kind === "project") {
-      return [{ id: "map", label: t().taskmap.open, icon: "minimap", run: () => workbench.openGuarded({ kind: "map", sessionId: session.id }) }];
+      const actions: PaneBarAction[] = [
+        { id: "map", label: t().taskmap.open, icon: "minimap", run: () => workbench.openGuarded({ kind: "map", sessionId: session.id }) },
+      ];
+      if (session.project_dir) {
+        actions.unshift({
+          id: "git",
+          label: t().git.title,
+          icon: "git-branch",
+          run: () => workbench.openGuarded({ kind: "git", sessionId: session.id, projectDir: session.project_dir! }),
+        });
+      }
+      return actions;
     }
     if (!session || isFileDropSession(session)) return [];
     const pinned = isSessionPinned(s.pinnedSessionIds(), session.id);
@@ -681,6 +693,7 @@ function ShellLayers(props: { s: ShellState }) {
             onDelete={() => s.sessionMenu.handleMenuDelete(menu().session)}
             onShowJobView={() => void s.sessionMenu.handleMenuShowJobView(menu().session)}
             onShowMap={runtime.paneOpener ? () => s.sessionMenu.handleMenuShowMap(menu().session) : undefined}
+            onShowGit={runtime.paneOpener ? () => s.sessionMenu.handleMenuShowGit(menu().session) : undefined}
             onOpenProjectDir={() => void s.sessionMenu.handleMenuOpenProjectDir(menu().session)}
             onOpenProjectTerminal={() => s.sessionMenu.handleMenuOpenProjectTerminal(menu().session)}
             onRename={s.sidebarHidden() ? undefined : () => s.sessionMenu.handleMenuRename(menu().session)}

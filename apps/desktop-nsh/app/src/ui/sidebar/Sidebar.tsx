@@ -16,7 +16,7 @@
  * space dragging the window (the list asks for `windowDrag`, its rows keep their presses).
  */
 import { cleanup, computed, effect, safeArea, signal, Text, View, type ViewRef } from "nsh";
-import type { Hold, SessionSummary } from "@real-bot/protocol";
+import type { GitPaneView, Hold, SessionSummary } from "@real-bot/protocol";
 import { formatShortcut } from "../../m/keymap";
 import { focusMode } from "../../m/chat/focus-mode.svelte";
 import { searchShortcutLabel } from "../../m/search/shortcuts";
@@ -90,6 +90,8 @@ export function Sidebar(props: {
   onTogglePin?: (sessionId: string) => void;
   /** A project directory opened in the preview, by one of its sessions: its tree is that session's project. */
   onOpenProjectDir?: (session: SessionSummary) => void;
+  /** Open a project directory's Git & GitHub pane onto a view or the repo/worktree switcher (ADR 0118). */
+  onOpenProjectGit?: (session: SessionSummary, target: GitPaneView | "picker") => void;
   onToggleWorkspace: () => void;
   onOpenRoutines: () => void;
   onOpenSpend: () => void;
@@ -213,6 +215,11 @@ export function Sidebar(props: {
     const dir = dirMenuFor()?.dir;
     const group = dir ? projectGroups().find((row) => row.dir === dir) : undefined;
     if (group) props.onOpenProjectDir?.(dirSession(group, runtime.selectedId));
+  }
+  function openGitOfMenu(target: GitPaneView | "picker"): void {
+    const dir = dirMenuFor()?.dir;
+    const group = dir ? projectGroups().find((row) => row.dir === dir) : undefined;
+    if (group) props.onOpenProjectGit?.(dirSession(group, runtime.selectedId), target);
   }
 
   // Wider than a phone or not, the tools menu belongs to another button: it closes first.
@@ -656,6 +663,7 @@ export function Sidebar(props: {
             const dir = dirMenuFor()?.dir;
             if (dir) void runtime.openTerminalAt(dir);
           }}
+          onOpenGit={props.workbench && props.onOpenProjectGit ? openGitOfMenu : undefined}
         />
         <ToolsMenu
           locale={snapshot().settings.locale === "en" ? "en" : "zh"}

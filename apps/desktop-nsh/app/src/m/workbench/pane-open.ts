@@ -138,7 +138,7 @@ const SINGLE_INSTANCE = new Set<PaneContent["kind"]>(["routines", "spend", "usag
  * session has one task map (ADR 0096) the same way. Its preview is its project's, not its own: the
  * sessions in one directory share it (ADR 0095).
  */
-const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace", "map"]);
+const ONE_PER_SESSION = new Set<PaneContent["kind"]>(["preview", "trace", "map", "git"]);
 
 function boundSession(content: PaneContent): string | null {
   return "sessionId" in content ? content.sessionId : null;
@@ -147,6 +147,7 @@ function boundSession(content: PaneContent): string | null {
 /** What a bound tab belongs to: its conversation, or for a project session's preview, the project's directory. */
 function boundKey(content: PaneContent): string {
   if (content.kind === "preview" && content.projectDir) return `project:${content.projectDir}`;
+  if (content.kind === "git") return `project:${content.projectDir}`;
   return `session:${boundSession(content) ?? ""}`;
 }
 
@@ -204,6 +205,9 @@ export function openContent(
   if (content.kind === "chat") return openChat(layout, content, opts);
   const existing = existingTarget(layout, content);
   if (existing) {
+    if (content.kind === "git") {
+      return retarget(layout, existing, mergeGitRetarget(existing, content));
+    }
     // Asking for the board with no job in mind — or for the job it is already on — is asking to
     // see it, not to move it. A message's card, or another view asking it to show a ticket, is a
     // request to move, so it is applied.
@@ -215,6 +219,32 @@ export function openContent(
     return activateTab(focused, found.leafId, found.tab.id);
   }
   return placeNew(layout, content, opts);
+}
+
+/**
+ * Merges a retarget request into an existing Git pane without dropping preserved params:
+ * `undefined` keeps the existing value; `null` explicitly resets repo/worktree back to project default.
+ */
+function mergeGitRetarget(
+  existing: Located,
+  incoming: Extract<PaneContent, { kind: "git" }>,
+): PaneContent | null {
+  const its = contentOfTab(existing.tab);
+  if (its?.kind !== "git") return incoming;
+  const nextView = incoming.view ?? its.view;
+  const nextWorktree = incoming.worktree === undefined ? (its.worktree ?? null) : incoming.worktree;
+  const nextRepo = incoming.repo === undefined ? (its.repo ?? null) : incoming.repo;
+  const nextPicker = incoming.pickerNonce ?? null;
+  const merged: Extract<PaneContent, { kind: "git" }> = {
+    kind: "git",
+    sessionId: incoming.sessionId || its.sessionId,
+    projectDir: its.projectDir,
+    ...(nextView && nextView !== "changes" ? { view: nextView } : {}),
+    ...(nextWorktree ? { worktree: nextWorktree } : {}),
+    ...(nextRepo ? { repo: nextRepo } : {}),
+    ...(nextPicker ? { pickerNonce: nextPicker } : {}),
+  };
+  return contentsEqual(its, merged) ? null : merged;
 }
 
 /**

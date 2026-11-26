@@ -77,7 +77,7 @@ export const UI_FLOORS = ["stop", "approval", "ask", "settings-entry", "interfac
 export type UiFloor = (typeof UI_FLOORS)[number];
 
 /** The kinds of window and where each opens (ADR 0074), as the messenger names them. */
-export const INTERFACE_OPEN_KINDS = ["chat", "trace", "preview", "workspace", "terminal", "routines", "spend", "usage", "roles", "map"] as const;
+export const INTERFACE_OPEN_KINDS = ["chat", "trace", "preview", "workspace", "terminal", "routines", "spend", "usage", "roles", "map", "git"] as const;
 export const INTERFACE_OPEN_PLACEMENTS = [
   "tab", "tab-background", "replace", "split-left", "split-right", "split-up", "split-down",
   "side-left", "side-right", "side-up", "side-down", "float",

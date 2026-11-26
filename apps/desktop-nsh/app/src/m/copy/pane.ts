@@ -47,6 +47,8 @@ export const zh = {
   projectFolderOf: (name: string) => `${name}项目目录`,
   /** A project session's task map (ADR 0096). */
   mapOf: (name: string) => `${name}地图`,
+  /** A project's Git & GitHub pane (ADR 0118). */
+  gitOf: (name: string) => `Git · ${name}`,
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -87,4 +89,5 @@ export const en: CopyShape<typeof zh> = {
   artifactsOf: (name: string) => `${name}'s artifacts`,
   projectFolderOf: (name: string) => `${name} project folder`,
   mapOf: (name: string) => `${name} map`,
+  gitOf: (name: string) => `Git · ${name}`,
 };

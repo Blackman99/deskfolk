@@ -317,6 +317,15 @@ export class ShellWorkbench {
         return t.pane.flowOf(this.sessionName(content.sessionId));
       case "map":
         return t.pane.mapOf(this.sessionName(content.sessionId));
+      case "git": {
+        const base = projectDirLabel(content.projectDir);
+        const suffix = content.worktree && content.worktree !== content.projectDir
+          ? projectDirLabel(content.worktree)
+          : content.repo && content.repo !== "."
+            ? projectDirLabel(content.repo)
+            : null;
+        return t.pane.gitOf(suffix && suffix !== base ? `${base} · ${suffix}` : base);
+      }
       case "preview":
         // A project's sessions share its preview, so it goes by the project's name rather than one of theirs.
         if (content.projectDir) return t.pane.projectFolderOf(projectDirLabel(content.projectDir));

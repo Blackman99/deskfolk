@@ -32,6 +32,8 @@ export const PANE_MINS = {
   roles: { width: 300, height: 260 },
   /** The town, its controls and the timeline under it; the side column folds under the town below 720. */
   map: { width: 420, height: 360 },
+  /** Project Git & GitHub pane (ADR 0118): single column below 540, file/commit list beside detail above. */
+  git: { width: 360, height: 280 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

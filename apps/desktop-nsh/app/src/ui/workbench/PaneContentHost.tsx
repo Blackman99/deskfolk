@@ -32,6 +32,7 @@ import { RolesPage } from "../settings/RolesPage";
 import { SpendView } from "../spend/SpendView";
 import { shadow } from "../styles";
 import { TaskMap } from "../taskmap/TaskMap";
+import { GitPane } from "../git/GitPane";
 import { UsageTab } from "../usage/UsageTab";
 import { PaneTerminal } from "./PaneTerminal";
 
@@ -287,6 +288,38 @@ export function PaneContentHost(props: {
       <If when={kind() === "map" && session() && !isFileDropSession(session()!) ? session() : null}>
         {(s) => <TaskMap session={s()} taskId={mapTaskId()} onTask={mapTask} />}
       </If>
+      <If when={kind() === "git" ? content() : null}>
+        {(c) => {
+          const git = () => c() as Extract<PaneContent, { kind: "git" }>;
+          return (
+            <GitPane
+              sessionId={git().sessionId}
+              projectDir={git().projectDir}
+              view={git().view ?? "changes"}
+              worktree={git().worktree ?? null}
+              repo={git().repo ?? null}
+              pickerNonce={git().pickerNonce ?? null}
+              onChangeParams={(patch) => {
+                const cur = git();
+                const nextView = patch.view === undefined ? cur.view : patch.view;
+                const nextWorktree = patch.worktree === undefined ? cur.worktree : patch.worktree;
+                const nextRepo = patch.repo === undefined ? cur.repo : patch.repo;
+                const nextPicker = patch.pickerNonce === undefined ? cur.pickerNonce : patch.pickerNonce;
+                props.onUpdateContent?.({
+                  kind: "git",
+                  sessionId: cur.sessionId,
+                  projectDir: cur.projectDir,
+                  ...(nextView && nextView !== "changes" ? { view: nextView } : {}),
+                  ...(nextWorktree ? { worktree: nextWorktree } : {}),
+                  ...(nextRepo ? { repo: nextRepo } : {}),
+                  ...(nextPicker ? { pickerNonce: nextPicker } : {}),
+                });
+              }}
+              onOpenArtifact={props.onOpenArtifact}
+            />
+          );
+        }}
+      </If>
       <If when={kind() === "terminal"}>
         <PaneTerminal
           terminalId={(() => {
@@ -408,4 +441,4 @@ export function PaneContentHost(props: {
   );
 }
 
-const KNOWN = new Set(["chat", "routines", "spend", "usage", "roles", "map", "terminal", "workspace", "trace", "preview"]);
+const KNOWN = new Set(["chat", "routines", "spend", "usage", "roles", "map", "git", "terminal", "workspace", "trace", "preview"]);

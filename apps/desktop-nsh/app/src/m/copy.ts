@@ -46,6 +46,7 @@ import * as notificationsText from "./copy/notifications.ts";
 import * as permissionsText from "./copy/permissions.ts";
 import * as projectText from "./copy/project.ts";
 import * as taskmapText from "./copy/taskmap.ts";
+import * as gitText from "./copy/git.ts";
 import * as uiText from "./copy/ui.ts";
 
 /** What the workspace is for (ADR 0092): where Bots' work is kept together, not a permission boundary. */
@@ -101,6 +102,7 @@ const zh = {
   permissions: permissionsText.zh,
   project: projectText.zh,
   taskmap: taskmapText.zh,
+  git: gitText.zh,
   ui: uiText.zh,
 };
 
@@ -151,6 +153,7 @@ const en: CopyShape<typeof zh> = {
   permissions: permissionsText.en,
   project: projectText.en,
   taskmap: taskmapText.en,
+  git: gitText.en,
   ui: uiText.en,
 };
 

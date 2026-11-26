@@ -31,6 +31,8 @@ import { planRoutes } from "./local-api/routes/plans";
 import { playbookRoutes } from "./local-api/routes/playbooks";
 import { interfaceRoutes } from "./local-api/routes/interface";
 import { projectSessionRoutes, readImportOf } from "./local-api/routes/project-sessions";
+import { projectGitRoutes } from "./local-api/routes/project-git";
+import { projectGithubRoutes } from "./local-api/routes/project-github";
 import { qualityAndPromptRoutes } from "./local-api/routes/quality-and-prompts";
 import { speechRoutes } from "./local-api/routes/speech";
 import { systemRoutes } from "./local-api/routes/system";
@@ -904,6 +906,8 @@ function dispatch(
   // order their checks had when this was one function, so the first match still wins.
   const routed = systemRoutes(ctx)
     ?? projectSessionRoutes(ctx)
+    ?? projectGitRoutes(ctx)
+    ?? projectGithubRoutes(ctx)
     ?? playbookRoutes(ctx)
     ?? interfaceRoutes(ctx)
     ?? botAndSessionRoutes(ctx)

@@ -35,6 +35,8 @@ export function SessionContextMenu(props: {
   onShowJobView?: () => void;
   /** Open a project session's task map (ADR 0096); given only where a workbench can hold it. */
   onShowMap?: () => void;
+  /** Open a project session's Git & GitHub pane (ADR 0118); desktop workbench only in v1. */
+  onShowGit?: () => void;
   /** Open a project session's directory in the preview, the project's tree beside it. */
   onOpenProjectDir?: () => void;
   /** Start a terminal in a project session's directory. */
@@ -62,6 +64,7 @@ export function SessionContextMenu(props: {
     if (d.canViewInfo) keys.push("session-menu-info");
     if (d.canShowJob && props.onShowJobView) keys.push("session-menu-job");
     if (d.canShowMap && props.onShowMap) keys.push("session-menu-map");
+    if (d.canOpenProjectDir && props.onShowGit) keys.push("session-menu-git");
     if (d.canOpenProjectDir && props.onOpenProjectDir) keys.push("session-menu-project-dir");
     if (d.canOpenProjectDir && props.onOpenProjectTerminal) keys.push("session-menu-project-terminal");
     if (d.canRename && props.onRename) keys.push("session-menu-rename");
@@ -145,6 +148,13 @@ export function SessionContextMenu(props: {
           <Divider sheet={sheet} />
           {/* The conversation's work drawn as a town: a project session's agent (ADR 0096), a conversation's Bots (ADR 0097). */}
           <Item sheet={sheet} testID="session-menu-map" icon="minimap" label={t().taskmap.openLong} onPress={run(() => props.onShowMap?.())} />
+        </If>
+        <If when={data().canOpenProjectDir && props.onShowGit}>
+          <If when={!showMap()}>
+            <Divider sheet={sheet} />
+          </If>
+          {/* The project's Git & GitHub pane (ADR 0118). */}
+          <Item sheet={sheet} testID="session-menu-git" icon="git-branch" label={t().git.openGit} onPress={run(() => props.onShowGit?.())} />
         </If>
         <If when={data().canOpenProjectDir && props.onOpenProjectDir}>
           <If when={!showMap()}>
