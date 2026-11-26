@@ -35,7 +35,7 @@ test("drafts typed in Bot and project conversations survive a restart into a fre
 
 test("sending clears the persisted draft while a failed send keeps it across restart", async () => {
   const failing = makeRuntime({
-    post: async () => {
+    postMessage: async () => {
       throw new ApiError(422, "invalid_args", "refused");
     },
   });
@@ -44,7 +44,7 @@ test("sending clears the persisted draft while a failed send keeps it across res
   expect(loadComposerDraft("direct-1")).toBe("发送失败也不能丢");
 
   const restarted = makeRuntime({
-    post: async () => aMessage({ id: "m-1", session_id: "direct-1", body: "发送失败也不能丢" }),
+    postMessage: async () => aMessage({ id: "m-1", session_id: "direct-1", body: "发送失败也不能丢" }),
   });
   expect(restarted.sessionView("direct-1").draft).toBe("发送失败也不能丢");
   expect(await restarted.send({ sessionId: "direct-1" })).toBe(true);
