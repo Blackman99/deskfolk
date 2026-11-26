@@ -1,35 +1,42 @@
 /**
  * Working tree & branch-vs-mainline changes view (ADR 0118).
- * Left: virtualised file list with baseline & path filter; right: `GitDiffViewer`.
- * Collapses to single-column drill-down when the pane is narrower than 540 pt.
+ * Wide panes show file list + `GitDiffViewer` side by side; narrow panes drill into `GitDiffPager`
+ * wired into `PageRoute`'s level stack (`stepIn` / `holdLevels`) with real `AbortSignal` cancellation
+ * and remote 200 KiB preview caps.
  */
 import type { GitChangeFile, GitChangesResponse, GitDiffBase, GitDiffResponse, GitRepoSummary } from "@real-bot/protocol";
-import { computed, effect, List, signal, Text, untracked, View } from "nsh";
+import { cleanup, computed, effect, List, safeArea, Scroll, signal, Text, untracked, View } from "nsh";
 import { Input } from "nsh/base";
 import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { copy, runtime } from "../../runtime";
 import { EmptyState } from "../EmptyState";
-import { Icon } from "../Icon";
 import { FileIcon } from "../overlays/FileIcon";
-import { GitDiffViewer } from "./GitDiffViewer";
+import { GitDiffPager } from "./GitDiffPager";
+import { drillIn, registerGitLevels, type GitHost } from "./git-levels";
 import { splitRepoPath, statusBadgeClass } from "./git-ui-helpers";
 
 const BASES: readonly GitDiffBase[] = ["working", "staged", "unstaged", "merge-base"];
+const REMOTE_DIFF_PREVIEW_BYTES = 200 * 1024;
+const REMOTE_DIFF_FULL_BYTES = 640 * 1024;
 
 export function GitChangesView(props: {
   sessionId: string;
   summary: GitRepoSummary;
   repo: string | null;
   worktree: string | null;
+  host?: GitHost;
+  isRemote?: boolean;
   narrow: boolean;
   reloadToken: number;
   base?: GitDiffBase;
   onBaseChange?: (base: GitDiffBase) => void;
   scope?: "repo" | "dir";
   onScopeChange?: (scope: "repo" | "dir") => void;
+  onDrillDepthChange?: (depth: number) => void;
   onOpenPreview: (absPath: string) => void;
 }) {
   const t = () => copy();
+  const isPage = () => props.host === "page";
   const localBase = signal<GitDiffBase>(props.base ?? "working");
   const localScope = signal<"repo" | "dir">(props.scope ?? "repo");
   const base = () => props.base ?? localBase();
@@ -42,6 +49,7 @@ export function GitChangesView(props: {
     localScope.set(sc);
     props.onScopeChange?.(sc);
   };
+
   const query = signal("");
   const data = signal<GitChangesResponse | null>(null);
   const loading = signal(false);
@@ -51,6 +59,19 @@ export function GitChangesView(props: {
   const diffLoading = signal(false);
   const diffError = signal<string | null>(null);
   const narrowDetail = signal(false);
+  const fullDiffRequestedFor = signal<string | null>(null);
+
+  effect(() => {
+    props.onDrillDepthChange?.(props.narrow && narrowDetail() ? 1 : 0);
+  });
+  cleanup(() => props.onDrillDepthChange?.(0));
+
+  registerGitLevels({
+    name: "git-changes-diff",
+    active: () => isPage() && props.narrow,
+    depth: () => (narrowDetail() ? 1 : 0),
+    stepOut: () => narrowDetail.set(false),
+  });
 
   let changesSeq = 0;
   let diffSeq = 0;
@@ -65,13 +86,15 @@ export function GitChangesView(props: {
     const api = runtime.client;
     if (!api) return;
     const seq = ++changesSeq;
+    const ac = new AbortController();
+    cleanup(() => ac.abort());
     untracked(() => {
       loading.set(data() === null);
       error.set(null);
       void api
-        .gitChanges(sid, { base: b, repo, worktree: wt, scope: sc })
+        .gitChanges(sid, { base: b, repo, worktree: wt, scope: sc }, ac.signal)
         .then((res) => {
-          if (seq !== changesSeq) return;
+          if (seq !== changesSeq || ac.signal.aborted) return;
           data.set(res);
           const cur = selectedPath();
           if (!cur || !res.files.some((f) => f.path === cur)) {
@@ -79,11 +102,11 @@ export function GitChangesView(props: {
           }
         })
         .catch((err) => {
-          if (seq !== changesSeq) return;
-          error.set(err instanceof Error ? err.message : String(err));
+          if (seq !== changesSeq || ac.signal.aborted) return;
+          if (!data()) error.set(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
-          if (seq === changesSeq) loading.set(false);
+          if (seq === changesSeq && !ac.signal.aborted) loading.set(false);
         });
     });
   });
@@ -94,32 +117,40 @@ export function GitChangesView(props: {
     const b = base();
     const repo = props.repo;
     const wt = props.worktree;
+    const remote = props.isRemote === true;
+    const fullFor = fullDiffRequestedFor();
+    const inDetail = !props.narrow || narrowDetail();
     void props.reloadToken;
     const api = runtime.client;
-    if (!api || !p) {
+    if (!api || !p || !inDetail) {
       untracked(() => {
-        diff.set(null);
-        diffError.set(null);
-        diffLoading.set(false);
+        if (!p) {
+          diff.set(null);
+          diffError.set(null);
+          diffLoading.set(false);
+        }
       });
       return;
     }
     const seq = ++diffSeq;
+    const ac = new AbortController();
+    cleanup(() => ac.abort());
+    const maxBytes = remote ? (fullFor === p ? REMOTE_DIFF_FULL_BYTES : REMOTE_DIFF_PREVIEW_BYTES) : undefined;
     untracked(() => {
       diffLoading.set(true);
       diffError.set(null);
       void api
-        .gitDiff(sid, { path: p, base: b, repo, worktree: wt })
+        .gitDiff(sid, { path: p, base: b, repo, worktree: wt, maxBytes }, ac.signal)
         .then((res) => {
-          if (seq !== diffSeq) return;
+          if (seq !== diffSeq || ac.signal.aborted) return;
           diff.set(res);
         })
         .catch((err) => {
-          if (seq !== diffSeq) return;
+          if (seq !== diffSeq || ac.signal.aborted) return;
           diffError.set(err instanceof Error ? err.message : String(err));
         })
         .finally(() => {
-          if (seq === diffSeq) diffLoading.set(false);
+          if (seq === diffSeq && !ac.signal.aborted) diffLoading.set(false);
         });
     });
   });
@@ -130,6 +161,22 @@ export function GitChangesView(props: {
     if (!q) return files;
     return files.filter((f) => f.path.toLowerCase().includes(q) || (f.old_path?.toLowerCase().includes(q) ?? false));
   });
+
+  const selectedIndex = computed(() => {
+    const p = selectedPath();
+    if (!p) return -1;
+    return filtered().findIndex((f) => f.path === p);
+  });
+
+  const stepFile = (delta: number) => {
+    const list = filtered();
+    const nextIdx = selectedIndex() + delta;
+    const next = list[nextIdx];
+    if (next) {
+      fullDiffRequestedFor.set(null);
+      selectedPath.set(next.path);
+    }
+  };
 
   const baseLabel = (b: GitDiffBase): string => {
     const c = t().git.changes;
@@ -145,61 +192,98 @@ export function GitChangesView(props: {
     props.onOpenPreview(`${root.replace(/[\\/]+$/, "")}/${relpath}`);
   };
 
+  const canLoadFull = () =>
+    props.isRemote === true &&
+    Boolean(diff()?.truncated) &&
+    fullDiffRequestedFor() !== selectedPath();
+
   const listPane = () => (
     <View
       testID="git-changes-list-pane"
       class={`${props.narrow ? "flex-1" : "w-[250px] shrink-0 border-r border-line"} min-h-0 bg-sidebar-bg`}
     >
       <View class="px-[8px] pt-[8px] pb-[6px] gap-[6px] border-b border-line-subtle shrink-0">
-        <View class="flex-row flex-wrap gap-[4px]">
-          <Each of={[...BASES]} key={(b) => b}>
-            {(b) => (
-              <View
-                role="button"
-                testID={`git-base-${b()}`}
-                accessibilityLabel={baseLabel(b())}
-                accessibilityState={{ selected: base() === b() }}
-                onPress={() => setBase(b())}
-                class={`cursor-pointer select-none px-[7px] h-[22px] rounded-(--radius-control-sm) items-center justify-center ${
-                  base() === b() ? "bg-accent-tint" : "hover:bg-row-hover"
-                }`}
-              >
-                <Text class={`text-[11px] font-medium ${base() === b() ? "text-brand" : "text-ink-muted"}`}>{baseLabel(b())}</Text>
-              </View>
-            )}
-          </Each>
-        </View>
+        <If
+          when={props.narrow}
+          else={
+            <View class="flex-row flex-wrap gap-[4px]">
+              <Each of={[...BASES]} key={(b) => b}>
+                {(b) => (
+                  <View
+                    role="button"
+                    testID={`git-base-${b()}`}
+                    accessibilityLabel={baseLabel(b())}
+                    accessibilityState={{ selected: base() === b() }}
+                    onPress={() => setBase(b())}
+                    class={`cursor-pointer select-none px-[7px] h-[22px] rounded-(--radius-control-sm) items-center justify-center ${
+                      base() === b() ? "bg-accent-tint" : "hover:bg-row-hover"
+                    }`}
+                  >
+                    <Text class={`text-[11px] font-medium ${base() === b() ? "text-brand" : "text-ink-muted"}`}>{baseLabel(b())}</Text>
+                  </View>
+                )}
+              </Each>
+            </View>
+          }
+        >
+          <Scroll horizontal scrollbar={false} contentClass="flex-row items-center gap-[6px]">
+            <Each of={[...BASES]} key={(b) => b}>
+              {(b) => (
+                <View
+                  role="button"
+                  testID={`git-base-${b()}`}
+                  accessibilityLabel={baseLabel(b())}
+                  accessibilityState={{ selected: base() === b() }}
+                  onPress={() => setBase(b())}
+                  class={`cursor-pointer select-none px-[12px] h-[36px] rounded-(--radius-control-sm) items-center justify-center shrink-0 border ${
+                    base() === b() ? "bg-accent-tint border-accent-border" : "bg-pane border-line-subtle active:bg-row-hover"
+                  }`}
+                >
+                  <Text class={`text-[12.5px] font-medium ${base() === b() ? "text-brand" : "text-ink-secondary"}`}>{baseLabel(b())}</Text>
+                </View>
+              )}
+            </Each>
+          </Scroll>
+        </If>
+
         <If when={Boolean(props.summary.relative_prefix)}>
           <View class="flex-row items-center gap-[4px]">
             <View
               role="button"
               testID="git-scope-repo"
               onPress={() => setScope("repo")}
-              class={`cursor-pointer select-none px-[6px] h-[20px] rounded-(--radius-xs) items-center justify-center ${
-                scope() === "repo" ? "bg-accent-tint" : "hover:bg-row-hover"
-              }`}
+              class={`cursor-pointer select-none px-[8px] rounded-(--radius-xs) items-center justify-center ${
+                props.narrow ? "h-[28px]" : "h-[20px]"
+              } ${scope() === "repo" ? "bg-accent-tint" : "hover:bg-row-hover"}`}
             >
-              <Text class={`text-[11px] ${scope() === "repo" ? "text-brand font-medium" : "text-ink-muted"}`}>{t().git.changes.scopeRepo}</Text>
+              <Text class={`${props.narrow ? "text-[12px]" : "text-[11px]"} ${scope() === "repo" ? "text-brand font-medium" : "text-ink-muted"}`}>
+                {t().git.changes.scopeRepo}
+              </Text>
             </View>
             <View
               role="button"
               testID="git-scope-dir"
               onPress={() => setScope("dir")}
-              class={`cursor-pointer select-none px-[6px] h-[20px] rounded-(--radius-xs) items-center justify-center ${
-                scope() === "dir" ? "bg-accent-tint" : "hover:bg-row-hover"
-              }`}
+              class={`cursor-pointer select-none px-[8px] rounded-(--radius-xs) items-center justify-center ${
+                props.narrow ? "h-[28px]" : "h-[20px]"
+              } ${scope() === "dir" ? "bg-accent-tint" : "hover:bg-row-hover"}`}
             >
-              <Text class={`text-[11px] ${scope() === "dir" ? "text-brand font-medium" : "text-ink-muted"}`}>{t().git.changes.scopeDir}</Text>
+              <Text class={`${props.narrow ? "text-[12px]" : "text-[11px]"} ${scope() === "dir" ? "text-brand font-medium" : "text-ink-muted"}`}>
+                {t().git.changes.scopeDir}
+              </Text>
             </View>
           </View>
         </If>
+
         <Input
           testID="git-changes-filter"
           value={query()}
           placeholder={t().git.changes.filterPlaceholder}
           accessibilityLabel={t().git.changes.filterPlaceholder}
           onChange={(e) => query.set(e.value)}
-          class="h-[26px] px-[8px] rounded-(--radius-sm) border border-line bg-input-bg text-[12px] text-ink"
+          class={`px-[10px] rounded-(--radius-sm) border border-line bg-input-bg text-ink ${
+            props.narrow ? "h-[36px] text-[13px]" : "h-[26px] text-[12px]"
+          }`}
         />
       </View>
 
@@ -235,12 +319,18 @@ export function GitChangesView(props: {
           testID="git-changes-list"
           each={filtered()}
           keyExtractor={(item) => item.path}
-          estimatedItemSize={42}
+          estimatedItemSize={props.narrow ? 52 : 42}
           class="flex-1 min-h-0"
-          contentStyle={{ paddingTop: 4, paddingBottom: 8, paddingLeft: 4, paddingRight: 4, gap: 2 }}
+          contentStyle={{
+            paddingTop: 4,
+            paddingBottom: 8 + (isPage() && props.narrow ? safeArea().bottom : 0),
+            paddingLeft: 4,
+            paddingRight: 4,
+            gap: 2,
+          }}
         >
           {(item) => {
-            const active = () => selectedPath() === item().path;
+            const active = () => !props.narrow && selectedPath() === item().path;
             const split = () => splitRepoPath(item().path);
             const badge = () => statusBadgeClass(item().status);
             return (
@@ -249,28 +339,33 @@ export function GitChangesView(props: {
                 testID={`git-file-${item().path}`}
                 accessibilityState={{ selected: active() }}
                 onPress={() => {
+                  fullDiffRequestedFor.set(null);
                   selectedPath.set(item().path);
-                  if (props.narrow) narrowDetail.set(true);
+                  if (props.narrow) {
+                    drillIn(isPage(), () => narrowDetail.set(true));
+                  }
                 }}
-                class={`cursor-pointer select-none flex-row items-center gap-[6px] px-[8px] py-[6px] rounded-(--radius-sm) ${
-                  active() ? "bg-accent-tint" : "hover:bg-row-hover"
-                }`}
+                class={`cursor-pointer select-none flex-row items-center gap-[8px] rounded-(--radius-sm) ${
+                  props.narrow ? "px-[10px] min-h-[52px] py-[8px] active:bg-row-hover" : "px-[8px] py-[6px]"
+                } ${active() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
               >
                 <FileIcon icon={fileIconFor(item().path)} size={16} />
-                <View class="flex-1 min-w-0">
-                  <Text class={`text-[12px] line-clamp-1 ${active() ? "font-semibold text-brand" : "text-ink"}`}>{split().name}</Text>
+                <View class="flex-1 min-w-0 gap-[1px]">
+                  <Text class={`${props.narrow ? "text-[13.5px]" : "text-[12px]"} line-clamp-1 ${active() ? "font-semibold text-brand" : "text-ink"}`}>
+                    {split().name}
+                  </Text>
                   <If when={split().dir}>
-                    <Text class="text-[10px] text-ink-muted line-clamp-1">{split().dir}</Text>
+                    <Text class={`${props.narrow ? "text-[11px]" : "text-[10px]"} text-ink-muted line-clamp-1`}>{split().dir}</Text>
                   </If>
                 </View>
                 <View class="flex-row items-center gap-[4px] shrink-0">
                   <If when={item().additions !== null && item().additions! > 0}>
-                    <Text class="font-mono text-[10px] text-ok-text">{`+${item().additions}`}</Text>
+                    <Text class="font-mono text-[10.5px] text-ok-text">{`+${item().additions}`}</Text>
                   </If>
                   <If when={item().deletions !== null && item().deletions! > 0}>
-                    <Text class="font-mono text-[10px] text-danger-text">{`-${item().deletions}`}</Text>
+                    <Text class="font-mono text-[10.5px] text-danger-text">{`-${item().deletions}`}</Text>
                   </If>
-                  <View class={`w-[18px] h-[18px] rounded-(--radius-xs) items-center justify-center ${badge().bg}`}>
+                  <View class={`w-[20px] h-[20px] rounded-(--radius-xs) items-center justify-center ${badge().bg}`}>
                     <Text class={`font-mono text-[10px] font-bold ${badge().text}`}>{item().status}</Text>
                   </View>
                 </View>
@@ -280,9 +375,11 @@ export function GitChangesView(props: {
         </List>
       </If>
 
-      <View class="px-[8px] py-[5px] border-t border-line-subtle shrink-0">
-        <Text class="text-[10px] text-ink-muted line-clamp-2">{t().git.changes.readOnlyHint}</Text>
-      </View>
+      <If when={!props.narrow}>
+        <View class="px-[8px] py-[5px] border-t border-line-subtle shrink-0">
+          <Text class="text-[10px] text-ink-muted line-clamp-2">{t().git.changes.readOnlyHint}</Text>
+        </View>
+      </If>
     </View>
   );
 
@@ -290,11 +387,18 @@ export function GitChangesView(props: {
     <View testID="git-changes-view" class="flex-1 min-h-0 flex-row">
       <If when={!props.narrow || !narrowDetail()}>{listPane()}</If>
       <If when={!props.narrow || narrowDetail()}>
-        <GitDiffViewer
+        <GitDiffPager
           diff={diff()}
           loading={diffLoading()}
           error={diffError()}
+          host={props.host}
+          narrow={props.narrow}
+          index={selectedIndex()}
+          total={filtered().length}
+          onPrev={() => stepFile(-1)}
+          onNext={() => stepFile(1)}
           onOpenPreview={openAbsPreview}
+          onLoadFull={canLoadFull() ? () => fullDiffRequestedFor.set(selectedPath()) : undefined}
           onBack={props.narrow ? () => narrowDetail.set(false) : undefined}
         />
       </If>

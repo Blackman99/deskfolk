@@ -450,7 +450,7 @@ export async function resolveProjectRepo(
       selectedRepo = findDiscoveredRepo(discovery.repos, reqRepo);
     }
     if (!selectedRepo && !reqWt) {
-      throw new HttpError(422, "invalid_args", "repo is not a repository in this project directory");
+      throw new HttpError(422, "git_repo_not_found", "repo is not a repository in this project directory");
     }
   }
 
@@ -467,7 +467,7 @@ export async function resolveProjectRepo(
       match = await matchWorktreeInRepos(discovery.repos, selectedRepo, reqWt, discovery.projectBoundary, exec);
     }
     if (!match) {
-      throw new HttpError(422, "invalid_args", "worktree is not part of this repository");
+      throw new HttpError(422, "git_worktree_not_found", "worktree is not part of this repository");
     }
     activeRepo = match.repo;
     targetDir = match.entry.path;

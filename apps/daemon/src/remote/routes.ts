@@ -1,4 +1,4 @@
-import { CONSULT_MEMBERS_MAX, ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, BUILTIN_PLAYBOOK_IDS, PLAYBOOK_DIFF_MAX, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
+import { CONSULT_MEMBERS_MAX, ANNOTATION_REMOTE_CROP_BASE64_MAX, BOT_RUNNERS, BUILTIN_MODEL_ROLES, BUILTIN_PLAYBOOK_IDS, PLAYBOOK_DIFF_MAX, CLAUDE_EFFORTS, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_NOTE_MAX, CONTROL_OFFERS, FILE_DROP_SESSION_ID, GIT_DIFF_BASES, GITHUB_LIST_FILTERS, PERMISSION_MODES, PROJECT_AGENTS, SPEECH_AUDIO_BASE64_MAX, SPEECH_FORMATS, SPEECH_PRESET_IDS } from "@real-bot/protocol";
 import type { RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
 import { isUlid } from "../ids";
@@ -64,6 +64,25 @@ add("POST", "project-sessions", { agent: one(...PROJECT_AGENTS), dir: string, co
   import: object({ session_id: string, config_dir: nullable(string) }, ["session_id"]) });
 get("project-sessions/:id/(run|replay|commands|tasks)");
 get("project-sessions/:id/locate", { path: string }, ["path"]);
+// Read-only Git & GitHub views for project sessions (ADR 0118).
+const boundedStr = (max: number): Check => v => typeof v === "string" && v.length <= max;
+const gitRepoParam = boundedStr(1024);
+const gitWtParam = boundedStr(4096);
+const gitRelPath = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 4096;
+const gitCommitOid: Check = v => typeof v === "string" && /^[0-9a-f]{7,40}$/i.test(v);
+const gitDiffMaxBytes: Check = v => typeof v === "string" && /^[1-9][0-9]{4,5}$/.test(v) && Number(v) >= 16_384 && Number(v) <= 716_800;
+const gitLogLimit: Check = v => typeof v === "string" && /^[1-9][0-9]{0,2}$/.test(v) && Number(v) <= 500;
+const gitLogSkip: Check = v => typeof v === "string" && /^(0|[1-9][0-9]{0,5})$/.test(v);
+get("project-sessions/:id/git", { repo: gitRepoParam, worktree: gitWtParam, quick: one("1"), other: one("1") });
+get("project-sessions/:id/git/tree", { refresh: one("1") });
+get("project-sessions/:id/git/changes", { base: one(...GIT_DIFF_BASES), scope: one("repo", "dir"), repo: gitRepoParam, worktree: gitWtParam });
+get("project-sessions/:id/git/diff", { path: gitRelPath, base: one(...GIT_DIFF_BASES), commit: gitCommitOid, repo: gitRepoParam, worktree: gitWtParam, max_bytes: gitDiffMaxBytes }, ["path"]);
+get("project-sessions/:id/git/log", { scope: one("branch", "all"), limit: gitLogLimit, skip: gitLogSkip, repo: gitRepoParam, worktree: gitWtParam });
+get("project-sessions/:id/git/commits/[0-9a-fA-F]{7,40}", { repo: gitRepoParam, worktree: gitWtParam });
+get("project-sessions/:id/github", { repo: gitRepoParam, worktree: gitWtParam, refresh: one("1") });
+get("project-sessions/:id/github/related", { repo: gitRepoParam, worktree: gitWtParam, refresh: one("1") });
+get("project-sessions/:id/github/(pulls|issues)", { filter: one(...GITHUB_LIST_FILTERS), q: boundedStr(256), repo: gitRepoParam, worktree: gitWtParam, refresh: one("1") });
+get("project-sessions/:id/github/(pulls|issues)/[1-9][0-9]{0,7}", { repo: gitRepoParam, worktree: gitWtParam, refresh: one("1") });
 // The consultant switch (ADR 0116 addendum 2026-11-23): at most CONSULT_MEMBERS_MAX members.
 const consultMember = object({ agent: one(...PROJECT_AGENTS), model: nullable(string), effort: nullable(effort), config_dir: nullable(string) }, ["agent"]);
 const consultSetting: Check = v => object({ on: bool, members: list(consultMember) }, ["on", "members"])(v) && (v as { members: unknown[] }).members.length <= CONSULT_MEMBERS_MAX;

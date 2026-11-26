@@ -32,7 +32,7 @@ import { RolesPage } from "../settings/RolesPage";
 import { SpendView } from "../spend/SpendView";
 import { shadow } from "../styles";
 import { TaskMap } from "../taskmap/TaskMap";
-import { GitPane } from "../git/GitPane";
+import { GitPane } from "../lazy-views";
 import { UsageTab } from "../usage/UsageTab";
 import { PaneTerminal } from "./PaneTerminal";
 

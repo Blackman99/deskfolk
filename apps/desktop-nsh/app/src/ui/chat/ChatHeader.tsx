@@ -387,8 +387,35 @@ export function ChatHeader(props: {
               </View>
             </If>
 
-            {/* A project session's context window usage: on a phone here, a button with its sheet; on a desktop beside Send. */}
-            <If when={narrow() ? project() : null}>{(session) => <ProjectContextTop context={session().project_context} />}</If>
+            {/* Project session actions on non-workbench layouts: Git page button + context usage ring on phones. */}
+            <If when={project()}>
+              {(session) => (
+                <View class="flex-row items-center shrink-0">
+                  <If when={Boolean(session().project_dir)}>
+                    <View
+                      role="button"
+                      testID="top-project-git"
+                      accessibilityLabel={t().git.title}
+                      tooltip={tip(t().git.title)}
+                      onPress={() => runtime.openGit(session())}
+                      class={`cursor-pointer select-none items-center justify-center shrink-0 ${
+                        narrow()
+                          ? "w-[48px] min-h-[64px] active:bg-line-subtle hover:bg-line-subtle"
+                          : "flex-row gap-[5px] px-[10px] py-[5px] rounded-(--radius-sm) border bg-btn-secondary-bg border-line hover:bg-line-subtle hover:border-line-hover"
+                      }`}
+                    >
+                      <Icon name="git-branch" size={narrow() ? 20 : 16} class="tint-ink-secondary" />
+                      <If when={!narrow()}>
+                        <Text class="text-[12px] font-medium text-ink-secondary">{t().git.title}</Text>
+                      </If>
+                    </View>
+                  </If>
+                  <If when={narrow()}>
+                    <ProjectContextTop context={session().project_context} />
+                  </If>
+                </View>
+              )}
+            </If>
           </>
         )}
       </If>

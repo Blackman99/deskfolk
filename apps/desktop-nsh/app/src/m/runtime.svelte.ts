@@ -91,7 +91,7 @@ import { MessageEdits, type MessageEditsHost } from "./chat/message-edits.svelte
 import { SessionHistory, type SessionHistoryHost } from "./chat/session-history.svelte.ts";
 import { ThreadState, type ThreadStateHost } from "./chat/thread-state.svelte.ts";
 import { ConnectionLoop, type ConnectionLoopHost } from "./connection/connection-loop.svelte.ts";
-import { OverlayState, type OverlayStateHost, type RolesTarget, type TraceOpenOptions } from "./overlays/overlay-state.svelte.ts";
+import { OverlayState, type GitOpenOptions, type GitPageParams, type OverlayStateHost, type RolesTarget, type TraceOpenOptions } from "./overlays/overlay-state.svelte.ts";
 import { TerminalList, type TerminalListHost } from "./overlays/terminal-list.svelte.ts";
 import { SearchStore, type SearchStoreHost } from "./search/search-store.svelte.ts";
 
@@ -324,6 +324,7 @@ export class MessengerRuntime {
       closeTerminal: () => runtime.closeTerminal(),
       closeRemoteScreen: () => runtime.closeRemoteScreen(),
       closeListPage: () => runtime.closeListPage(),
+      closeGit: () => runtime.closeGit(),
       setHighlightedMessage: (messageId, sessionId) => runtime.setHighlightedMessage(messageId, sessionId),
       loadAnnotations: (filter) => runtime.loadAnnotations(filter),
       markSessionRead: (id) => runtime.markSessionRead(id),
@@ -631,6 +632,12 @@ export class MessengerRuntime {
   set listPage(value: "usage" | "archived" | "roles" | null) { this.overlayState.listPage = value; }
   openListPage(page: "usage" | "archived" | "roles"): void { this.overlayState.openListPage(page); }
   closeListPage(): void { this.overlayState.closeListPage(); }
+  get gitOpen(): boolean { return this.overlayState.gitOpen; }
+  get gitSessionId(): string | null { return this.overlayState.gitSessionId; }
+  get gitParams(): GitPageParams { return this.overlayState.gitParams; }
+  openGit(session: { id: string; project_dir?: string | null }, opts: GitOpenOptions = {}): void { this.overlayState.openGit(session, opts); }
+  updateGitPageParams(projectDir: string, patch: Partial<GitPageParams>): void { this.overlayState.updateGitPageParams(projectDir, patch); }
+  closeGit(): void { this.overlayState.closeGit(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
   watchLineBoard(sessionId: string): () => void { return this.overlayState.watchLineBoard(sessionId); }
   openRoles(role: BuiltinModelRole | null = null, playbook: string | null = null): void { this.overlayState.openRoles(role, playbook); }
@@ -1424,9 +1431,9 @@ export class MessengerRuntime {
   async suggestComposer(sessionId: string): Promise<void> {
     const api = this.api;
     if (!api) return;
-    // These draft what you would send. A Bot↔Bot direct and the file conversation have no one to send to.
+    // These draft what you would send. A Bot↔Bot direct, a consultant and the file conversation have no one to send to.
     const session = this.snapshot.sessions.find((s) => s.id === sessionId);
-    if (!session || classifySession(session) === "bot-bot" || isFileDropSession(session)) return;
+    if (!session || classifySession(session) === "bot-bot" || classifySession(session) === "consultant" || isFileDropSession(session)) return;
     const view = this.sessionView(sessionId);
     this.dropComposerSuggestions(view);
     const abort = new AbortController();

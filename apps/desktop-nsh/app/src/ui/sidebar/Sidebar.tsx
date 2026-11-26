@@ -448,7 +448,8 @@ export function Sidebar(props: {
     !runtime.routinesOpen &&
     !runtime.spendOpen &&
     !runtime.terminalOpen &&
-    !runtime.screenOpen;
+    !runtime.screenOpen &&
+    !runtime.gitOpen;
 
   return (
     <>
@@ -663,7 +664,7 @@ export function Sidebar(props: {
             const dir = dirMenuFor()?.dir;
             if (dir) void runtime.openTerminalAt(dir);
           }}
-          onOpenGit={props.workbench && props.onOpenProjectGit ? openGitOfMenu : undefined}
+          onOpenGit={props.onOpenProjectGit ? openGitOfMenu : undefined}
         />
         <ToolsMenu
           locale={snapshot().settings.locale === "en" ? "en" : "zh"}

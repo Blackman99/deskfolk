@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ANNOTATION_REMOTE_CROP_BASE64_MAX, CLIENT_ONLY_CONTROL_OFFERS, CONTROL_OFFERS } from "@real-bot/protocol";
 import { canonicalBytes, MAX_LOGICAL_MESSAGE, type RemoteRequest } from "@real-bot/remote";
 import { HttpError } from "../errors";
+import { boundDiffResponseBytes } from "../git/diff";
 import { validateBusiness } from "./routes";
 
 const id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
@@ -387,4 +388,51 @@ test("engines from the phone: read, change, reset, make, rename and remove one, 
   ok({ method: "POST", path: "/v1/bots", body: { name: "导演", duties: "出片", boundaries: "x", playbook_id: "video" } });
   ok({ method: "POST", path: "/v1/sessions", body: { name: "视频制作", members: [id], playbook_id: "video" } });
   ok({ method: "PATCH", path: "/v1/settings", body: { default_playbook: "coding" } });
+});
+
+test("project session Git & GitHub read-only routes are whitelisted with strict bounds, and legacy /git/worktrees stays closed", () => {
+  const ok = (request: Omit<RemoteRequest, "v" | "id">) => expect(() => validateBusiness({ v: 1, id, ...request })).not.toThrow();
+  const bad = (request: Omit<RemoteRequest, "v" | "id">) => expect(() => validateBusiness({ v: 1, id, ...request })).toThrow();
+
+  const sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
+  // All 10 client routes match api-base.ts shapes.
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git`, query: { repo: "packages/app", worktree: "/Users/me/proj", quick: "1", other: "1" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git/tree`, query: { refresh: "1" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git/changes`, query: { base: "merge-base", scope: "dir", repo: ".", worktree: "/Users/me/proj" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { path: "src/app.ts", base: "working", commit: sha, max_bytes: "204800" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git/log`, query: { scope: "all", limit: "60", skip: "0", repo: "." } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/git/commits/${sha}`, query: { repo: ".", worktree: "/Users/me/proj" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github`, query: { refresh: "1" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github/related`, query: { repo: "." } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github/pulls`, query: { filter: "review_requested", q: "mobile", refresh: "1" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github/issues`, query: { filter: "open", q: "bug" } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github/pulls/42`, query: { repo: "." } });
+  ok({ method: "GET", path: `/v1/project-sessions/${id}/github/issues/7`, query: { worktree: "/Users/me/proj" } });
+
+  // Rejected shapes: legacy worktrees route, missing required path, unknown keys, out-of-range bounds, mutations.
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/worktrees` });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { base: "working" } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { path: "src/app.ts", max_bytes: "1024" } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { path: "src/app.ts", max_bytes: "900000" } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { path: "src/app.ts", extra: "1" } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/diff`, query: { path: "a".repeat(4097) } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/log`, query: { limit: "501" } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/git/commits/not-a-sha` });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/github/pulls`, query: { q: "x".repeat(257) } });
+  bad({ method: "GET", path: `/v1/project-sessions/${id}/github/pulls/0` });
+  bad({ method: "POST", path: `/v1/project-sessions/${id}/git`, body: {} });
+
+  // Bounded diff responses always fit inside one Noise logical message (MAX_LOGICAL_MESSAGE).
+  const worst = boundDiffResponseBytes({
+    path: "src/big.ts",
+    base: "working",
+    commit: null,
+    patch: `+${"中文\\\"\\\\".repeat(100)}\n`.repeat(1500),
+    binary: false,
+    truncated: false,
+    untracked: false,
+    bytes: 1_500_000,
+    reason: null,
+  });
+  expect(canonicalBytes({ v: 1, id, ok: true, status: 200, body: worst }).length).toBeLessThanOrEqual(MAX_LOGICAL_MESSAGE);
 });

@@ -1,15 +1,17 @@
 /**
  * Read-only GitHub PR / Issue detail viewer with Markdown rendering, CI check summary,
  * comments, "Quote to composer" draft insertion, and "Open on GitHub" (ADR 0118).
+ * On narrow mobile pages, actions pin cleanly to a sticky bottom bar with safe-area padding.
  */
 import type { GitHubIssueDetail, GitHubPrDetail } from "@real-bot/protocol";
-import { Scroll, Text, View } from "nsh";
+import { safeArea, Scroll, Text, View } from "nsh";
 import { openExternalLink } from "../../m/open-link.ts";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
 import { EmptyState } from "../EmptyState";
 import { Icon } from "../Icon";
-import { MarkdownBody } from "../MarkdownBody";
+import { MarkdownBody } from "../lazy-views";
+import type { GitHost } from "./git-levels";
 import { formatRelativeIso } from "./git-ui-helpers";
 
 export type SelectedGitHubItem =
@@ -19,11 +21,14 @@ export type SelectedGitHubItem =
 export function GitHubDetail(props: {
   item: SelectedGitHubItem | null;
   loading: boolean;
+  host?: GitHost;
+  narrow?: boolean;
   onQuote: (number: number, title: string, url: string) => void;
   onBack?: () => void;
 }) {
   const t = () => copy();
   const locale = () => (runtime.snapshot.settings.locale === "en" ? "en" : "zh");
+  const isMobilePage = () => props.host === "page" && props.narrow === true;
 
   const stateBadge = (state: string, isDraft?: boolean) => {
     const g = t().git.github;
@@ -52,17 +57,25 @@ export function GitHubDetail(props: {
           const badge = () => stateBadge(d().state, pr()?.is_draft);
           return (
             <View class="flex-1 min-h-0">
-              <View class="px-[12px] py-[10px] border-b border-line-subtle gap-[6px] bg-sidebar-bg shrink-0">
+              <View
+                class="px-[12px] py-[10px] border-b border-line-subtle gap-[6px] bg-sidebar-bg shrink-0"
+                style={isMobilePage() ? { paddingTop: Math.max(8, safeArea().top) } : undefined}
+              >
                 <View class="flex-row items-center gap-[6px] flex-wrap">
                   <If when={props.onBack}>
                     <View
                       role="button"
                       testID="git-gh-detail-back"
+                      accessibilityLabel={t().common.back}
                       onPress={() => props.onBack?.()}
-                      class="cursor-pointer select-none flex-row items-center gap-[2px] px-[6px] h-[22px] rounded-(--radius-control-sm) hover:bg-row-hover shrink-0"
+                      class={`cursor-pointer select-none flex-row items-center justify-center rounded-(--radius-control-sm) hover:bg-row-hover active:bg-row-hover shrink-0 ${
+                        isMobilePage() ? "w-[40px] h-[40px] -ml-[6px]" : "gap-[2px] px-[6px] h-[22px]"
+                      }`}
                     >
-                      <Icon name="chevron-left" size={12} class="tint-ink-muted" />
-                      <Text class="text-[11px] text-ink-muted">{t().common.back}</Text>
+                      <Icon name="chevron-left" size={isMobilePage() ? 20 : 12} class="tint-ink-secondary" />
+                      <If when={!isMobilePage()}>
+                        <Text class="text-[11px] text-ink-muted">{t().common.back}</Text>
+                      </If>
                     </View>
                   </If>
                   <View class={`px-[7px] h-[20px] rounded-full items-center justify-center ${badge().bg}`}>
@@ -113,28 +126,30 @@ export function GitHubDetail(props: {
                   )}
                 </If>
 
-                <View class="flex-row flex-wrap items-center gap-[6px] pt-[2px]">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon="reply"
-                    testID="git-gh-quote"
-                    onPress={() => props.onQuote(d().number, d().title, d().url)}
-                  >
-                    {t().git.github.quoteToComposer}
-                  </Button>
-                  <If when={d().url}>
+                <If when={!isMobilePage()}>
+                  <View class="flex-row flex-wrap items-center gap-[6px] pt-[2px]">
                     <Button
-                      variant="ghost"
+                      variant="secondary"
                       size="sm"
-                      icon="external"
-                      testID="git-gh-open-external"
-                      onPress={() => void openExternalLink(d().url)}
+                      icon="reply"
+                      testID="git-gh-quote"
+                      onPress={() => props.onQuote(d().number, d().title, d().url)}
                     >
-                      {t().git.github.openOnGitHub}
+                      {t().git.github.quoteToComposer}
                     </Button>
-                  </If>
-                </View>
+                    <If when={d().url}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon="external"
+                        testID="git-gh-open-external"
+                        onPress={() => void openExternalLink(d().url)}
+                      >
+                        {t().git.github.openOnGitHub}
+                      </Button>
+                    </If>
+                  </View>
+                </If>
               </View>
 
               <Scroll class="flex-1 min-h-0" contentClass="p-[12px] gap-[12px]">
@@ -200,6 +215,37 @@ export function GitHubDetail(props: {
                   </View>
                 </If>
               </Scroll>
+
+              {/* Sticky bottom action bar on mobile pages */}
+              <If when={isMobilePage()}>
+                <View
+                  testID="git-gh-mobile-bar"
+                  class="flex-row items-center gap-[8px] px-[12px] pt-[8px] border-t border-line bg-sidebar-bg shrink-0"
+                  style={{ paddingBottom: Math.max(10, safeArea().bottom) }}
+                >
+                  <Button
+                    variant="primary"
+                    size="md"
+                    icon="reply"
+                    testID="git-gh-quote"
+                    class="flex-1"
+                    onPress={() => props.onQuote(d().number, d().title, d().url)}
+                  >
+                    {t().git.github.quoteToComposer}
+                  </Button>
+                  <If when={d().url}>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      icon="external"
+                      testID="git-gh-open-external"
+                      onPress={() => void openExternalLink(d().url)}
+                    >
+                      {t().git.github.openOnGitHub}
+                    </Button>
+                  </If>
+                </View>
+              </If>
             </View>
           );
         }}

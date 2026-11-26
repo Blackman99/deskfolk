@@ -21,6 +21,7 @@ export const OVERLAY_SESSION = "session";
 export const OVERLAY_BOT = "bot";
 export const OVERLAY_WORKSPACE = "workspace";
 export const OVERLAY_TRACE = "trace";
+export const OVERLAY_GIT = "git";
 export const OVERLAY_ROUTINES = "routines";
 export const OVERLAY_SPEND = "spend";
 export const OVERLAY_TERMINAL = "terminal";
@@ -39,6 +40,7 @@ export type UrlOverlay =
   | { kind: "bot"; botId: string }
   | { kind: "workspace"; selected: string | null }
   | { kind: "trace"; taskId: string | null }
+  | { kind: "git" }
   | { kind: "routines" }
   | { kind: "spend" }
   | { kind: "terminal" }
@@ -96,6 +98,7 @@ export function overlayFromUrl(url: URL, remote = false): UrlOverlay {
     return { kind: "workspace", selected: remote ? null : sanitizePreviewPath(url.searchParams.get(WORKSPACE_FILE_PARAM)) };
   }
   if (raw === OVERLAY_TRACE) return { kind: "trace", taskId: sanitizeBotId(url.searchParams.get(TRACE_PARAM)) };
+  if (raw === OVERLAY_GIT) return { kind: "git" };
   if (raw === OVERLAY_ROUTINES) return { kind: "routines" };
   if (raw === OVERLAY_SPEND) return { kind: "spend" };
   if (raw === OVERLAY_TERMINAL) return { kind: "terminal" };
@@ -123,6 +126,7 @@ export function overlayFromFlags(flags: {
   workspaceSelected: string | null;
   traceOpen?: boolean;
   traceTaskId?: string | null;
+  gitOpen?: boolean;
   /** Optional so older flag objects keep compiling. Absent means the calendar is closed. */
   routinesOpen?: boolean;
   /** Optional for the same reason. Absent means the spend ledger is closed. */
@@ -148,6 +152,7 @@ export function overlayFromFlags(flags: {
     return { kind: "workspace", selected: sanitizePreviewPath(flags.workspaceSelected) };
   }
   if (flags.traceOpen) return { kind: "trace", taskId: sanitizeBotId(flags.traceTaskId) };
+  if (flags.gitOpen) return { kind: "git" };
   return { kind: "none" };
 }
 
@@ -273,6 +278,10 @@ function writeOverlay(url: URL, overlay: UrlOverlay): void {
     if (overlay.taskId) url.searchParams.set(TRACE_PARAM, overlay.taskId);
     return;
   }
+  if (overlay.kind === "git") {
+    url.searchParams.set(OVERLAY_PARAM, OVERLAY_GIT);
+    return;
+  }
   if (overlay.kind === "routines") {
     url.searchParams.set(OVERLAY_PARAM, OVERLAY_ROUTINES);
   }
@@ -362,7 +371,7 @@ function resolveOverlay(wanted: UrlOverlay, ctx: OverlayContext): UrlOverlay | "
   if (!ctx.knownSessionIds.includes(ctx.selectedId)) {
     return ctx.snapshotReady ? { kind: "none" } : "wait";
   }
-  if (wanted.kind === "session" || wanted.kind === "trace") return wanted;
+  if (wanted.kind === "session" || wanted.kind === "trace" || wanted.kind === "git") return wanted;
   if (!ctx.snapshotReady) return "wait";
   if (!ctx.knownBotIds.includes(wanted.botId)) return { kind: "none" };
   return wanted;

@@ -510,6 +510,7 @@ export function createShellState() {
     !runtime.spendOpen &&
     !runtime.terminalOpen &&
     !runtime.screenOpen &&
+    !runtime.gitOpen &&
     !runtime.createBotOpen &&
     !runtime.createGroupOpen &&
     !runtime.createProjectOpen &&
@@ -645,6 +646,7 @@ export function createShellState() {
     else if (runtime.spendOpen) runtime.closeSpend();
     else if (runtime.workspaceOpen) runtime.closeWorkspace();
     else if (artifact.artifactPreview) artifact.closeArtifactPreview();
+    else if (runtime.gitOpen) runtime.closeGit();
     else if (runtime.selectedId) runtime.selectedId = null;
     else return false;
     return true;
@@ -670,6 +672,7 @@ export function createShellState() {
     else if (runtime.terminalOpen) runtime.closeTerminal();
     else if (runtime.screenOpen) runtime.closeRemoteScreen();
     else if (runtime.traceOpen && !artifact.artifactPreview) runtime.closeTrace();
+    else if (runtime.gitOpen && !artifact.artifactPreview) runtime.closeGit();
     else if (runtime.routinesOpen) runtime.closeRoutines();
     else if (runtime.spendOpen) runtime.closeSpend();
     else if (runtime.workspaceOpen) {

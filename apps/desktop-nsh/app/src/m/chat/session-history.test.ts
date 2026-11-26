@@ -60,6 +60,7 @@ function setup(page?: (id: string) => Page) {
     closeTerminal() {},
     closeRemoteScreen() {},
     closeListPage() {},
+    closeGit() {},
     closeSessionSettings() {},
     openSpend() {},
     openTerminal() {},

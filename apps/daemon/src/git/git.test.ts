@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readGitDiff } from "./diff";
+import { boundDiffResponseBytes, clampDiffMaxBytes, readGitDiff } from "./diff";
+import { HttpError } from "../errors";
 import { isSafeRepoRelPath, isValidCommitOid } from "./exec";
 import { readGitCommitDetail, readGitLog } from "./log";
 import { inspectGitMarker, resetRepoDiscoveryCache, resolveProjectRepo, safeRealpath } from "./repo";
@@ -270,5 +271,51 @@ describe("git engine", () => {
     expect(detail.files.map((f) => f.path)).toEqual(["src/app.ts"]);
     expect(detail.files[0]!.additions).toBe(2);
     expect(detail.files[0]!.deletions).toBe(1);
+  });
+
+  test("clampDiffMaxBytes and boundDiffResponseBytes keep JSON wire payload below 1 MiB", () => {
+    expect(clampDiffMaxBytes(undefined)).toBe(512 * 1024);
+    expect(clampDiffMaxBytes(1024)).toBe(16 * 1024);
+    expect(clampDiffMaxBytes(2_000_000)).toBe(700 * 1024);
+    expect(clampDiffMaxBytes(200 * 1024)).toBe(200 * 1024);
+
+    // Worst-case CJK + JSON-escaped quotes/backslashes whose UTF-8 JSON length expands >3x.
+    const heavyLine = `+${"中文\\\"\\\\".repeat(80)}\n`;
+    const hugePatch = heavyLine.repeat(2000);
+    const bounded = boundDiffResponseBytes({
+      path: "src/huge.ts",
+      base: "working",
+      commit: null,
+      patch: hugePatch,
+      binary: false,
+      truncated: false,
+      untracked: false,
+      bytes: Buffer.byteLength(hugePatch, "utf8"),
+      reason: null,
+    });
+    expect(bounded.truncated).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(bounded), "utf8")).toBeLessThanOrEqual(900 * 1024);
+  });
+
+  test("stale repo and worktree return dedicated 422 error codes distinct from invalid_args", async () => {
+    let repoErr: unknown = null;
+    try {
+      await resolveProjectRepo(repoDir, { repo: "does-not-exist" });
+    } catch (err) {
+      repoErr = err;
+    }
+    expect(repoErr).toBeInstanceOf(HttpError);
+    expect((repoErr as HttpError).status).toBe(422);
+    expect((repoErr as HttpError).code).toBe("git_repo_not_found");
+
+    let wtErr: unknown = null;
+    try {
+      await resolveProjectRepo(repoDir, { worktree: join(repoDir, ".wt", "removed-branch") });
+    } catch (err) {
+      wtErr = err;
+    }
+    expect(wtErr).toBeInstanceOf(HttpError);
+    expect((wtErr as HttpError).status).toBe(422);
+    expect((wtErr as HttpError).code).toBe("git_worktree_not_found");
   });
 });

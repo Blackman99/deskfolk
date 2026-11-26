@@ -18,7 +18,7 @@
  * `session-drag.ts`; the interface profile is applied from `shell-state.ts` (ADR 0108).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { cleanup, computed, PanResponder, Text, View } from "nsh";
+import { cleanup, computed, effect, PanResponder, safeArea, Text, untracked, View } from "nsh";
 import { snapshot } from "../../lib/reactive";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
@@ -38,6 +38,7 @@ import { ChatTabLabel } from "../chat/ChatTabLabel";
 import { PaneChatBar, type PaneBarAction } from "../chat/PaneChatBar";
 import { ProjectChat } from "../chat/ProjectChat";
 import { Icon } from "../Icon";
+import { GitPane } from "../lazy-views";
 import { MobileNavigation } from "../MobileNavigation";
 import { Onboarding } from "../Onboarding";
 import { ArtifactPreview } from "../overlays/ArtifactPreview";
@@ -108,7 +109,7 @@ function ShellBody(props: { s: ShellState }) {
    */
   const reattachTerminals = () => workbench.untabbedTerminals.map((row) => ({ id: row.id, name: workbench.terminalName(row), cwd: row.cwd }));
   /** A page covers the roster on a phone while one is open. */
-  const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || s.selected());
+  const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || runtime.gitOpen || s.selected());
   /** A phone's page covers the roster: its avatars' loops hold still under it (`LoopsHeld`). */
   const rosterCovered = () => !s.sidebarColumn() && pageOpen();
 
@@ -322,6 +323,18 @@ function MainPages(props: { s: ShellState }) {
   const s = props.s;
   const t = () => s.t();
   // The terminal before the conversation: opening it leaves the conversation selected underneath.
+  const gitSession = () => {
+    const id = runtime.gitSessionId ?? s.selected()?.id ?? null;
+    const row = id ? (s.sessionsById().get(id) ?? null) : null;
+    return row?.kind === "project" && row.project_dir ? row : null;
+  };
+  // Deep-linked `?s=<bot-or-deleted>&o=git` seeds `gitOpen` before the snapshot arrives; once
+  // connected, close Git cleanly if the target is not a valid project session.
+  effect(() => {
+    if (runtime.gitOpen && runtime.connection === "connected" && !gitSession()) {
+      untracked(() => runtime.closeGit());
+    }
+  });
   const page = () =>
     runtime.routinesOpen
       ? "routines"
@@ -331,9 +344,11 @@ function MainPages(props: { s: ShellState }) {
           ? "terminal"
           : runtime.screenOpen && runtime.client?.kind === "remote"
             ? "screen"
-            : s.selected()
-              ? "chat"
-              : null;
+            : runtime.gitOpen
+              ? "git"
+              : s.selected()
+                ? "chat"
+                : null;
   return (
     <View class="flex-1 min-h-0 min-w-0">
       <If when={page() === "routines"}>
@@ -347,6 +362,50 @@ function MainPages(props: { s: ShellState }) {
       </If>
       <If when={page() === "screen" ? runtime.client : null}>
         {(api) => <RemoteScreenPane api={api() as unknown as Parameters<typeof RemoteScreenPane>[0]["api"]} onClose={() => runtime.closeRemoteScreen()} />}
+      </If>
+      <If when={page() === "git"}>
+        <If
+          when={gitSession()}
+          else={
+            <View testID="git-page-loading" class="flex-1 min-h-0 bg-pane">
+              <View
+                class="flex-row items-center px-[4px] border-b border-line shrink-0"
+                style={{ paddingTop: safeArea().top, height: 48 + safeArea().top }}
+              >
+                <View
+                  role="button"
+                  testID="git-page-back"
+                  accessibilityLabel={t().common.back}
+                  onPress={() => runtime.closeGit()}
+                  class="cursor-pointer select-none items-center justify-center w-[44px] h-[44px] rounded-(--radius-control-sm) active:bg-row-hover"
+                >
+                  <Icon name="chevron-left" size={20} class="tint-ink-secondary" />
+                </View>
+                <Text class="text-[16px] font-semibold text-ink px-[6px]">{t().git.title}</Text>
+              </View>
+              <View class="flex-1 items-center justify-center p-6">
+                <Text class="text-[13px] text-ink-muted">{t().git.loading}</Text>
+              </View>
+            </View>
+          }
+        >
+          {(session) => (
+            <GitPane
+              host="page"
+              sessionId={session().id}
+              projectDir={session().project_dir!}
+              view={runtime.gitParams.view}
+              worktree={runtime.gitParams.worktree}
+              repo={runtime.gitParams.repo}
+              pickerNonce={runtime.gitParams.pickerNonce}
+              onClose={() => runtime.closeGit()}
+              onChangeParams={(patch) => runtime.updateGitPageParams(session().project_dir!, patch)}
+              onOpenArtifact={(relpath, att, messageId, forceTree, taskId, siblings, sid) =>
+                s.artifact.openArtifactPath(relpath, att, messageId, forceTree, taskId, siblings, sid ?? session().id)
+              }
+            />
+          )}
+        </If>
       </If>
       <If when={page() === "chat" ? s.selected() : null}>
         {(selected) => (
@@ -693,7 +752,7 @@ function ShellLayers(props: { s: ShellState }) {
             onDelete={() => s.sessionMenu.handleMenuDelete(menu().session)}
             onShowJobView={() => void s.sessionMenu.handleMenuShowJobView(menu().session)}
             onShowMap={runtime.paneOpener ? () => s.sessionMenu.handleMenuShowMap(menu().session) : undefined}
-            onShowGit={runtime.paneOpener ? () => s.sessionMenu.handleMenuShowGit(menu().session) : undefined}
+            onShowGit={() => s.sessionMenu.handleMenuShowGit(menu().session)}
             onOpenProjectDir={() => void s.sessionMenu.handleMenuOpenProjectDir(menu().session)}
             onOpenProjectTerminal={() => s.sessionMenu.handleMenuOpenProjectTerminal(menu().session)}
             onRename={s.sidebarHidden() ? undefined : () => s.sessionMenu.handleMenuRename(menu().session)}

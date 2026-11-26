@@ -133,22 +133,17 @@ export class ShellSessionMenu {
   };
 
   /**
-   * The project's Git & GitHub pane (ADR 0118): changes diff, commit graph, and GitHub issues/PRs,
-   * with a persistent repo -> worktree switcher. Shared per project directory, desktop workbench only in v1.
+   * The project's Git & GitHub view (ADR 0118): a workbench pane on wide desktop windows, or a
+   * full-screen session page (`?s=<id>&o=git`) on phones and hosted tablets.
    */
   handleMenuShowGit = (session: SessionSummary, target?: GitPaneView | "picker"): void => {
     const dir = session.kind === "project" ? session.project_dir : null;
     if (!dir) return;
     if (target === "picker") {
-      this.getRuntime().paneOpener?.({ kind: "git", sessionId: session.id, projectDir: dir, pickerNonce: Date.now() });
+      this.getRuntime().openGit(session, { picker: true });
       return;
     }
-    this.getRuntime().paneOpener?.({
-      kind: "git",
-      sessionId: session.id,
-      projectDir: dir,
-      ...(target ? { view: target } : {}),
-    });
+    this.getRuntime().openGit(session, target ? { view: target } : {});
   };
 
   /**

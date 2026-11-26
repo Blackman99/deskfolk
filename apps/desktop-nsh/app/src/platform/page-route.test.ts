@@ -106,6 +106,7 @@ function fakeRuntime(): FakeRuntime {
     workspaceSelected: null as string | null,
     traceOpen: false,
     traceTaskId: null as string | null,
+    gitOpen: false,
     routinesOpen: false,
     spendOpen: false,
     terminalOpen: false,
@@ -118,6 +119,7 @@ function fakeRuntime(): FakeRuntime {
       rt.sessionSettingsOpen = overlay.kind === "session" || overlay.kind === "bot";
       rt.profileBotId = overlay.kind === "bot" ? overlay.botId : null;
       rt.traceOpen = overlay.kind === "trace";
+      rt.gitOpen = overlay.kind === "git";
       rt.listPage = overlay.kind === "usage" || overlay.kind === "archived" || overlay.kind === "roles" ? overlay.kind : null;
     },
     async selectSession(id: string) {
@@ -684,4 +686,65 @@ test("a file no attachment backs gets an entry under the press that opens it: Ba
   // A reload at the file's entry opens nothing of it.
   const reloaded = setup(`${ORIGIN}/?s=${A}&a=file`, "reload");
   expect(reloaded.rt.previewAttachmentId).toBe(null);
+});
+
+test("Git page drill-down: leaving directly steps back over its level, and Back from preview restores the level", () => {
+  const { page, rt, route, write } = setup();
+  rt.selectedId = A;
+  write();
+  rt.gitOpen = true;
+  write();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`, `/?s=${A}&o=git`]);
+
+  let detailOpen = false;
+  const syncLevel = () =>
+    route.levels(
+      detailOpen
+        ? [{ key: "git-changes", depth: 1, inModal: false, stepOut: () => { detailOpen = false; syncLevel(); } }]
+        : [],
+    );
+  route.stepIn(() => {
+    detailOpen = true;
+    syncLevel();
+  });
+  page.flush();
+  expect(page.entries.map(path)).toEqual([`/${FLOOR}`, "/", `/?s=${A}`, `/?s=${A}&o=git`, `/?s=${A}&o=git#l1`]);
+
+  // Open a file preview directly over the diff level (`#l1`).
+  rt.previewAttachmentId = "virtual-preview-src/app.ts";
+  write();
+  expect(page.entries.map(path)).toEqual([
+    `/${FLOOR}`,
+    "/",
+    `/?s=${A}`,
+    `/?s=${A}&o=git`,
+    `/?s=${A}&o=git#l1`,
+    `/?s=${A}&o=git&a=file`,
+  ]);
+  // First Back closes preview and returns to `#l1`; second Back steps out of `#l1` to file list.
+  page.press();
+  expect(rt.previewAttachmentId).toBe(null);
+  expect(rt.gitOpen).toBe(true);
+  expect(detailOpen).toBe(true);
+  page.press();
+  expect(detailOpen).toBe(false);
+  expect(rt.gitOpen).toBe(true);
+  expect(page.at()).toBe(3);
+
+  // Drill in again, then leave Git directly (e.g. "Quote to composer" returning to chat).
+  route.stepIn(() => {
+    detailOpen = true;
+    syncLevel();
+  });
+  page.flush();
+  expect(page.at()).toBe(4);
+  rt.gitOpen = false;
+  write();
+  detailOpen = false;
+  syncLevel();
+  page.flush();
+  expect(page.at()).toBe(2);
+  expect(path(route.address())).toBe(`/?s=${A}`);
+  expect(rt.gitOpen).toBe(false);
+  expect(rt.selectedId).toBe(A);
 });

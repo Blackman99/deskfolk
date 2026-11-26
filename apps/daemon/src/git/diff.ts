@@ -11,15 +11,45 @@ import { defaultGitExec, isSafeRepoRelPath, isValidCommitOid, type GitExecutor }
 import { resolveProjectRepo, safeRealpath } from "./repo";
 import { resolveDefaultMergeBase } from "./status";
 
-const MAX_DIFF_BYTES = 512 * 1024;
+const DEFAULT_MAX_DIFF_BYTES = 512 * 1024;
+const MIN_DIFF_BYTES = 16 * 1024;
+const HARD_MAX_DIFF_BYTES = 700 * 1024;
 const MAX_UNTRACKED_BYTES = 256 * 1024;
+/** Safe ceiling for JSON-encoded response bytes (leaves headroom under remote's 1 MiB message cap). */
+const MAX_SERIALIZED_RESPONSE_BYTES = 900 * 1024;
+
+export function clampDiffMaxBytes(raw?: number | null): number {
+  if (raw === undefined || raw === null || !Number.isFinite(raw)) return DEFAULT_MAX_DIFF_BYTES;
+  return Math.max(MIN_DIFF_BYTES, Math.min(HARD_MAX_DIFF_BYTES, Math.floor(raw)));
+}
+
+/** Ensures the JSON-encoded response stays safely below the 1 MiB remote message limit even after escaping. */
+export function boundDiffResponseBytes(resp: GitDiffResponse, maxWireBytes = MAX_SERIALIZED_RESPONSE_BYTES): GitDiffResponse {
+  if (!resp.patch) return resp;
+  let wireLen = Buffer.byteLength(JSON.stringify(resp), "utf8");
+  if (wireLen <= maxWireBytes) return resp;
+  let patch = resp.patch;
+  while (wireLen > maxWireBytes && patch.length > 0) {
+    const ratio = (maxWireBytes * 0.85) / wireLen;
+    const nextLen = Math.max(0, Math.min(patch.length - 1, Math.floor(patch.length * ratio)));
+    const cut = patch.lastIndexOf("\n", nextLen);
+    patch = cut > 0 ? patch.slice(0, cut + 1) : patch.slice(0, nextLen);
+    wireLen = Buffer.byteLength(JSON.stringify({ ...resp, patch, truncated: true }), "utf8");
+  }
+  return {
+    ...resp,
+    patch,
+    truncated: true,
+    reason: resp.reason ?? "diff exceeds preview limit",
+  };
+}
 
 function isBinaryDiff(patch: string): boolean {
   return /^Binary files .* differ$/m.test(patch) || /^GIT binary patch$/m.test(patch);
 }
 
 /** Synthesizes a unified diff for an untracked file so `DiffView` renders it uniformly. */
-function readUntrackedPatch(repoRoot: string, relPath: string): GitDiffResponse {
+function readUntrackedPatch(repoRoot: string, relPath: string, maxBytes: number): GitDiffResponse {
   const full = resolve(repoRoot, relPath);
   const rootReal = safeRealpath(repoRoot);
   const fullReal = safeRealpath(full);
@@ -37,7 +67,8 @@ function readUntrackedPatch(repoRoot: string, relPath: string): GitDiffResponse 
     return { path: relPath, base: "working", commit: null, patch: "", binary: false, truncated: false, untracked: true, bytes: 0, reason: "file not found" };
   }
 
-  const toRead = Math.min(size, MAX_UNTRACKED_BYTES);
+  const limit = Math.min(MAX_UNTRACKED_BYTES, maxBytes);
+  const toRead = Math.min(size, limit);
   const buf = Buffer.alloc(toRead);
   const fd = openSync(full, "r");
   try {
@@ -54,7 +85,7 @@ function readUntrackedPatch(repoRoot: string, relPath: string): GitDiffResponse 
     }
   }
 
-  const truncated = size > MAX_UNTRACKED_BYTES;
+  const truncated = size > limit;
   const text = buf.toString("utf8").replace(/\r\n/g, "\n");
   const lines = text.length === 0 ? [] : text.endsWith("\n") ? text.slice(0, -1).split("\n") : text.split("\n");
   const header = [
@@ -66,7 +97,7 @@ function readUntrackedPatch(repoRoot: string, relPath: string): GitDiffResponse 
   ].filter(Boolean);
   const body = lines.map((line) => `+${line}`);
   const patch = [...header, ...body].join("\n") + (lines.length > 0 ? "\n" : "");
-  return {
+  return boundDiffResponseBytes({
     path: relPath,
     base: "working",
     commit: null,
@@ -75,8 +106,8 @@ function readUntrackedPatch(repoRoot: string, relPath: string): GitDiffResponse 
     truncated,
     untracked: true,
     bytes: size,
-    reason: truncated ? `file exceeds ${Math.round(MAX_UNTRACKED_BYTES / 1024)} KiB preview limit` : null,
-  };
+    reason: truncated ? `file exceeds ${Math.round(limit / 1024)} KiB preview limit` : null,
+  });
 }
 
 export async function readGitDiff(
@@ -87,6 +118,7 @@ export async function readGitDiff(
     commit?: string | null;
     worktree?: string | null;
     repo?: string | null;
+    maxBytes?: number | null;
     exec?: GitExecutor;
   },
 ): Promise<GitDiffResponse> {
@@ -98,6 +130,7 @@ export async function readGitDiff(
   }
   const exec = opts.exec ?? defaultGitExec;
   const base: GitDiffBase = opts.base ?? "working";
+  const maxBytes = clampDiffMaxBytes(opts.maxBytes);
   const resolved = await resolveProjectRepo(projectDir, { repo: opts.repo, worktree: opts.worktree, exec });
   if (!resolved.isRepo) {
     throw new HttpError(404, "not_found", "project directory is not a git repository");
@@ -108,11 +141,11 @@ export async function readGitDiff(
     const res = await exec(
       targetDir,
       ["show", "--format=", "--patch", "--no-color", "--no-ext-diff", "--no-textconv", "-M", opts.commit, "--", opts.path],
-      { timeoutMs: 10_000, maxBytes: MAX_DIFF_BYTES, coalesceKey: `diff-commit:${targetDir}:${opts.commit}:${opts.path}` },
+      { timeoutMs: 10_000, maxBytes, coalesceKey: `diff-commit:${targetDir}:${opts.commit}:${opts.path}:${maxBytes}` },
     );
     const patch = res.stdout;
     const binary = isBinaryDiff(patch);
-    return {
+    return boundDiffResponseBytes({
       path: opts.path,
       base: "commit",
       commit: opts.commit,
@@ -122,7 +155,7 @@ export async function readGitDiff(
       untracked: false,
       bytes: Buffer.byteLength(patch, "utf8"),
       reason: res.timedOut ? "git diff timed out" : binary ? "binary file" : res.truncated ? "diff exceeds preview limit" : null,
-    };
+    });
   }
 
   // Check untracked files when viewing working tree or unstaged changes.
@@ -135,7 +168,7 @@ export async function readGitDiff(
       const fullPath = join(targetDir, opts.path);
       try {
         if (statSync(fullPath).isFile()) {
-          return readUntrackedPatch(targetDir, opts.path);
+          return readUntrackedPatch(targetDir, opts.path, maxBytes);
         }
       } catch {
         // File might be deleted/missing; fall through to git diff.
@@ -164,12 +197,12 @@ export async function readGitDiff(
 
   const res = await exec(targetDir, args, {
     timeoutMs: 10_000,
-    maxBytes: MAX_DIFF_BYTES,
-    coalesceKey: `diff:${targetDir}:${base}:${opts.path}`,
+    maxBytes,
+    coalesceKey: `diff:${targetDir}:${base}:${opts.path}:${maxBytes}`,
   });
   const patch = res.stdout;
   const binary = isBinaryDiff(patch);
-  return {
+  return boundDiffResponseBytes({
     path: opts.path,
     base,
     commit: null,
@@ -179,5 +212,5 @@ export async function readGitDiff(
     untracked: false,
     bytes: Buffer.byteLength(patch, "utf8"),
     reason: res.timedOut ? "git diff timed out" : binary ? "binary file" : res.truncated ? "diff exceeds preview limit" : null,
-  };
+  });
 }

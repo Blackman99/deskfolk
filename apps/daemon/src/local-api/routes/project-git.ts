@@ -72,12 +72,18 @@ export function projectGitRoutes(ctx: RouteCtx): Response | Promise<Response> | 
     }
     const repo = url.searchParams.get("repo");
     const worktree = url.searchParams.get("worktree");
+    const maxBytesRaw = url.searchParams.get("max_bytes");
+    const maxBytes = maxBytesRaw ? Number(maxBytesRaw) : undefined;
+    if (maxBytes !== undefined && (!Number.isFinite(maxBytes) || maxBytes < 1)) {
+      throw new HttpError(422, "invalid_args", "invalid max_bytes");
+    }
     return readGitDiff(project.dir, {
       path: filePath,
       base: isGitDiffBase(rawBase) ? rawBase : "working",
       commit,
       repo,
       worktree,
+      maxBytes,
     }).then((diff) => jsonResponse(diff, 200, null));
   }
 

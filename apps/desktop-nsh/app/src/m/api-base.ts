@@ -846,7 +846,7 @@ export abstract class ApiBase<Row extends PendingRow> {
 
   gitDiff(
     sessionId: string,
-    opts: { path: string; base?: GitDiffBase; commit?: string | null; repo?: string | null; worktree?: string | null },
+    opts: { path: string; base?: GitDiffBase; commit?: string | null; repo?: string | null; worktree?: string | null; maxBytes?: number | null },
     signal?: AbortSignal,
   ): Promise<GitDiffResponse> {
     const q = new URLSearchParams({ path: opts.path });
@@ -854,6 +854,7 @@ export abstract class ApiBase<Row extends PendingRow> {
     if (opts.commit) q.set("commit", opts.commit);
     if (opts.repo) q.set("repo", opts.repo);
     if (opts.worktree) q.set("worktree", opts.worktree);
+    if (opts.maxBytes) q.set("max_bytes", String(opts.maxBytes));
     return this.get<GitDiffResponse>(`/v1/project-sessions/${encodeURIComponent(sessionId)}/git/diff?${q.toString()}`, signal);
   }
 

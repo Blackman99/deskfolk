@@ -1,5 +1,5 @@
 import { state } from "../../lib/reactive";
-import type { Attachment, BuiltinModelRole, ProjectAgent } from "@real-bot/protocol";
+import type { Attachment, BuiltinModelRole, GitPaneView, ProjectAgent } from "@real-bot/protocol";
 import type { MessengerApi } from "../messenger-api.ts";
 import type { SessionView } from "../session-view.svelte.ts";
 import type { UrlOverlay } from "../session-url.ts";
@@ -9,6 +9,22 @@ import type { Snapshot } from "../snapshot.ts";
 import { usageWidget } from "../usage/usage-widget.svelte.ts";
 import type { PaneContent } from "../workbench/pane-content.ts";
 import type { TraceFocus } from "./task-trace.ts";
+
+export type GitPageParams = {
+  view: GitPaneView;
+  repo: string | null;
+  worktree: string | null;
+  pickerNonce: number | null;
+};
+
+export type GitOpenOptions = {
+  view?: GitPaneView;
+  repo?: string | null;
+  worktree?: string | null;
+  picker?: boolean;
+};
+
+const DEFAULT_GIT_PARAMS: GitPageParams = { view: "changes", repo: null, worktree: null, pickerNonce: null };
 
 /** Which view of a job to open, for which conversation, and a ticket for the board to pick. */
 export type TraceOpenOptions = {
@@ -170,6 +186,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.createProjectOpen = false;
     this.createBotOpen = true;
@@ -193,6 +210,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.createGroupOpen = true;
   }
@@ -211,6 +229,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.profileBotId = null;
     this.sessionSettingsOpen = true;
@@ -252,6 +271,7 @@ export class OverlayState {
     this.routinesOpen = false;
     this.spendOpen = false;
     this.clearTrace();
+    this.clearGit();
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
@@ -287,6 +307,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.clearTrace();
+    this.clearGit();
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
@@ -320,12 +341,97 @@ export class OverlayState {
     this.terminalOpen = false;
     this.screenOpen = false;
     this.clearTrace();
+    this.clearGit();
     this.threadOpen = false;
     this.listPage = page;
   }
 
   closeListPage(): void {
     this.listPage = null;
+  }
+
+  /**
+   * Project session Git & GitHub page on narrow/hosted layouts (ADR 0118).
+   * Wide desktop windows open a workbench pane via `toPane`; phones/tablets open this page under
+   * `?s=<id>&o=git`, remembering `(view, repo, worktree)` in memory per project directory.
+   */
+  #gitSessionId$s = state<string | null>(null);
+  get gitSessionId(): string | null { return this.#gitSessionId$s.get(); }
+  set gitSessionId(value: string | null) { this.#gitSessionId$s.set(value); }
+
+  #gitParams$s = state<GitPageParams>({ ...DEFAULT_GIT_PARAMS });
+  get gitParams(): GitPageParams { return this.#gitParams$s.get(); }
+  set gitParams(value: GitPageParams) { this.#gitParams$s.set(value); }
+
+  private readonly gitPageByDir = new Map<string, GitPageParams>();
+
+  get gitOpen(): boolean {
+    return this.gitSessionId !== null;
+  }
+
+  openGit(session: { id: string; project_dir?: string | null }, opts: GitOpenOptions = {}): void {
+    const dir = session.project_dir ?? null;
+    if (!dir) return;
+    const pickerNonce = opts.picker ? Date.now() : undefined;
+    if (
+      this.toPane({
+        kind: "git",
+        sessionId: session.id,
+        projectDir: dir,
+        ...(opts.view ? { view: opts.view } : {}),
+        ...(opts.repo !== undefined ? { repo: opts.repo } : {}),
+        ...(opts.worktree !== undefined ? { worktree: opts.worktree } : {}),
+        ...(pickerNonce ? { pickerNonce } : {}),
+      })
+    ) {
+      return;
+    }
+    const prev = this.gitPageByDir.get(dir) ?? DEFAULT_GIT_PARAMS;
+    const next: GitPageParams = {
+      view: opts.view ?? prev.view,
+      repo: opts.repo === undefined ? prev.repo : opts.repo,
+      worktree: opts.worktree === undefined ? prev.worktree : opts.worktree,
+      pickerNonce: pickerNonce ?? null,
+    };
+    this.gitPageByDir.set(dir, next);
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createProjectOpen = false;
+    this.createGroupOpen = false;
+    this.host.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.spendOpen = false;
+    this.terminalOpen = false;
+    this.screenOpen = false;
+    this.listPage = null;
+    this.clearTrace();
+    this.threadOpen = false;
+    this.gitParams = next;
+    this.gitSessionId = session.id;
+    if (this.host.selectedId !== session.id) {
+      void this.host.selectSession(session.id, { preservePage: true });
+    }
+  }
+
+  updateGitPageParams(projectDir: string, patch: Partial<GitPageParams>): void {
+    const cur = this.gitPageByDir.get(projectDir) ?? this.gitParams;
+    const next: GitPageParams = {
+      view: patch.view === undefined ? cur.view : patch.view,
+      repo: patch.repo === undefined ? cur.repo : patch.repo,
+      worktree: patch.worktree === undefined ? cur.worktree : patch.worktree,
+      pickerNonce: patch.pickerNonce === undefined ? cur.pickerNonce : patch.pickerNonce,
+    };
+    this.gitPageByDir.set(projectDir, next);
+    this.gitParams = next;
+  }
+
+  closeGit(): void {
+    this.clearGit();
+  }
+
+  private clearGit(): void {
+    this.gitSessionId = null;
   }
 
   /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
@@ -399,6 +505,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.traceSessionId = sessionId;
     this.traceTaskId = taskId ?? "";
@@ -457,6 +564,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.profileBotId = botId;
     this.sessionSettingsOpen = true;
@@ -486,6 +594,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.settingsOpen = !this.settingsOpen;
   }
@@ -505,6 +614,7 @@ export class OverlayState {
     this.spendOpen = false;
     this.terminalOpen = false;
     this.screenOpen = false;
+    this.clearGit();
     this.listPage = null;
     this.workspaceOpen = true;
     if (selected) this.workspaceSelected = selected;
@@ -531,6 +641,7 @@ export class OverlayState {
     this.screenOpen = false;
     this.listPage = null;
     this.clearTrace();
+    this.clearGit();
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
@@ -556,6 +667,7 @@ export class OverlayState {
     this.screenOpen = false;
     this.listPage = null;
     this.clearTrace();
+    this.clearGit();
     this.threadOpen = false;
     this.previewRelpath = null;
     this.previewAttachmentId = null;
@@ -590,6 +702,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.clearGit();
       this.listPage = null;
       this.settingsOpen = true;
       return;
@@ -605,6 +718,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.clearGit();
       this.listPage = null;
       this.profileBotId = null;
       this.sessionSettingsOpen = true;
@@ -621,6 +735,7 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.clearGit();
       this.listPage = null;
       this.profileBotId = overlay.botId;
       this.sessionSettingsOpen = true;
@@ -631,6 +746,7 @@ export class OverlayState {
       this.createGroupOpen = false;
       this.host.closeSessionSettings();
       this.clearTrace();
+      this.clearGit();
       this.routinesOpen = false;
       this.spendOpen = false;
       this.terminalOpen = false;
@@ -652,11 +768,36 @@ export class OverlayState {
       this.spendOpen = false;
       this.terminalOpen = false;
       this.screenOpen = false;
+      this.clearGit();
       this.listPage = null;
       this.traceSessionId = this.traceSessionId ?? this.host.selectedId;
       this.traceTaskId = overlay.taskId ?? "";
       // The address names a job's board; a line's own board is only kept while no job is named.
       if (overlay.taskId) this.traceLine = null;
+      return;
+    }
+    if (overlay.kind === "git") {
+      // Idempotent on repeated snapshot updates: keep remembered view/repo/worktree intact.
+      this.settingsOpen = false;
+      this.createBotOpen = false;
+      this.createProjectOpen = false;
+      this.createGroupOpen = false;
+      this.threadOpen = false;
+      this.host.closeSessionSettings();
+      this.workspaceOpen = false;
+      this.routinesOpen = false;
+      this.spendOpen = false;
+      this.terminalOpen = false;
+      this.screenOpen = false;
+      this.listPage = null;
+      this.clearTrace();
+      const targetId = this.gitSessionId ?? this.host.selectedId;
+      if (targetId && targetId !== this.gitSessionId) {
+        const row = this.host.snapshot.sessions.find((s) => s.id === targetId);
+        const dir = row?.kind === "project" ? row.project_dir : null;
+        if (dir) this.gitParams = this.gitPageByDir.get(dir) ?? { ...DEFAULT_GIT_PARAMS };
+      }
+      this.gitSessionId = targetId;
       return;
     }
     if (overlay.kind === "routines") {
@@ -671,7 +812,8 @@ export class OverlayState {
       this.screenOpen = false;
       this.listPage = null;
       this.clearTrace();
-        this.threadOpen = false;
+      this.clearGit();
+      this.threadOpen = false;
       this.previewRelpath = null;
       this.previewAttachmentId = null;
       this.previewTaskId = null;
@@ -691,6 +833,7 @@ export class OverlayState {
       this.screenOpen = false;
       this.listPage = null;
       this.clearTrace();
+      this.clearGit();
       this.threadOpen = false;
       this.previewRelpath = null;
       this.previewAttachmentId = null;
@@ -709,6 +852,7 @@ export class OverlayState {
       this.routinesOpen = false;
       this.spendOpen = false;
       this.clearTrace();
+      this.clearGit();
       this.threadOpen = false;
       this.previewRelpath = null;
       this.previewAttachmentId = null;
@@ -731,6 +875,7 @@ export class OverlayState {
     this.host.closeSessionSettings();
     this.workspaceOpen = false;
     this.clearTrace();
+    this.clearGit();
     this.routinesOpen = false;
     this.spendOpen = false;
     this.terminalOpen = false;
@@ -745,6 +890,7 @@ export class OverlayState {
     this.createGroupOpen = false;
     this.host.closeSessionSettings();
     this.clearTrace();
+    this.clearGit();
     this.workspaceOpen = false;
     this.routinesOpen = false;
     this.spendOpen = false;

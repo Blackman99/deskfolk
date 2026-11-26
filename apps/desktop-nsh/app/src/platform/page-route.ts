@@ -84,6 +84,7 @@ export interface RouteRuntime {
   readonly workspaceSelected: string | null;
   readonly traceOpen: boolean;
   readonly traceTaskId: string | null;
+  readonly gitOpen: boolean;
   readonly routinesOpen: boolean;
   readonly spendOpen: boolean;
   readonly terminalOpen: boolean;
@@ -197,6 +198,7 @@ export function overlayOf(rt: RouteRuntime): UrlOverlay {
     workspaceSelected: rt.workspaceSelected,
     traceOpen: rt.traceOpen,
     traceTaskId: rt.traceTaskId,
+    gitOpen: rt.gitOpen,
     routinesOpen: rt.routinesOpen,
     spendOpen: rt.spendOpen,
     terminalOpen: rt.terminalOpen,
@@ -300,6 +302,9 @@ export class PageRoute {
     }
     if (move === "open") this.stack = [new URL(url).search];
     this.land(url);
+    // Returning by Back onto a page entry that carried a drill-down fragment (e.g. a file preview
+    // pushed over `#l1`) restores the level depth so the next Back steps out one level cleanly.
+    if (move !== "open" && marker > 0) this.level = marker;
   }
 
   /**
@@ -445,7 +450,7 @@ export class PageRoute {
     }
     const selectedId = this.rt.selectedId;
     // Session and overlay can land a tick apart: wait until they name the same session.
-    if ((wanted.kind === "session" || wanted.kind === "bot" || wanted.kind === "trace") && sessionFromUrl(url) !== selectedId) return;
+    if ((wanted.kind === "session" || wanted.kind === "bot" || wanted.kind === "trace" || wanted.kind === "git") && sessionFromUrl(url) !== selectedId) return;
     // The window follows the conversation, so a stale job id in the address must not win.
     if (wanted.kind === "trace" && this.rt.traceOpen) return;
     // The page's address never names the workspace's file (`sessionUrl` drops it on a remote
@@ -536,12 +541,14 @@ export class PageRoute {
     }
     const plan = planUrlNavigation({ target: next.search, stack: this.stack, step });
     // Another address: the pages of the one it leaves stay behind it in history, not counted here.
+    const dropLevels = this.level;
     this.level = 0;
     if (plan === "back") {
       this.selfBack = true;
       // The address is the target already, so a snapshot that comes before Back lands reads it.
       this.address.set(next.href);
-      this.page.back();
+      if (dropLevels > 0) this.page.go(-(dropLevels + 1));
+      else this.page.back();
       return;
     }
     this.page.setUrl(next.href, plan);

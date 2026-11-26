@@ -60,7 +60,7 @@ export function ProjectAddMenu(props: ProjectAddMenuProps) {
 }
 
 /** The entries in order, as the Svelte menu lays them out; separators go between groups. */
-function groupsOf(props: ProjectAddMenuProps): Entry[][] {
+function groupsOf(props: ProjectAddMenuProps, compactGit = false): Entry[][] {
   const t = copy();
   const agents: Entry[] = PROJECT_AGENTS.map((agent) => ({
     id: `new-${agent}`,
@@ -76,12 +76,16 @@ function groupsOf(props: ProjectAddMenuProps): Entry[][] {
   if (props.onOpenTerminal) dir.push({ id: "terminal", testID: "project-add-open-terminal", label: t.project.openTerminal, icon: "terminal", run: props.onOpenTerminal });
   if (dir.length) out.push(dir);
   if (props.onOpenGit) {
-    out.push([
-      { id: "git-changes", testID: "project-add-git-changes", label: t.git.openChanges, icon: "git-branch", run: () => props.onOpenGit!("changes") },
-      { id: "git-graph", testID: "project-add-git-graph", label: t.git.openGraph, icon: "history", run: () => props.onOpenGit!("graph") },
-      { id: "git-worktrees", testID: "project-add-git-worktrees", label: t.git.openWorktrees, icon: "layers", run: () => props.onOpenGit!("picker") },
-      { id: "git-github", testID: "project-add-git-github", label: t.git.openGitHub, icon: "globe", run: () => props.onOpenGit!("github") },
-    ]);
+    if (compactGit) {
+      out.push([{ id: "git", testID: "project-add-git", label: t.git.title, icon: "git-branch", run: () => props.onOpenGit!("changes") }]);
+    } else {
+      out.push([
+        { id: "git-changes", testID: "project-add-git-changes", label: t.git.openChanges, icon: "git-branch", run: () => props.onOpenGit!("changes") },
+        { id: "git-graph", testID: "project-add-git-graph", label: t.git.openGraph, icon: "history", run: () => props.onOpenGit!("graph") },
+        { id: "git-worktrees", testID: "project-add-git-worktrees", label: t.git.openWorktrees, icon: "layers", run: () => props.onOpenGit!("picker") },
+        { id: "git-github", testID: "project-add-git-github", label: t.git.openGitHub, icon: "globe", run: () => props.onOpenGit!("github") },
+      ]);
+    }
   }
   return out;
 }
@@ -109,7 +113,7 @@ function InSheet(props: ProjectAddMenuProps): JSX.Element {
     <BottomSheet title={props.title ?? props.label} closeLabel={t().common.close} onClose={close}>
       <View role="menu" testID="project-add-menu" accessibilityLabel={props.label}>
         {() =>
-          groupsOf(props).flatMap((group, i) => [
+          groupsOf(props, true).flatMap((group, i) => [
             ...(i > 0 ? [<SheetSeparator />] : []),
             ...group.map(row),
           ])

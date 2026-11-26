@@ -54,6 +54,7 @@ export interface SessionHistoryHost {
   closeTerminal(): void;
   closeRemoteScreen(): void;
   closeListPage(): void;
+  closeGit(): void;
   closeSessionSettings(): void;
   openSpend(): void;
   openTerminal(): void;
@@ -132,6 +133,7 @@ export class SessionHistory {
       this.host.closeTerminal();
       this.host.closeRemoteScreen();
       this.host.closeListPage();
+      this.host.closeGit();
       // Selecting the conversation already underneath a pane must still bring it forward.
       if (this.host.selectedId === id) this.host.toPane({ kind: "chat", sessionId: id });
     }
@@ -145,6 +147,7 @@ export class SessionHistory {
     // The window stays open across conversations and follows the one on screen.
     if (this.host.traceOpen && this.host.selectedId !== id) this.host.traceSessionId = id;
     if (this.host.selectedId !== id) {
+      this.host.closeGit();
       this.host.closeSessionSettings();
       this.host.threadOpen = false;
     }

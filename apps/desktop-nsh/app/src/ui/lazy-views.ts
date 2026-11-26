@@ -35,6 +35,8 @@ import type { PdfViewer as PdfViewerView } from "./overlays/PdfViewer";
 import type { OfficeViewer as OfficeViewerView } from "./overlays/OfficeViewer";
 import type { MarkdownAnnotator as MarkdownAnnotatorView } from "./annotations/MarkdownAnnotator";
 import type { RemoteScreenView as RemoteScreenViewView } from "./overlays/RemoteScreenView";
+import type { GitPane as GitPaneView } from "./git/GitPane";
+import { GitPanePending } from "./git/GitPanePending";
 
 type PropsOf<V> = V extends (props: infer P) => unknown ? P : never;
 
@@ -53,3 +55,4 @@ export const PdfViewer = lazyView<PropsOf<typeof PdfViewerView>>(() => import(".
 export const OfficeViewer = lazyView<PropsOf<typeof OfficeViewerView>>(() => import("./overlays/OfficeViewer").then((m) => m.OfficeViewer));
 export const MarkdownAnnotator = lazyView<PropsOf<typeof MarkdownAnnotatorView>>(() => import("./annotations/MarkdownAnnotator").then((m) => m.MarkdownAnnotator));
 export const RemoteScreenView = lazyView<PropsOf<typeof RemoteScreenViewView>>(() => import("./overlays/RemoteScreenView").then((m) => m.RemoteScreenView));
+export const GitPane = lazyView<PropsOf<typeof GitPaneView>>(() => import("./git/GitPane").then((m) => m.GitPane), { pending: GitPanePending });

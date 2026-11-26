@@ -436,3 +436,32 @@ test("a file no attachment backs is `a=file` on a remote page: an entry of its o
   // Another file no attachment backs, open in its place: the address stays.
   expect(sessionUrl(at("?s=abc&a=file"), view({ selectedId: "abc", previewAttachmentId: "virtual-preview-b.md" }), true)).toBe(null);
 });
+
+test("the project Git page is a session overlay in the URL and allows a preview over it", () => {
+  expect(overlayFromUrl(at("?s=abc&o=git"))).toEqual({ kind: "git" });
+  expect(overlayFromUrl(at("?s=abc&o=git"), true)).toEqual({ kind: "git" });
+  expect(
+    overlayFromFlags({
+      settingsOpen: false,
+      sessionSettingsOpen: false,
+      profileBotId: null,
+      workspaceOpen: false,
+      workspaceSelected: null,
+      gitOpen: true,
+    }),
+  ).toEqual({ kind: "git" });
+  expect(sessionUrl(at("?s=abc"), view({ selectedId: "abc", overlay: { kind: "git" } }), true)).toBe("/?s=abc&o=git");
+  expect(
+    sessionUrl(
+      at("?s=abc&o=git"),
+      view({ selectedId: "abc", previewAttachmentId: "virtual-preview-src/a.ts", overlay: { kind: "git" } }),
+      true,
+    ),
+  ).toBe("/?s=abc&o=git&a=file");
+  expect(
+    overlayApply({ kind: "git" }, { kind: "none" }, { ...ready, knownSessionIds: [], snapshotReady: false }),
+  ).toEqual({ action: "wait" });
+  expect(
+    overlayApply({ kind: "git" }, { kind: "git" }, { ...ready, selectedId: null }),
+  ).toEqual({ action: "set", overlay: { kind: "none" } });
+});

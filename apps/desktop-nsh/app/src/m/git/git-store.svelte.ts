@@ -89,6 +89,17 @@ class ProjectGitSummaryStore {
     return p;
   }
 
+  /** Updates the cache directly from an already-fetched default-checkout summary without a second request. */
+  seed(projectDir: string, summary: GitRepoSummary): void {
+    if (!projectDir) return;
+    const latest = this.#entries$s.get();
+    this.#entries$s.set({
+      ...latest,
+      [projectDir]: { summary, loading: false, error: null, fetchedAt: Date.now() },
+    });
+    this.#version$s.set(this.#version$s.get() + 1);
+  }
+
   /** Marks a directory stale so active views refetch on next tick. */
   bump(): void {
     this.#version$s.set(this.#version$s.get() + 1);

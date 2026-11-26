@@ -1,19 +1,19 @@
 /**
- * Unified project-scoped Git & GitHub workbench pane (ADR 0118).
- * Separates hierarchical location (`projectDir -> Repo -> Worktree`, via a persistent breadcrumb
- * and single grouped popover) from content view (`Changes`, `History`, `GitHub`).
- * Tab params are the single source of truth; switching repo/worktree stays on the current view and
- * remounts the active content body cleanly without double-fetching or leaking stale selections.
+ * Unified project-scoped Git & GitHub workbench pane / mobile session page (ADR 0118).
+ * Works cleanly across three orthogonal axes:
+ * - `host: "pane" | "page"`: desktop workbench tab vs full-screen phone/tablet page (`?s=<id>&o=git`).
+ * - `narrow` (measured width < 540): single-column history-backed drill-down vs two-column desktop/tablet.
+ * - `isRemote` (`client.kind === "remote"`): disables 15s polling and lazy row fan-out, enforces
+ *   `AbortSignal` cancellation, caps initial diff bytes, and surfaces host-upgrade hint on 404.
  */
-import {
-  GIT_PANE_VIEWS,
-  type Attachment,
-  type GitDiffBase,
-  type GitPaneView,
-  type GitProjectTreeResponse,
-  type GitRepoSummary,
+import type {
+  Attachment,
+  GitDiffBase,
+  GitPaneView,
+  GitProjectTreeResponse,
+  GitRepoSummary,
 } from "@real-bot/protocol";
-import { cleanup, computed, effect, Overlay, signal, Text, untracked, View, type ViewRef } from "nsh";
+import { cleanup, computed, effect, signal, Text, untracked, View, type ViewRef } from "nsh";
 import { ApiError } from "../../m/api.ts";
 import { projectGitStore } from "../../m/git/git-store.svelte.ts";
 import { newProjectIn } from "../../m/sidebar/project-actions.ts";
@@ -22,29 +22,23 @@ import { showToast } from "../../m/toast.svelte.ts";
 import { lifecycle } from "../../platform/lifecycle";
 import { copy, runtime } from "../../runtime";
 import { EmptyState } from "../EmptyState";
-import { Icon, type IconName } from "../Icon";
-import { IconButton } from "../IconButton";
-import { MENU_ITEM, MENU_SURFACE, shadow } from "../styles";
-import { tip } from "../tip";
 import { settled } from "../workbench/drag-settle";
 import { GitChangesView } from "./GitChangesView";
 import { GitContextPopover } from "./GitContextPopover";
 import { GitGraphView } from "./GitGraphView";
+import { GitHeader } from "./GitHeader";
 import { GitHubView } from "./GitHubView";
-
-const VIEW_ICONS: Record<GitPaneView, IconName> = {
-  changes: "git-branch",
-  graph: "history",
-  github: "globe",
-};
+import type { GitHost } from "./git-levels";
 
 export function GitPane(props: {
   sessionId: string;
   projectDir: string;
+  host?: GitHost;
   view?: GitPaneView;
   worktree?: string | null;
   repo?: string | null;
   pickerNonce?: number | null;
+  onClose?: () => void;
   onChangeParams?: (patch: {
     view?: GitPaneView;
     worktree?: string | null;
@@ -62,11 +56,13 @@ export function GitPane(props: {
   ) => void;
 }) {
   const t = () => copy();
+  const host = (): GitHost => props.host ?? "pane";
+  const isRemote = () => runtime.client?.kind === "remote";
   const paneWidth = signal(720);
   const narrow = settled(() => paneWidth() > 0 && paneWidth() < 540);
   const showInlineActions = settled(() => paneWidth() >= 820);
 
-  // Single source of truth: derived directly from tab params (never mirrored into stale local signals).
+  // Single source of truth: derived directly from tab / page params.
   const activeView = (): GitPaneView => props.view ?? "changes";
   const activeRepo = (): string | null => props.repo ?? null;
   const activeWorktree = (): string | null => props.worktree ?? null;
@@ -79,13 +75,13 @@ export function GitPane(props: {
   const tree = signal<GitProjectTreeResponse | null>(null);
   const loading = signal(true);
   const errorMsg = signal<string | null>(null);
+  const remoteNeedsUpgrade = signal(false);
   const reloadToken = signal(0);
   const ghForceToken = signal(0);
+  const drillDepth = signal(0);
 
   const pickerOpen = signal(false);
   const pickerAnchor = signal<ViewRef | null>(null);
-  const actionsOpen = signal(false);
-  const actionsAnchor = signal<ViewRef | null>(null);
 
   // Consume one-shot picker open requests (e.g. sidebar "切换仓库 / 工作树…") and clear the nonce.
   let lastConsumedNonce = 0;
@@ -99,26 +95,31 @@ export function GitPane(props: {
     });
   });
 
-  // Fetch zero-status repo -> worktree tree; gracefully degrade on 404 (pre-restart daemon).
+  // Fetch zero-status repo -> worktree tree with AbortSignal & graceful 404 fallback on local daemon.
   let treeSeq = 0;
+  let activeTreeAc: AbortController | null = null;
   const fetchTree = (refresh = false) => {
     const api = runtime.client;
     if (!api) return;
+    activeTreeAc?.abort();
+    const ac = new AbortController();
+    activeTreeAc = ac;
     const req = ++treeSeq;
     const sid = props.sessionId;
     const pdir = props.projectDir;
+    const remote = isRemote();
     void api
-      .gitTree(sid, { refresh })
+      .gitTree(sid, { refresh }, ac.signal)
       .then((res) => {
-        if (req === treeSeq) tree.set(res);
+        if (req === treeSeq && !ac.signal.aborted) tree.set(res);
       })
       .catch(async (err) => {
-        if (req !== treeSeq) return;
-        if (err instanceof ApiError && err.status === 404) {
-          // Graceful degradation when UI hot-reloads ahead of daemon restart.
+        if (req !== treeSeq || ac.signal.aborted) return;
+        if (!remote && err instanceof ApiError && err.status === 404) {
+          // Graceful degradation on desktop when UI hot-reloads ahead of daemon restart.
           try {
-            const wtRes = await api.gitWorktrees(sid, { repo: activeRepo() });
-            if (req !== treeSeq) return;
+            const wtRes = await api.gitWorktrees(sid, { repo: activeRepo() }, ac.signal);
+            if (req !== treeSeq || ac.signal.aborted) return;
             tree.set({
               git_available: true,
               git_error: null,
@@ -155,28 +156,34 @@ export function GitPane(props: {
         }
       });
   };
+  cleanup(() => activeTreeAc?.abort());
 
   let sumSeq = 0;
+  let activeSumAc: AbortController | null = null;
   let lastSig = "";
   let fallbackAttemptedKey = "";
   const fetchSummary = (opts: { bumpChildren: boolean; resetSig?: boolean }) => {
     const api = runtime.client;
     if (!api) return;
+    activeSumAc?.abort();
+    const ac = new AbortController();
+    activeSumAc = ac;
     const req = ++sumSeq;
     const repo = activeRepo();
     const wt = activeWorktree();
     const ctxKey = `${repo ?? ""}\0${wt ?? ""}`;
     if (opts.resetSig) lastSig = "";
     void api
-      .gitSummary(props.sessionId, { repo, worktree: wt, quick: true })
+      .gitSummary(props.sessionId, { repo, worktree: wt, quick: true }, ac.signal)
       .then((res) => {
-        if (req !== sumSeq) return;
+        if (req !== sumSeq || ac.signal.aborted) return;
         summary.set(res);
         errorMsg.set(null);
+        remoteNeedsUpgrade.set(false);
         loading.set(false);
-        // Keep shared chat header cache in sync ONLY for the project's default checkout.
+        // Seed shared header summary cache directly for default checkout (no second HTTP fetch!).
         if (!repo && !wt) {
-          void projectGitStore.ensure(api, props.sessionId, props.projectDir, { force: true, quick: true });
+          projectGitStore.seed(props.projectDir, res);
         }
         if (opts.bumpChildren || (lastSig && res.signature !== lastSig)) {
           reloadToken.set(reloadToken() + 1);
@@ -184,20 +191,34 @@ export function GitPane(props: {
         lastSig = res.signature;
       })
       .catch((err) => {
-        if (req !== sumSeq) return;
-        // Fall back to project default ONLY on 422 (deleted/invalid saved worktree or repo), at most once.
-        if (err instanceof ApiError && err.status === 422 && (repo || wt) && fallbackAttemptedKey !== ctxKey) {
+        if (req !== sumSeq || ac.signal.aborted) return;
+        // Remote phone talking to an older daemon without Git routes gets 404.
+        if (isRemote() && err instanceof ApiError && err.status === 404) {
+          remoteNeedsUpgrade.set(true);
+          loading.set(false);
+          return;
+        }
+        // Only fall back on explicit stale worktree/repo error codes (never remote whitelist 422s).
+        if (
+          err instanceof ApiError &&
+          err.status === 422 &&
+          (err.code === "git_worktree_not_found" || err.code === "git_repo_not_found") &&
+          (repo || wt) &&
+          fallbackAttemptedKey !== ctxKey
+        ) {
           fallbackAttemptedKey = ctxKey;
           showToast(t().git.staleWorktreeFallback, { tone: "info" });
           props.onChangeParams?.({ repo: null, worktree: null });
           return;
         }
-        errorMsg.set(err instanceof Error ? err.message : String(err));
+        // Keep last good summary visible on transient offline/weak-network errors.
+        if (!summary()) errorMsg.set(err instanceof Error ? err.message : String(err));
         loading.set(false);
       });
   };
+  cleanup(() => activeSumAc?.abort());
 
-  // Initial load & reload when repo/worktree changes. Children remount via `contextKey`, so do NOT bump reloadToken.
+  // Initial load & reload when repo/worktree switches. Children remount via `contextKey`, so no double fetch.
   effect(() => {
     void props.sessionId;
     void activeRepo();
@@ -207,6 +228,20 @@ export function GitPane(props: {
       fetchSummary({ bumpChildren: false, resetSig: true });
       fetchTree(false);
     });
+  });
+
+  // Refresh summary AND active child view when connection recovers (e.g. phone returns from background).
+  let prevConn = runtime.connection;
+  effect(() => {
+    const conn = runtime.connection;
+    const recovered = prevConn !== "connected" && conn === "connected";
+    prevConn = conn;
+    if (recovered) {
+      untracked(() => {
+        fetchSummary({ bumpChildren: true });
+        fetchTree(false);
+      });
+    }
   });
 
   // Debounced refresh when any session in the same project emits a write/git ToolFrame.
@@ -255,11 +290,11 @@ export function GitPane(props: {
     wasAnyLive = anyLive;
   });
 
-  // Refresh when window regains foreground focus.
+  // Refresh when window/page regains foreground focus.
   let wasVisible = lifecycle() !== "background";
   effect(() => {
     const nowVisible = lifecycle() !== "background";
-    if (!wasVisible && nowVisible) {
+    if (!wasVisible && nowVisible && runtime.connection === "connected") {
       untracked(() => {
         fetchSummary({ bumpChildren: false });
         fetchTree(false);
@@ -268,9 +303,9 @@ export function GitPane(props: {
     wasVisible = nowVisible;
   });
 
-  // Idle lightweight summary polling (15s, zero sibling status fan-out).
+  // Idle summary polling on LOCAL connections only (remote links are single-flight serial).
   const poll = setInterval(() => {
-    if (lifecycle() !== "background" && runtime.connection === "connected" && activeView() !== "github") {
+    if (!isRemote() && lifecycle() !== "background" && runtime.connection === "connected" && activeView() !== "github") {
       fetchSummary({ bumpChildren: false });
     }
   }, 15_000);
@@ -312,7 +347,6 @@ export function GitPane(props: {
   });
   const canSwitchContext = computed(() => totalRepos() > 1 || totalWorktrees() > 1);
 
-  // Only highlight "non-default worktree" when the project directory itself lives in a worktree.
   const isViewingOtherWorktree = computed(() => {
     const defWt = tree()?.default_worktree ?? summary()?.default_worktree ?? null;
     const curWt = summary()?.worktree_root ?? activeWorktree();
@@ -353,12 +387,14 @@ export function GitPane(props: {
     fetchSummary({ bumpChildren: true });
   };
 
-  const tabLabel = (v: GitPaneView) => t().git.tabs[v];
   const branchText = () => {
     const s = summary();
     if (!s) return "";
     return s.branch ?? (s.head_oid ? s.head_oid.slice(0, 7) : t().git.detachedHead);
   };
+
+  // On narrow screens, hide the top header while drilled into depth 1/2 so child pages own the screen cleanly.
+  const showHeader = () => !(narrow() && drillDepth() > 0);
 
   return (
     <View
@@ -366,223 +402,42 @@ export function GitPane(props: {
       class="flex-1 min-h-0 min-w-0 bg-pane"
       onLayout={(e) => paneWidth.set(e.bounds.size.width)}
     >
-      {/* Pane top bar: [Repo › Branch·Dirty ▾] [Back]  ...  [Actions] [Changes|History|GitHub] [Refresh] */}
-      <View class="flex-row items-center gap-[6px] px-[10px] min-h-[42px] py-[6px] border-b border-line bg-pane shrink-0 flex-wrap">
-        <If when={summary()?.is_repo ? summary() : null}>
-          {(s) => (
-            <View class="flex-row items-center gap-[5px] min-w-0 shrink">
-              <View
-                role="button"
-                ref={(node) => pickerAnchor.set(node)}
-                testID="git-context-breadcrumb"
-                accessibilityLabel={t().git.worktreePicker}
-                accessibilityState={{ expanded: pickerOpen() }}
-                tooltip={tip(
-                  isViewingOtherWorktree()
-                    ? `${t().git.viewingOtherWorktree} · ${currentWorktreePath()}`
-                    : currentWorktreePath(),
-                )}
-                disabled={!canSwitchContext()}
-                onPress={() => {
-                  if (!canSwitchContext()) return;
-                  pickerOpen.set(!pickerOpen());
-                }}
-                class={`select-none flex-row items-center gap-[5px] px-[8px] h-[28px] rounded-(--radius-control-sm) border min-w-0 shrink ${
-                  canSwitchContext() ? "cursor-pointer hover:border-line-hover" : "cursor-default"
-                } ${
-                  isViewingOtherWorktree()
-                    ? "bg-accent-tint/40 border-accent-border"
-                    : "bg-sidebar-bg border-line-subtle"
-                }`}
-              >
-                <If when={totalRepos() > 1}>
-                  <View class="flex-row items-center gap-[4px] shrink-0 max-w-[120px]">
-                    <Icon name="folder" size={12} class="tint-ink-muted shrink-0" />
-                    <Text testID="git-pane-repo" class="text-[11.5px] font-medium text-ink-secondary line-clamp-1 shrink min-w-0">
-                      {currentRepoName()}
-                    </Text>
-                    <Icon name="chevron-right" size={12} class="tint-ink-muted shrink-0" />
-                  </View>
-                </If>
-                <Icon
-                  name="git-branch"
-                  size={12}
-                  class={`shrink-0 ${isViewingOtherWorktree() ? "tint-brand" : "tint-ink-muted"}`}
-                />
-                <Text
-                  testID="git-pane-branch"
-                  class={`font-mono text-[11.5px] font-semibold line-clamp-1 shrink min-w-0 ${
-                    isViewingOtherWorktree() ? "text-brand" : "text-ink"
-                  }`}
-                >
-                  {branchText()}
-                </Text>
-                <If when={s().dirty_count > 0}>
-                  <Text class="font-mono text-[11px] font-semibold text-brand shrink-0">{`· ${s().dirty_count}`}</Text>
-                </If>
-                <If when={s().ahead > 0}>
-                  <Text class="font-mono text-[11px] text-ok-text shrink-0">{`↑${s().ahead}`}</Text>
-                </If>
-                <If when={s().behind > 0}>
-                  <Text class="font-mono text-[11px] text-warn-text shrink-0">{`↓${s().behind}`}</Text>
-                </If>
-                <If when={canSwitchContext()}>
-                  <Icon name="chevron-down" size={12} class="tint-ink-muted shrink-0" />
-                </If>
-              </View>
-
-              <If when={isViewingOtherWorktree()}>
-                <IconButton
-                  icon="rotate-ccw"
-                  size="sm"
-                  label={t().git.backToProjectDir}
-                  testID="git-back-project-dir"
-                  onPress={backToProjectDefault}
-                />
-              </If>
-
-              <If when={s().operation}>
-                {(op) => (
-                  <View class="px-[6px] h-[20px] rounded-(--radius-xs) bg-warn-bg items-center justify-center shrink-0">
-                    <Text class="text-[11px] font-semibold text-warn-text">{t().git.operation[op()]}</Text>
-                  </View>
-                )}
-              </If>
-            </View>
-          )}
-        </If>
-
-        <View class="flex-row items-center gap-[6px] ml-auto shrink-0">
-          {/* Current worktree quick actions (inline on wide panes, tucked into `⋯` on narrower panes) */}
-          <If when={summary()?.is_repo}>
-            <If
-              when={showInlineActions()}
-              else={
-                <View ref={(node) => actionsAnchor.set(node)}>
-                  <IconButton
-                    icon="more"
-                    size="sm"
-                    label={t().git.moreActions}
-                    testID="git-worktree-more-actions"
-                    onPress={() => actionsOpen.set(!actionsOpen())}
-                  />
-                </View>
-              }
-            >
-              <View class="flex-row items-center gap-[2px]">
-                <IconButton
-                  icon="plus"
-                  size="sm"
-                  label={t().git.worktrees.newSession}
-                  testID="git-action-new-session"
-                  onPress={startSessionInCurrent}
-                />
-                <IconButton
-                  icon="terminal"
-                  size="sm"
-                  label={t().git.worktrees.openTerminal}
-                  testID="git-action-terminal"
-                  onPress={() => void runtime.openTerminalAt(currentWorktreePath())}
-                />
-                <IconButton
-                  icon="folder"
-                  size="sm"
-                  label={t().git.worktrees.openDir}
-                  testID="git-action-folder"
-                  onPress={() => openFolderInPreview(currentWorktreePath())}
-                />
-              </View>
-            </If>
-          </If>
-
-          {/* 3-View Segmented Control: Changes | History | GitHub */}
-          <View class="flex-row items-center gap-[2px] p-[2px] rounded-(--radius-control) bg-sidebar-bg border border-line-subtle">
-            <Each of={[...GIT_PANE_VIEWS]} key={(v) => v}>
-              {(v) => {
-                const on = () => activeView() === v();
-                return (
-                  <View
-                    role="tab"
-                    testID={`git-tab-${v()}`}
-                    accessibilityLabel={tabLabel(v())}
-                    accessibilityState={{ selected: on() }}
-                    onPress={() => switchView(v())}
-                    class={`cursor-pointer select-none flex-row items-center gap-[5px] px-[9px] h-[24px] rounded-(--radius-control-sm) ${
-                      on() ? "bg-pane" : "hover:bg-row-hover"
-                    }`}
-                  >
-                    <Icon name={VIEW_ICONS[v()]} size={16} class={on() ? "tint-brand" : "tint-ink-muted"} />
-                    <Text class={`text-[12px] ${on() ? "font-semibold text-brand" : "text-ink-muted"}`}>{tabLabel(v())}</Text>
-                  </View>
-                );
-              }}
-            </Each>
-          </View>
-
-          <IconButton icon="refresh" size="sm" label={t().git.refresh} testID="git-pane-refresh" onPress={handleManualRefresh} />
-        </View>
-      </View>
-
-      {/* Overflow menu for current worktree quick actions on narrower panes */}
-      <If when={actionsOpen()}>
-        <Overlay
-          anchor={actionsAnchor()}
-          placement="bottom"
-          align="end"
-          offset={4}
-          margin={8}
-          onPressOutside={() => actionsOpen.set(false)}
-          onCancel={() => actionsOpen.set(false)}
-        >
-          <View
-            role="menu"
-            testID="git-worktree-actions-menu"
-            class={`min-w-[168px] gap-[2px] ${MENU_SURFACE}`}
-            style={{ boxShadow: shadow("menu") }}
-          >
-            <View
-              role="menuitem"
-              onPress={() => {
-                actionsOpen.set(false);
-                startSessionInCurrent();
-              }}
-              class={`cursor-pointer select-none ${MENU_ITEM}`}
-            >
-              <Icon name="plus" size={16} class="tint-ink-muted" />
-              <Text class="text-[13px] font-medium text-ink">{t().git.worktrees.newSession}</Text>
-            </View>
-            <View
-              role="menuitem"
-              onPress={() => {
-                actionsOpen.set(false);
-                void runtime.openTerminalAt(currentWorktreePath());
-              }}
-              class={`cursor-pointer select-none ${MENU_ITEM}`}
-            >
-              <Icon name="terminal" size={16} class="tint-ink-muted" />
-              <Text class="text-[13px] font-medium text-ink">{t().git.worktrees.openTerminal}</Text>
-            </View>
-            <View
-              role="menuitem"
-              onPress={() => {
-                actionsOpen.set(false);
-                openFolderInPreview(currentWorktreePath());
-              }}
-              class={`cursor-pointer select-none ${MENU_ITEM}`}
-            >
-              <Icon name="folder" size={16} class="tint-ink-muted" />
-              <Text class="text-[13px] font-medium text-ink">{t().git.worktrees.openDir}</Text>
-            </View>
-          </View>
-        </Overlay>
+      <If when={showHeader()}>
+        <GitHeader
+          host={host()}
+          narrow={narrow()}
+          showInlineActions={showInlineActions()}
+          summary={summary()}
+          activeView={activeView()}
+          totalRepos={totalRepos()}
+          canSwitchContext={canSwitchContext()}
+          currentRepoName={currentRepoName()}
+          currentWorktreePath={currentWorktreePath()}
+          branchText={branchText()}
+          isViewingOtherWorktree={isViewingOtherWorktree()}
+          pickerOpen={pickerOpen()}
+          onPickerAnchor={(node) => pickerAnchor.set(node)}
+          onTogglePicker={() => pickerOpen.set(!pickerOpen())}
+          onBackProjectDefault={backToProjectDefault}
+          onSwitchView={switchView}
+          onRefresh={handleManualRefresh}
+          onNewSession={startSessionInCurrent}
+          onOpenTerminal={() => void runtime.openTerminalAt(currentWorktreePath())}
+          onOpenFolder={() => openFolderInPreview(currentWorktreePath())}
+          onClose={props.onClose}
+        />
       </If>
 
-      {/* Grouped Repo -> Worktree switcher popover */}
+      {/* Grouped Repo -> Worktree switcher popover / sheet */}
       <GitContextPopover
         open={pickerOpen()}
         anchor={pickerAnchor()}
+        host={host()}
+        narrow={narrow()}
+        isRemote={isRemote()}
         sessionId={props.sessionId}
         tree={tree()}
+        currentSummary={summary()}
         selectedRepoId={currentRepoId()}
         selectedWorktreePath={currentWorktreePath()}
         onClose={() => pickerOpen.set(false)}
@@ -591,13 +446,17 @@ export function GitPane(props: {
       />
 
       {/* Body */}
-      <If when={loading() && !summary()}>
+      <If when={loading() && !summary() && !remoteNeedsUpgrade()}>
         <View class="flex-1 items-center justify-center p-6">
           <Text class="text-[13px] text-ink-muted">{t().git.loading}</Text>
         </View>
       </If>
 
-      <If when={!loading() && !summary() && errorMsg()}>
+      <If when={remoteNeedsUpgrade()}>
+        <EmptyState testID="git-remote-upgrade" title={t().git.remoteUpgradeTitle} hint={t().git.remoteUpgradeHint} />
+      </If>
+
+      <If when={!loading() && !summary() && !remoteNeedsUpgrade() && errorMsg()}>
         <EmptyState testID="git-load-error" title={t().git.notRepoTitle} hint={errorMsg()!} />
       </If>
 
@@ -621,12 +480,15 @@ export function GitPane(props: {
                       summary={s()}
                       repo={activeRepo()}
                       worktree={activeWorktree()}
+                      host={host()}
+                      isRemote={isRemote()}
                       narrow={narrow()}
                       reloadToken={reloadToken()}
                       base={diffBase()}
                       onBaseChange={(b) => diffBase.set(b)}
                       scope={diffScope()}
                       onScopeChange={(sc) => diffScope.set(sc)}
+                      onDrillDepthChange={(d) => drillDepth.set(d)}
                       onOpenPreview={openFileInPreview}
                     />
                   </If>
@@ -635,8 +497,11 @@ export function GitPane(props: {
                       sessionId={props.sessionId}
                       repo={activeRepo()}
                       worktree={activeWorktree()}
+                      host={host()}
+                      isRemote={isRemote()}
                       narrow={narrow()}
                       reloadToken={reloadToken()}
+                      onDrillDepthChange={(d) => drillDepth.set(d)}
                     />
                   </If>
                   <If when={activeView() === "github"}>
@@ -646,9 +511,13 @@ export function GitPane(props: {
                       repo={activeRepo()}
                       worktree={activeWorktree()}
                       isOtherWorktree={isViewingOtherWorktree()}
+                      host={host()}
+                      isRemote={isRemote()}
                       narrow={narrow()}
                       reloadToken={reloadToken()}
                       forceRefreshToken={ghForceToken()}
+                      onDrillDepthChange={(d) => drillDepth.set(d)}
+                      onLeaveAfterQuote={props.onClose}
                     />
                   </If>
                 </View>

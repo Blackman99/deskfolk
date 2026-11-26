@@ -6,7 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
-(none)
+### Project session Git & GitHub views on phone and remote web
+
+- Project sessions now open the read-only Git & GitHub view (Changes, History graph, GitHub PRs/Issues, and Repo → Worktree hierarchy switcher) as a full-screen page (`?s=<id>&o=git`) on phones and hosted tablets, reachable from the conversation header's Git button, the session context menu, and the sidebar project directory menu.
+- Adapted the Git experience for touch and narrow screens: two-row mobile header with safe-area insets and bottom-sheet actions, single-column list → detail drill-down wired into browser/system Back (`stepIn` / `holdLevels`), unified diff with a bottom previous/next file pager, capped 5-lane Canvas commit graph, and sticky GitHub detail action bar (quoting returns directly to the chat composer).
+- Whitelisted all 10 read-only Git & GitHub GET routes on the remote relay with UTF-8 serialized response bounds under the 1 MiB Noise message cap (200 KiB remote diff preview with on-demand full load), `AbortSignal` request cancellation, and no background polling or worktree fan-out over serial remote links.
 
 ## 0.7.0 — 2026-11-26
 
