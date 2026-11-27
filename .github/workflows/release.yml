@@ -23,6 +23,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      signpath_test:
+        description: 'Run Windows SignPath test-signing only (skip macOS/Linux; never publishes a release)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -76,6 +81,7 @@ jobs:
   # The native app's own checks on macOS (nsh-desktop.yml runs them on Windows and Linux).
   verify-nsh:
     name: Verify the native app on macOS
+    if: github.event_name != 'workflow_dispatch' || !inputs.signpath_test
     runs-on: macos-latest
     # A cache miss builds the nsh CLI first (~30 minutes).
     timeout-minutes: 120
@@ -143,6 +149,7 @@ jobs:
   package:
     name: Package the Mac app (${{ matrix.arch }})
     needs: [verify, verify-nsh]
+    if: github.event_name != 'workflow_dispatch' || !inputs.signpath_test
     strategy:
       # A release carries both images or none: Intel Macs would otherwise see no update at all.
       fail-fast: true
@@ -264,7 +271,7 @@ jobs:
     name: Package the Windows installer
     needs: [verify]
     outputs:
-      signed: ${{ steps.signpath.outputs.enabled }}
+      signed: ${{ steps.signpath.outputs.mode == 'release' }}
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -329,13 +336,34 @@ jobs:
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
           SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_POLICY_SLUG: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          SIGNPATH_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.signpath_test }}
         run: |
-          if [[ "${GITHUB_REF:-}" == refs/tags/v* ]] && [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "SignPath Windows code signing is enabled for ${GITHUB_REF_NAME}."
+          if [ "$SIGNPATH_TEST" = "true" ]; then
+            if [ -z "$SIGNPATH_API_TOKEN" ] || [ -z "$SIGNPATH_ORGANIZATION_ID" ]; then
+              echo "::error::signpath_test requires SIGNPATH_API_TOKEN and SIGNPATH_ORGANIZATION_ID secrets."
+              exit 1
+            fi
+            {
+              echo "enabled=true"
+              echo "mode=test"
+              echo "policy=test-signing"
+            } >> "$GITHUB_OUTPUT"
+            echo "SignPath Windows test-signing is enabled (workflow_dispatch)."
+          elif [[ "${GITHUB_REF:-}" == refs/tags/v* ]] && [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
+            {
+              echo "enabled=true"
+              echo "mode=release"
+              echo "policy=$SIGNPATH_POLICY_SLUG"
+            } >> "$GITHUB_OUTPUT"
+            echo "SignPath Windows code signing is enabled for ${GITHUB_REF_NAME} (policy: ${SIGNPATH_POLICY_SLUG})."
           else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "SignPath Windows code signing is not active (requires a v* tag and SIGNPATH_API_TOKEN + SIGNPATH_ORGANIZATION_ID secrets)."
+            {
+              echo "enabled=false"
+              echo "mode=off"
+              echo "policy="
+            } >> "$GITHUB_OUTPUT"
+            echo "SignPath Windows code signing is not active (requires a v* tag or workflow_dispatch signpath_test=true, plus SIGNPATH_API_TOKEN + SIGNPATH_ORGANIZATION_ID secrets)."
           fi
 
       # Installed silently over each of them in turn (each in a folder of its own choosing), launched
@@ -379,7 +407,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'deskfolk' }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          signing-policy-slug: ${{ steps.signpath.outputs.policy }}
           artifact-configuration-slug: windows-binaries
           github-artifact-id: ${{ steps.upload-unsigned-binaries.outputs.artifact-id }}
           wait-for-completion: true
@@ -387,6 +415,8 @@ jobs:
 
       - name: Apply and verify signed Windows binaries
         if: steps.signpath.outputs.enabled == 'true'
+        env:
+          SIGNPATH_MODE: ${{ steps.signpath.outputs.mode }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -395,9 +425,15 @@ jobs:
           if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
           New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
 
-          $zips = Get-ChildItem -Path $outDir -Filter '*.zip' -File
-          if ($zips.Count -gt 0) {
-            Expand-Archive -Path $zips[0].FullName -DestinationPath $unpacked -Force
+          $files = Get-ChildItem -Path $outDir -File
+          $zipFile = $files | Where-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            $bytes.Length -ge 2 -and $bytes[0] -eq 0x50 -and $bytes[1] -eq 0x4B
+          } | Select-Object -First 1
+          if ($zipFile) {
+            $zipPath = Join-Path $env:RUNNER_TEMP 'signpath-binaries.zip'
+            Copy-Item -Path $zipFile.FullName -Destination $zipPath -Force
+            Expand-Archive -Path $zipPath -DestinationPath $unpacked -Force
           } else {
             Copy-Item -Path (Join-Path $outDir '*') -Destination $unpacked -Recurse -Force
           }
@@ -415,10 +451,17 @@ jobs:
             if (-not (Test-Path $src)) { throw "Signed binary missing: $src" }
             Copy-Item -Path $src -Destination $dst -Force
             $sig = Get-AuthenticodeSignature -LiteralPath $dst
-            if ($sig.Status -ne 'Valid') {
-              throw "Invalid Authenticode signature on ${rel}: $($sig.Status) ($($sig.StatusMessage))"
+            if ($env:SIGNPATH_MODE -eq 'test') {
+              if (-not $sig.SignerCertificate -or $sig.Status -eq 'NotSigned' -or $sig.Status -eq 'HashMismatch') {
+                throw "Test Authenticode signature missing or broken on ${rel}: $($sig.Status) ($($sig.StatusMessage))"
+              }
+              Write-Host "Verified test signature on ${rel}: $($sig.SignerCertificate.Subject) (status: $($sig.Status))"
+            } else {
+              if ($sig.Status -ne 'Valid') {
+                throw "Invalid Authenticode signature on ${rel}: $($sig.Status) ($($sig.StatusMessage))"
+              }
+              Write-Host "Verified signature on ${rel}: $($sig.SignerCertificate.Subject)"
             }
-            Write-Host "Verified signature on ${rel}: $($sig.SignerCertificate.Subject)"
           }
 
       - name: Build Windows installer from signed stage
@@ -443,7 +486,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'deskfolk' }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          signing-policy-slug: ${{ steps.signpath.outputs.policy }}
           artifact-configuration-slug: windows-installer
           github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
           wait-for-completion: true
@@ -451,6 +494,8 @@ jobs:
 
       - name: Apply and verify signed Windows installer
         if: steps.signpath.outputs.enabled == 'true'
+        env:
+          SIGNPATH_MODE: ${{ steps.signpath.outputs.mode }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -459,9 +504,15 @@ jobs:
           if (Test-Path $unpacked) { Remove-Item -Recurse -Force $unpacked }
           New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
 
-          $zips = Get-ChildItem -Path $outDir -Filter '*.zip' -File
-          if ($zips.Count -gt 0) {
-            Expand-Archive -Path $zips[0].FullName -DestinationPath $unpacked -Force
+          $files = Get-ChildItem -Path $outDir -File
+          $zipFile = $files | Where-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            $bytes.Length -ge 2 -and $bytes[0] -eq 0x50 -and $bytes[1] -eq 0x4B
+          } | Select-Object -First 1
+          if ($zipFile) {
+            $zipPath = Join-Path $env:RUNNER_TEMP 'signpath-installer.zip'
+            Copy-Item -Path $zipFile.FullName -Destination $zipPath -Force
+            Expand-Archive -Path $zipPath -DestinationPath $unpacked -Force
           } else {
             Copy-Item -Path (Join-Path $outDir '*') -Destination $unpacked -Recurse -Force
           }
@@ -471,10 +522,17 @@ jobs:
           $dst = Join-Path (Join-Path $env:RUNNER_TEMP 'deskfolk') $signed.Name
           Copy-Item -Path $signed.FullName -Destination $dst -Force
           $sig = Get-AuthenticodeSignature -LiteralPath $dst
-          if ($sig.Status -ne 'Valid') {
-            throw "Invalid Authenticode signature on $($signed.Name): $($sig.Status) ($($sig.StatusMessage))"
+          if ($env:SIGNPATH_MODE -eq 'test') {
+            if (-not $sig.SignerCertificate -or $sig.Status -eq 'NotSigned' -or $sig.Status -eq 'HashMismatch') {
+              throw "Test Authenticode signature missing or broken on $($signed.Name): $($sig.Status) ($($sig.StatusMessage))"
+            }
+            Write-Host "Verified test signature on $($signed.Name): $($sig.SignerCertificate.Subject) (status: $($sig.Status))"
+          } else {
+            if ($sig.Status -ne 'Valid') {
+              throw "Invalid Authenticode signature on $($signed.Name): $($sig.Status) ($($sig.StatusMessage))"
+            }
+            Write-Host "Verified signature on $($signed.Name): $($sig.SignerCertificate.Subject)"
           }
-          Write-Host "Verified signature on $($signed.Name): $($sig.SignerCertificate.Subject)"
 
       - name: Check the signed Windows installer
         if: steps.signpath.outputs.enabled == 'true'
@@ -502,6 +560,7 @@ jobs:
   package-linux:
     name: Package the Linux deb and AppImage
     needs: [verify]
+    if: github.event_name != 'workflow_dispatch' || !inputs.signpath_test
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:

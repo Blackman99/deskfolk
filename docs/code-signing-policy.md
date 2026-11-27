@@ -114,4 +114,11 @@ gh secret set SIGNPATH_API_TOKEN -R Blackman99/deskfolk
 | `SIGNPATH_PROJECT_SLUG` | Variable (optional) | Defaults to `deskfolk` |
 | `SIGNPATH_POLICY_SLUG` | Variable (optional) | Defaults to `release-signing` |
 
-Once both secrets are set, the next `v*` tag release automatically stages the Windows binaries, signs them via SignPath, builds the NSIS installer from the signed stage, signs the installer via SignPath, verifies every Authenticode signature, runs the upgrade and fresh install smoke tests on the signed installer, and publishes the signed installer with SignPath attribution in the release notes.
+### 4. Verify with `test-signing` before activating `release-signing`
+
+Before SignPath Foundation issues the production release certificate, validate the GitHub Actions integration without tagging a release:
+
+1. In GitHub Actions, run **Release → Run workflow** with **`signpath_test: true`** (this skips macOS/Linux jobs, runs `test-signing` on both `windows-binaries` and `windows-installer`, smoke-tests the test-signed installer, and never creates a GitHub Release).
+2. Confirm both signing requests appear as verified GitHub Actions builds in the SignPath dashboard, then notify SignPath Foundation support so they review the setup and issue/import the production certificate.
+
+Once the production certificate is active and both secrets are set, the next `v*` tag release automatically stages the Windows binaries, signs them via SignPath (`release-signing`), builds the NSIS installer from the signed stage, signs the installer via SignPath, verifies every Authenticode signature is publicly `Valid`, runs the upgrade and fresh install smoke tests on the signed installer, and publishes the signed installer with SignPath attribution in the release notes.
