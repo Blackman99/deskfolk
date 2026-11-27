@@ -434,6 +434,38 @@ export class OverlayState {
     this.gitSessionId = null;
   }
 
+  /** External web page opened in the in-app WebView when the desktop window is narrow (no workbench). */
+  #webUrl$s = state<string | null>(null);
+  get webUrl(): string | null { return this.#webUrl$s.get(); }
+  set webUrl(value: string | null) { this.#webUrl$s.set(value); }
+
+  get webOpen(): boolean {
+    return this.webUrl !== null;
+  }
+
+  openWeb(url: string): void {
+    if (this.toPane({ kind: "web", url })) return;
+    this.settingsOpen = false;
+    this.createBotOpen = false;
+    this.createProjectOpen = false;
+    this.createGroupOpen = false;
+    this.host.closeSessionSettings();
+    this.workspaceOpen = false;
+    this.routinesOpen = false;
+    this.spendOpen = false;
+    this.terminalOpen = false;
+    this.screenOpen = false;
+    this.clearGit();
+    this.listPage = null;
+    this.clearTrace();
+    this.threadOpen = false;
+    this.webUrl = url;
+  }
+
+  closeWeb(): void {
+    this.webUrl = null;
+  }
+
   /** Jobs whose board is on screen outside the narrow overlay — a workbench pane — by job. */
   traceWatchers = new Map<string, number>();
 

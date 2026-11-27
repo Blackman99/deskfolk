@@ -92,6 +92,15 @@ describe("interface profile (ADR 0106)", () => {
     expect(patchError(() => applyInterfacePatch(profile, { behaviour: { content_glass: "glassy" } })).message).toContain("solid, frosted, clear");
   });
 
+  test("external_link_open is webview or browser, and web is an open placement kind", () => {
+    let profile = applyInterfacePatch(emptyInterfaceProfile(), { behaviour: { external_link_open: "browser", open_placement: { web: "float" } } });
+    expect(profile.behaviour.external_link_open).toBe("browser");
+    expect(profile.behaviour.open_placement?.web).toBe("float");
+    profile = applyInterfacePatch(profile, { behaviour: { external_link_open: null, open_placement: { web: null } } });
+    expect(profile.behaviour).toEqual({});
+    expect(patchError(() => applyInterfacePatch(profile, { behaviour: { external_link_open: "tab" } })).message).toContain("webview, browser");
+  });
+
   test("a reset puts parts back before the rest applies", () => {
     const start = { ...applyInterfacePatch(emptyInterfaceProfile(), { tokens: { light: { "--accent": "red" } } }), css: "a{}" };
     const next = applyInterfacePatch(start, { reset: ["tokens", "css"], tokens: { light: { "--bg": "white" } } });

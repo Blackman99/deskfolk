@@ -67,6 +67,7 @@ import { UsageWidget } from "../usage/UsageWidget";
 import { NewPaneMenu } from "../workbench/NewPaneMenu";
 import { PaneContentHost } from "../workbench/PaneContentHost";
 import { PaneTabLabel } from "../workbench/PaneTabLabel";
+import { WebPane } from "../workbench/WebPane";
 import type { TabAction } from "../workbench/types";
 import { Workbench, type WorkbenchApi } from "../workbench/Workbench";
 import { WorkspaceDragGhost } from "../WorkspaceDragGhost";
@@ -109,7 +110,7 @@ function ShellBody(props: { s: ShellState }) {
    */
   const reattachTerminals = () => workbench.untabbedTerminals.map((row) => ({ id: row.id, name: workbench.terminalName(row), cwd: row.cwd }));
   /** A page covers the roster on a phone while one is open. */
-  const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || runtime.gitOpen || s.selected());
+  const pageOpen = () => Boolean(runtime.routinesOpen || runtime.spendOpen || runtime.terminalOpen || runtime.screenOpen || runtime.gitOpen || runtime.webOpen || s.selected());
   /** A phone's page covers the roster: its avatars' loops hold still under it (`LoopsHeld`). */
   const rosterCovered = () => !s.sidebarColumn() && pageOpen();
 
@@ -346,9 +347,11 @@ function MainPages(props: { s: ShellState }) {
             ? "screen"
             : runtime.gitOpen
               ? "git"
-              : s.selected()
-                ? "chat"
-                : null;
+              : runtime.webOpen
+                ? "web"
+                : s.selected()
+                  ? "chat"
+                  : null;
   return (
     <View class="flex-1 min-h-0 min-w-0">
       <If when={page() === "routines"}>
@@ -406,6 +409,9 @@ function MainPages(props: { s: ShellState }) {
             />
           )}
         </If>
+      </If>
+      <If when={page() === "web" ? runtime.webUrl : null}>
+        {(url) => <WebPane host="page" url={url()} onClose={() => runtime.closeWeb()} />}
       </If>
       <If when={page() === "chat" ? s.selected() : null}>
         {(selected) => (

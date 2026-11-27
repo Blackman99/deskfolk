@@ -14,6 +14,7 @@
 //! Pure Rust, so it builds for the web's wasm32 as it does for the desktops.
 
 mod blocks;
+mod ext_links;
 mod js;
 mod links;
 mod mentions;
@@ -28,6 +29,7 @@ use nsh_core::prelude::*;
 use crate::blocking;
 use serde_json::Value;
 
+use ext_links::{ext_link_tag, has_image_marker, is_external_http_url, linkify_external_urls};
 use js::{is_line_terminator, replace_placeholders, trim};
 use links::{Label, Link, link_at, next_link};
 use mentions::{Mentionable, linkify_roster_mentions, parse_mention_href};
@@ -37,7 +39,7 @@ use paths::{Kept, looks_like_workspace_href, parse_artifact_href};
 enum Target {
     Mention(String),
     Artifact(String),
-    Url,
+    Url(String),
 }
 
 fn link_target(href: &str) -> Target {
@@ -53,7 +55,7 @@ fn link_target(href: &str) -> Target {
     if looks_like_workspace_href(raw) {
         return Target::Artifact(raw.to_string());
     }
-    Target::Url
+    Target::Url(raw.to_string())
 }
 
 /// The source split into fenced code (left alone) and the rest: a fence opens on a line that
@@ -198,16 +200,23 @@ fn chips_in(part: &str, hidden: &HashSet<String>) -> String {
     let mut chipped = String::with_capacity(body.len());
     let mut from = 0;
     while let Some(link) = next_link(body, from, Label::Escaped) {
-        chipped.push_str(&body[from..link.start]);
-        let name = unescape_label(&body[link.label.0..link.label.1]);
-        match link_target(&body[link.target.0..link.target.1]) {
+        linkify_external_urls(&body[from..link.start], &mut chipped);
+        let raw_label = &body[link.label.0..link.label.1];
+        let raw_href = &body[link.target.0..link.target.1];
+        let name = unescape_label(raw_label);
+        match link_target(raw_href) {
             Target::Mention(id) => chipped.push_str(&format!("<mention id=\"{}\">{}</mention>", attr(&id), text(&name))),
             Target::Artifact(path) => chipped.push_str(&format!("<artifact path=\"{}\">{}</artifact>", attr(&path), text(&name))),
-            Target::Url => chipped.push_str(&body[link.start..link.end]),
+            Target::Url(url) => {
+                chipped.push_str(&body[link.start..link.end]);
+                if is_external_http_url(&url) && !has_image_marker(raw_label) {
+                    chipped.push_str(&ext_link_tag(&url));
+                }
+            }
         }
         from = link.end;
     }
-    chipped.push_str(&body[from..]);
+    linkify_external_urls(&body[from..], &mut chipped);
     replace_placeholders(&chipped, b'C', |digits| js::kept_at(&kept.0, digits).to_string())
 }
 

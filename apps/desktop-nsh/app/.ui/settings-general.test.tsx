@@ -164,6 +164,11 @@ test("behavior: a kind's placement changes, is marked, and Back to defaults clea
   const { app } = await session();
   await app.press("id:story-show-behavior");
   await app.waitFor("id:open-placement-reset");
+  expect(app.shows("id:settings-card-external-link")).toBe(true);
+  expect(app.shows("id:external-link-open-webview")).toBe(true);
+  expect(app.shows("id:external-link-open-browser")).toBe(true);
+  await app.press("id:external-link-open-browser");
+  await app.press("id:external-link-open-webview");
   expect(app.enabled("id:open-placement-reset")).toBe(false);
   expect(app.shows("id:open-placement-changed-routines")).toBe(false);
   await app.press("id:open-placement-select-routines");

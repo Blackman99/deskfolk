@@ -35,6 +35,7 @@ import { TaskMap } from "../taskmap/TaskMap";
 import { GitPane } from "../lazy-views";
 import { UsageTab } from "../usage/UsageTab";
 import { PaneTerminal } from "./PaneTerminal";
+import { WebPane } from "./WebPane";
 
 type OpenArtifact = (
   relpath: string,
@@ -437,9 +438,27 @@ export function PaneContentHost(props: {
           }}
         </If>
       </If>
+      <If when={kind() === "web" ? content() : null}>
+        {(c) => {
+          const web = () => c() as Extract<PaneContent, { kind: "web" }>;
+          return (
+            <WebPane
+              url={web().url}
+              title={web().title ?? null}
+              onNavigate={({ url, title }) => {
+                props.onUpdateContent?.({
+                  kind: "web",
+                  url,
+                  ...(title ? { title } : {}),
+                });
+              }}
+            />
+          );
+        }}
+      </If>
       <If when={kind() !== null && !KNOWN.has(kind()!)}>{gone(t().pane.emptyHint)}</If>
     </View>
   );
 }
 
-const KNOWN = new Set(["chat", "routines", "spend", "usage", "roles", "map", "git", "terminal", "workspace", "trace", "preview"]);
+const KNOWN = new Set(["chat", "routines", "spend", "usage", "roles", "map", "git", "web", "terminal", "workspace", "trace", "preview"]);

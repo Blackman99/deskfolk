@@ -638,6 +638,10 @@ export class MessengerRuntime {
   openGit(session: { id: string; project_dir?: string | null }, opts: GitOpenOptions = {}): void { this.overlayState.openGit(session, opts); }
   updateGitPageParams(projectDir: string, patch: Partial<GitPageParams>): void { this.overlayState.updateGitPageParams(projectDir, patch); }
   closeGit(): void { this.overlayState.closeGit(); }
+  get webOpen(): boolean { return this.overlayState.webOpen; }
+  get webUrl(): string | null { return this.overlayState.webUrl; }
+  openWeb(url: string): void { this.overlayState.openWeb(url); }
+  closeWeb(): void { this.overlayState.closeWeb(); }
   watchTrace(taskId: string): () => void { return this.overlayState.watchTrace(taskId); }
   watchLineBoard(sessionId: string): () => void { return this.overlayState.watchLineBoard(sessionId); }
   openRoles(role: BuiltinModelRole | null = null, playbook: string | null = null): void { this.overlayState.openRoles(role, playbook); }

@@ -18,6 +18,8 @@ test("Markdown names a file, a picture and Bots as chips that open them", async 
   await app.waitFor("text:周报草稿");
   // A path the text wrote is a chip with the file's name; a Bot on the roster is a chip, one off it plain text.
   await app.waitFor("text:weekly.md");
+  // External http(s) links carry the inline external-open icon.
+  expect(app.count("id:md >> id:md-external-link-icon")).toBe(1);
   expect(app.texts()).toContain("@Editor");
   expect(app.texts()).toContain("@Nobody");
   await app.press("text:@Editor");

@@ -7,6 +7,7 @@
  * sides.
  */
 import { isGitPaneView, type Attachment, type GitPaneView, type TicketStatus } from "@real-bot/protocol";
+import { normalizeWebUrl } from "./external-link-open.ts";
 import type { TraceFocus } from "../overlays/task-trace.ts";
 import { traceViewOf, type TraceViewKind } from "../overlays/trace-view.ts";
 import { TICKET_STATUS_ORDER } from "../overlays/plan-board.ts";
@@ -79,7 +80,9 @@ export type PaneContent =
       repo?: string | null;
       /** One-shot nonce asking the pane to open its repo/worktree switcher popover. */
       pickerNonce?: number | null;
-    };
+    }
+  /** An external web page opened in the desktop in-app WebView. */
+  | { kind: "web"; url: string; title?: string | null };
 
 export type PaneKind = PaneContent["kind"];
 export type ChatContent = Extract<PaneContent, { kind: "chat" }>;
@@ -97,6 +100,7 @@ export const PANE_KINDS: readonly PaneKind[] = [
   "roles",
   "map",
   "git",
+  "web",
 ];
 
 export const PANE_KIND_SET: ReadonlySet<string> = new Set(PANE_KINDS);
@@ -161,6 +165,11 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       if (content.pickerNonce) params.pickerNonce = String(content.pickerNonce);
       return params;
     }
+    case "web": {
+      const params: Record<string, string> = { url: content.url };
+      if (content.title) params.title = content.title;
+      return params;
+    }
   }
 }
 
@@ -210,6 +219,10 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
             ...(nonceOf(p.pickerNonce) ? { pickerNonce: nonceOf(p.pickerNonce) } : {}),
           }
         : null;
+    case "web": {
+      const url = p.url ? normalizeWebUrl(p.url) : null;
+      return url ? { kind: "web", url, ...(p.title ? { title: p.title } : {}) } : null;
+    }
     default:
       return null;
   }

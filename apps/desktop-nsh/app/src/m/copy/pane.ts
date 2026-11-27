@@ -49,6 +49,19 @@ export const zh = {
   mapOf: (name: string) => `${name}地图`,
   /** A project's Git & GitHub pane (ADR 0118). */
   gitOf: (name: string) => `Git · ${name}`,
+  /** In-app WebView pane for external links from conversations. */
+  web: "网页",
+  webBack: "后退",
+  webForward: "前进",
+  webReload: "重新加载",
+  webStop: "停止加载",
+  webOpenBrowser: "在系统默认浏览器中打开",
+  webCopyUrl: "复制链接",
+  webUrlCopied: "已复制链接",
+  webAddressLabel: "网址",
+  webAddressPlaceholder: "输入网址…",
+  webLoadError: "无法加载这个网页",
+  webUnavailable: "当前环境不支持应用内 WebView，请改用系统浏览器打开。",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -90,4 +103,16 @@ export const en: CopyShape<typeof zh> = {
   projectFolderOf: (name: string) => `${name} project folder`,
   mapOf: (name: string) => `${name} map`,
   gitOf: (name: string) => `Git · ${name}`,
+  web: "Web page",
+  webBack: "Back",
+  webForward: "Forward",
+  webReload: "Reload",
+  webStop: "Stop loading",
+  webOpenBrowser: "Open in system browser",
+  webCopyUrl: "Copy link",
+  webUrlCopied: "Link copied",
+  webAddressLabel: "Address",
+  webAddressPlaceholder: "Enter URL…",
+  webLoadError: "Could not load this page",
+  webUnavailable: "In-app WebView is unavailable here. Open it in your system browser instead.",
 };

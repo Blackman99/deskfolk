@@ -64,6 +64,7 @@ const TRICKY: Case[] = [
   ["crlf lines", "a\r\n```\r\nb/c.md\r\n```\r\n[out/a.md](out/a.md)\r\n", ex([]), ["out/a.md"]],
   ["a code span with a newline is not one", "`a\nb/c.md`", ex([]), []],
   ["extra paths: blanks, repeats, padded", "a.md b.md", ex(["", " a.md ", "a.md", "  ", "b.md"]), []],
+  ["external inline, bare, angle, CJK, balanced parens, images, HTML and streaming links", "See [Docs](https://x.dev/a) and https://a.dev/docs，然后 <https://b.dev/c> (https://w.dev/Rust_(lang)) [Wiki (Rust)](https://w.dev/Rust_(lang)) [broken](https://w.dev/a(b). ![i](https://x.dev/i.png) [![b](https://x.dev/b.png)](https://x.dev) `https://x.dev` [1]: https://x.dev <a href=\"https://x.dev\">x</a> [open](https://x.dev", ex([]), []],
 ];
 
 const NAMES = ["Bob", "分镜师", "分镜", "3D师", "Alice Smith", "审稿员", "a", "İstanbul", "ß", "Bo", "every", "everyone2", "x[y]", "Z\\z", "😀bot", "Éclair"];

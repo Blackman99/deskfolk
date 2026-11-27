@@ -49,17 +49,40 @@ fn label_end(s: &str, from: usize, kind: Label) -> Option<usize> {
     }
 }
 
-/// The two ways a target can end after the `(` before `from`: as `<[^>]+>` then `)`, and as
-/// `[^)\s]+` then `)`; each the index after the `)`.
-fn target_ends(s: &str, from: usize) -> [Option<usize>; 2] {
+/// The two ways a target can end after the `(` before `from`: as `<[^>]+>` then `)`, and as a
+/// whitespace-free target then `)` (with balanced parentheses for `Label::Escaped`, plain `[^)\s]+`
+/// for `Label::Plain`); each is the index after the closing `)`.
+fn target_ends(s: &str, from: usize, balanced: bool) -> [Option<usize>; 2] {
     let b = s.as_bytes();
     let angle = (b.get(from) == Some(&b'<'))
         .then(|| s[from + 1..].find('>').map(|i| from + 1 + i))
         .flatten()
         .filter(|&gt| gt > from + 1 && b.get(gt + 1) == Some(&b')'))
         .map(|gt| gt + 2);
-    let stop = s[from..].find(|c: char| c == ')' || is_space(c)).map_or(s.len(), |i| from + i);
-    let plain = (stop > from && b.get(stop) == Some(&b')')).then_some(stop + 1);
+    let plain = if !balanced {
+        let stop = s[from..].find(|c: char| c == ')' || is_space(c)).map_or(s.len(), |i| from + i);
+        (stop > from && b.get(stop) == Some(&b')')).then_some(stop + 1)
+    } else {
+        let mut depth = 0usize;
+        let mut found = None;
+        for (off, c) in s[from..].char_indices() {
+            if is_space(c) {
+                break;
+            }
+            if c == '(' {
+                depth += 1;
+            } else if c == ')' {
+                if depth == 0 {
+                    if off > 0 {
+                        found = Some(from + off + 1);
+                    }
+                    break;
+                }
+                depth -= 1;
+            }
+        }
+        found
+    };
     [angle, plain]
 }
 
@@ -71,7 +94,7 @@ pub(crate) fn link_at(s: &str, p: usize, kind: Label, accept: impl Fn(usize) -> 
         return None;
     }
     let from = close + 2;
-    target_ends(s, from).into_iter().flatten().find(|&end| accept(end)).map(|end| Link { start: p, label: (p + 1, close), target: (from, end - 1), end })
+    target_ends(s, from, kind == Label::Escaped).into_iter().flatten().find(|&end| accept(end)).map(|end| Link { start: p, label: (p + 1, close), target: (from, end - 1), end })
 }
 
 /// The first link at or after `from`. With `Label::Escaped` a `[` right after a `!` does not

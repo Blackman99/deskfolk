@@ -258,6 +258,12 @@ export const zh = {
   updateChanges: "这一版改了什么",
   updateIgnore: "忽略此版本",
   updateFailed: "没能检查更新。",
+  externalLinksTitle: "外链打开方式",
+  externalLinksSubtitle: "点击会话输出里的网页链接时，默认如何打开",
+  externalLinksMode: "默认打开方式",
+  externalLinksModeDesc: "切换后对下一次点击的外链生效；用 WebView 打开时，仍可随时一键在系统浏览器中打开",
+  externalLinksWebview: "WebView 打开",
+  externalLinksBrowser: "系统默认浏览器",
 };
 
 export const en: CopyShape<typeof zh> = {
@@ -518,4 +524,10 @@ export const en: CopyShape<typeof zh> = {
   updateChanges: "What changed in this version",
   updateIgnore: "Skip this version",
   updateFailed: "Couldn’t check for updates.",
+  externalLinksTitle: "External links",
+  externalLinksSubtitle: "How web links in conversation output open by default",
+  externalLinksMode: "Default opener",
+  externalLinksModeDesc: "Applies to the next link you press; pages opened in the in-app WebView can always be opened in your system browser",
+  externalLinksWebview: "In-app WebView",
+  externalLinksBrowser: "System browser",
 };

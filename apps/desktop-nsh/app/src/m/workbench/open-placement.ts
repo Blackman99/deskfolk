@@ -28,7 +28,8 @@ export type OpenKind =
   | "usage"
   | "roles"
   | "map"
-  | "git";
+  | "git"
+  | "web";
 
 export const OPEN_KINDS: readonly OpenKind[] = [
   "chat",
@@ -42,6 +43,7 @@ export const OPEN_KINDS: readonly OpenKind[] = [
   "roles",
   "map",
   "git",
+  "web",
 ];
 
 /**
@@ -106,6 +108,8 @@ export const OPEN_PLACEMENT_DEFAULTS: Readonly<Record<OpenKind, OpenPlacement>> 
   map: "side-right",
   // Project Git & GitHub views open beside the conversation so diffs can be read alongside chat.
   git: "side-right",
+  // External web links opened in the in-app WebView sit beside the conversation.
+  web: "side-right",
 };
 
 export function isOpenPlacement(value: unknown): value is OpenPlacement {

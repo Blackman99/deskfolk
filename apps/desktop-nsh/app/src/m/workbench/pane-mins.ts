@@ -34,6 +34,8 @@ export const PANE_MINS = {
   map: { width: 420, height: 360 },
   /** Project Git & GitHub pane (ADR 0118): single column below 540, file/commit list beside detail above. */
   git: { width: 360, height: 280 },
+  /** In-app WebView pane for external links opened from conversations. */
+  web: { width: 320, height: 240 },
 } as const satisfies Record<string, PaneMin>;
 
 export type PaneKind = keyof typeof PANE_MINS;

@@ -50,6 +50,7 @@ import { canSplit, computeGeometry, neighbourLeaf } from "./layout-geometry.ts";
 import { endedTerminalsClosed } from "./terminal-tabs.ts";
 import { clampFrame, frameForOpen, stepPastFloats } from "./float-frame.ts";
 import { loadFloatFrames, openKindOf, rememberFloatFrame } from "./open-placement.ts";
+import { webUrlLabel } from "./external-link-open.ts";
 import { openPlacements } from "./open-placement-store.svelte.ts";
 import type { PreviewHandle } from "./preview-context.ts";
 import type { IncomingTab } from "./tab-drag.ts";
@@ -330,6 +331,8 @@ export class ShellWorkbench {
         // A project's sessions share its preview, so it goes by the project's name rather than one of theirs.
         if (content.projectDir) return t.pane.projectFolderOf(projectDirLabel(content.projectDir));
         return content.sessionId ? t.pane.artifactsOf(this.sessionName(content.sessionId)) : t.pane.title;
+      case "web":
+        return content.title?.trim() || webUrlLabel(content.url) || t.pane.web;
     }
   };
 

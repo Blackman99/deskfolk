@@ -20,7 +20,7 @@ const CASES: &[(&str, &str, &str, &[&str], &str)] = &[
     ("images are not chips, the link inside a bang-bracket is", "![img](out/a.png) and ![[w](out/w.md)", "{\"extraPaths\":[]}", &[], "![img](out/a.png) and ![<artifact path=\"out/w.md\">w</artifact>"),
     ("a link whose label has a backslash before a newline does not parse", "[a\\\nb](out/x.md) [c\\d](out/y.md)", "{\"extraPaths\":[]}", &[], "[a\\\nb](out/x.md) <artifact path=\"out/y.md\">cd</artifact>"),
     ("a link across lines", "[a\nb](out/x.md)", "{\"extraPaths\":[]}", &[], "<artifact path=\"out/x.md\">a\nb</artifact>"),
-    ("urls and anchors stay links", "[a](https://x.com/a.md) [b](#top) [c](?q=1.md) [d](mailto:a@b.md)", "{\"extraPaths\":[]}", &[], "[a](https://x.com/a.md) [b](#top) [c](?q=1.md) [d](mailto:a@b.md)"),
+    ("urls and anchors stay links", "[a](https://x.com/a.md) [b](#top) [c](?q=1.md) [d](mailto:a@b.md)", "{\"extraPaths\":[]}", &[], "[a](https://x.com/a.md)<extlink url=\"https://x.com/a.md\"></extlink> [b](#top) [c](?q=1.md) [d](mailto:a@b.md)"),
     ("artifact hrefs, percent-encoded twice, and a broken escape", "[a](artifact:out%2Fa.md) [b](artifact:%25E4%25BD%25A0.md) [c](artifact:%zz.md) [d](artifact:)", "{\"extraPaths\":[]}", &[], "<artifact path=\"out/a.md\">a</artifact> <artifact path=\"你.md\">b</artifact> <artifact path=\"%zz.md\">c</artifact> [d](artifact:)"),
     ("windows paths and backslash-relative ones", "C:\\Users\\me\\a.txt src\\foo.ts and `.\\notes\\a.md` and `a \\ b`", "{\"extraPaths\":[\"C:\\\\Users\\\\me\\\\a.txt\",\"src\\\\foo.ts\"]}", &[], "<artifact path=\"C:\\Users\\me\\a.txt\">C:Usersmea.txt</artifact> <artifact path=\"src\\foo.ts\">srcfoo.ts</artifact> and <artifact path=\".\\notes\\a.md\">.notesa.md</artifact> and `a \\ b`"),
     ("host absolute paths in code spans", "`/Users/me/site/index.html` `/sidebar` `/tmp/out/` `~/n.md` `//x/y`", "{\"extraPaths\":[]}", &[], "<artifact path=\"/Users/me/site/index.html\">/Users/me/site/index.html</artifact> `/sidebar` <artifact path=\"/tmp/out/\">/tmp/out/</artifact> <artifact path=\"~/n.md\">~/n.md</artifact> `//x/y`"),
@@ -119,4 +119,24 @@ fn a_long_report_splits_in_milliseconds() {
     assert_eq!(lines.len(), 18000);
     eprintln!("markdown blocks: {} chars in {:?}", source.chars().count(), took);
     assert!(took.as_millis() < 3000);
+}
+
+#[test]
+fn external_links_carry_extlink_marker_and_leave_code_images_and_streaming_alone() {
+    assert_eq!(
+        prepare("See [Docs](https://example.com/a) and https://a.dev/docs，然后。", "{}", &[]),
+        "See [Docs](https://example.com/a)<extlink url=\"https://example.com/a\"></extlink> and [https://a.dev/docs](<https://a.dev/docs>)<extlink url=\"https://a.dev/docs\"></extlink>，然后。"
+    );
+    assert_eq!(
+        prepare("Angle <https://example.com/x> and (https://en.wikipedia.org/wiki/Rust_(lang)).", "{}", &[]),
+        "Angle [https://example.com/x](<https://example.com/x>)<extlink url=\"https://example.com/x\"></extlink> and ([https://en.wikipedia.org/wiki/Rust_(lang)](<https://en.wikipedia.org/wiki/Rust_(lang)>)<extlink url=\"https://en.wikipedia.org/wiki/Rust_(lang)\"></extlink>)."
+    );
+    assert_eq!(
+        prepare("[Wikipedia (Rust)](https://en.wikipedia.org/wiki/Rust_(programming_language)) and [broken](https://example.com/a(b)", "{}", &[]),
+        "[Wikipedia (Rust)](https://en.wikipedia.org/wiki/Rust_(programming_language))<extlink url=\"https://en.wikipedia.org/wiki/Rust_(programming_language)\"></extlink> and [broken](https://example.com/a(b)"
+    );
+    assert_eq!(
+        prepare("![img](https://x.dev/a.png) [![b](https://x.dev/b.png)](https://x.dev) `https://x.dev` [1]: https://x.dev <a href=\"https://x.dev\">x</a> [docs](https://x.dev", "{}", &[]),
+        "![img](https://x.dev/a.png) [![b](https://x.dev/b.png)](https://x.dev) `https://x.dev` [1]: https://x.dev <a href=\"https://x.dev\">x</a> [docs](https://x.dev"
+    );
 }

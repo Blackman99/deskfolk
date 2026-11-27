@@ -34,6 +34,7 @@ import {
 import { adoptFocusMode, localFocusMode } from "../chat/focus-mode.svelte.ts";
 import { formatShortcut, isPrimaryModifier } from "../keymap.ts";
 import { openPlacements } from "../workbench/open-placement-store.svelte.ts";
+import { externalLinkOpen } from "../workbench/external-link-open-store.svelte.ts";
 import { defaultAskedInUrl } from "./apply.ts";
 import type { FloorFailure } from "./floor.ts";
 import { setInterfaceBehaviour } from "./behaviour.svelte.ts";
@@ -201,12 +202,15 @@ class InterfaceController {
     const behaviour = state?.profile.behaviour ?? {};
     adoptFocusMode(behaviour.focus_mode, writable ? (value) => void this.writeBehaviour({ focus_mode: value }) : null);
     openPlacements.adopt(behaviour.open_placement, writable ? (changes) => void this.writeBehaviour({ open_placement: changes }) : null);
+    externalLinkOpen.adopt(behaviour.external_link_open, writable ? (mode) => void this.writeBehaviour({ external_link_open: mode }) : null);
     if (!writable || this.seeded) return;
     this.seeded = true;
     const seed: NonNullable<InterfacePatch["behaviour"]> = {};
     if (behaviour.focus_mode === undefined && localFocusMode()) seed.focus_mode = true;
     const placements = openPlacements.localChanges;
     if (behaviour.open_placement === undefined && this.surface === "desktop" && Object.keys(placements).length > 0) seed.open_placement = placements;
+    const linkOpen = externalLinkOpen.localChoice;
+    if (behaviour.external_link_open === undefined && this.surface === "desktop" && linkOpen) seed.external_link_open = linkOpen;
     if (Object.keys(seed).length > 0) void this.writeBehaviour(seed, "carried over from this window's own settings");
   }
 

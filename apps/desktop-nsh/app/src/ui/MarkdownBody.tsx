@@ -27,7 +27,9 @@ import { blobDataUrl } from "./data-url";
 import { FileChipMenu } from "./FileChipMenu";
 import type { FileOnDisk } from "./file-on-disk";
 import type { PressedPicture } from "./chat/image-origin";
+import { Icon } from "./Icon";
 import { linkTarget, prepareMarkdown, unresolvedToken, type RenderMarkdownOptions } from "./markdown";
+import { openWebLink } from "./open-web-link";
 import { FileIcon } from "./overlays/FileIcon";
 import { cssColor } from "./styles";
 import { tip } from "./tip";
@@ -37,6 +39,7 @@ export type { RenderMarkdownOptions };
 const EXTENSIONS = [
   { name: "artifact", tag: "artifact" },
   { name: "mention", tag: "mention" },
+  { name: "extlink", tag: "extlink" },
 ];
 
 /** A fenced code block's opening line (CommonMark: up to three spaces, then three backticks or tildes). */
@@ -100,7 +103,11 @@ export function MarkdownBody(props: {
       openArtifact(target.path);
       return;
     }
-    if (/^(https?|mailto):/i.test(target.url)) void openUrl(target.url).catch(() => undefined);
+    if (/^https?:\/\//i.test(target.url)) {
+      openWebLink(target.url);
+      return;
+    }
+    if (/^mailto:/i.test(target.url)) void openUrl(target.url).catch(() => undefined);
   }
 
   const inv = computed(() => props.inverted === true);
@@ -149,6 +156,12 @@ export function MarkdownBody(props: {
             inverted={inv()}
             unresolvedTitle={props.options?.unresolvedMentionTitle}
             onPress={(id) => props.onOpenProfile?.(id)}
+          />
+        ) : node.name === "extlink" ? (
+          <ExternalLinkMark
+            url={node.attributes?.url ?? ""}
+            inverted={inv()}
+            onPress={(url) => onLink(url)}
           />
         ) : (
           <Text>{node.text ?? ""}</Text>
@@ -314,5 +327,24 @@ function MentionChip(props: { id: string; label: string; inverted: boolean; unre
         <Text class={`${everyone() ? "" : "cursor-pointer "}text-[13px] font-semibold leading-[1.2] ${props.inverted ? "text-you-text" : "text-accent-hover"}`}>{`@${name()}`}</Text>
       </View>
     </If>
+  );
+}
+
+/** Inline external-open icon appended right after `http(s)` links inside `TextView`. */
+function ExternalLinkMark(props: { url: string; inverted: boolean; onPress: (url: string) => void }) {
+  return (
+    <View
+      role="link"
+      testID="md-external-link-icon"
+      accessibilityLabel={props.url}
+      tooltip={props.url ? tip(props.url) : undefined}
+      onPress={() => {
+        if (props.url) props.onPress(props.url);
+      }}
+      style={{ verticalAlign: "middle" }}
+      class="cursor-pointer flex-row items-center justify-center pl-[2px] pr-[1px]"
+    >
+      <Icon name="external" size={12} class={props.inverted ? "tint-you-text" : "tint-brand"} />
+    </View>
   );
 }

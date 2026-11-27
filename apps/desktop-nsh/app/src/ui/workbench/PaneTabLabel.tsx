@@ -25,6 +25,7 @@ const ICON_NAMES: Partial<Record<PaneKind, IconName>> = {
   preview: "package",
   map: "minimap",
   git: "git-branch",
+  web: "globe",
 };
 
 export function PaneTabLabel(props: {

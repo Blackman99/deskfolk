@@ -105,6 +105,9 @@ export function InterfaceBehaviourCard(props: { behaviour: InterfaceBehaviour; p
           </View>
         </SettingsRow>
         <If when={!props.phone}>
+          <SettingsRow title={c().external_link_open.name} titleId="interface-external-link-open" desc={c().external_link_open.hint}>
+            <Text class="text-[12px] text-ink-muted">{c().desktopOnly}</Text>
+          </SettingsRow>
           <SettingsRow title={c().open_placement.name} titleId="interface-open-placement" desc={c().open_placement.hint} last>
             <Text class="text-[12px] text-ink-muted">{c().desktopOnly}</Text>
           </SettingsRow>

@@ -32,7 +32,11 @@
         "x-apple.systempreferences"
       ]
     },
-    "webview": {},
+    "webview": {
+      "hosts": [
+        "*"
+      ]
+    },
     "host": [
       "shell.*",
       "runtime.*"

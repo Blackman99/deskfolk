@@ -77,7 +77,7 @@ export const UI_FLOORS = ["stop", "approval", "ask", "settings-entry", "interfac
 export type UiFloor = (typeof UI_FLOORS)[number];
 
 /** The kinds of window and where each opens (ADR 0074), as the messenger names them. */
-export const INTERFACE_OPEN_KINDS = ["chat", "trace", "preview", "workspace", "terminal", "routines", "spend", "usage", "roles", "map", "git"] as const;
+export const INTERFACE_OPEN_KINDS = ["chat", "trace", "preview", "workspace", "terminal", "routines", "spend", "usage", "roles", "map", "git", "web"] as const;
 export const INTERFACE_OPEN_PLACEMENTS = [
   "tab", "tab-background", "replace", "split-left", "split-right", "split-up", "split-down",
   "side-left", "side-right", "side-up", "side-down", "float",
@@ -119,9 +119,11 @@ export type InterfaceBehaviour = {
    * floating panes, the editor and the terminal stay solid.
    */
   content_glass?: "solid" | "frosted" | "clear";
+  /** How external web links in conversations open on the desktop: in-app WebView (default) or the system browser. */
+  external_link_open?: "webview" | "browser";
 };
 
-export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion", "code_theme", "content_glass"] as const;
+export const INTERFACE_BEHAVIOUR_KEYS = ["focus_mode", "open_placement", "send_key", "time_format", "motion", "code_theme", "content_glass", "external_link_open"] as const;
 export type InterfaceBehaviourKey = (typeof INTERFACE_BEHAVIOUR_KEYS)[number];
 
 /** What each behaviour takes and where it applies, for Settings and for a Bot reading the list. */
@@ -133,6 +135,7 @@ export const INTERFACE_BEHAVIOUR_SPECS: Record<InterfaceBehaviourKey, { values: 
   motion: { values: ["system", "reduce"], desktopOnly: false, zh: "动效跟随系统，或一直减弱", en: "Motion as the system says, or always reduced" },
   content_glass: { values: ["solid", "frosted", "clear"], desktopOnly: true, zh: "内容区透出窗口的毛玻璃：实色、磨砂或通透；只在有窗口材质的桌面上（macOS、Windows 11），菜单、弹窗、浮窗、编辑器和终端保持实色。要内容区毛玻璃就用它", en: "Whether the content cards let the window's glass through: solid, frosted or clear; only on a desktop whose window has a material (macOS, Windows 11), with menus, dialogs, floating panes, the editor and the terminal staying solid. This is the way to glass content" },
   code_theme: { values: "per-look", desktopOnly: false, zh: "代码高亮的配色，浅色深色各选一个：聊天代码块、命令输出和文件编辑器都用它，连同它的底色", en: "The colours code is highlighted in, one per look: chat's code blocks, command output and the file editor all take it, its background too" },
+  external_link_open: { values: ["webview", "browser"], desktopOnly: true, zh: "会话输出里的外链在桌面上怎么打开：应用内 WebView（默认）或系统默认浏览器", en: "How external web links in conversation output open on the desktop: in-app WebView (default) or the system browser" },
 };
 
 /** Tokens you set, by look. A token set in both is two entries, one in each. */
