@@ -94,6 +94,8 @@ export function SuggestButton(props: {
   disabled?: boolean;
   active?: boolean;
   loading?: boolean;
+  /** Subtle circular button fill when sitting beside an inline input pill on a phone. */
+  filled?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -105,12 +107,12 @@ export function SuggestButton(props: {
       accessibilityState={{ disabled: props.disabled, selected: props.active, busy: props.loading }}
       disabled={props.disabled}
       onPress={props.onPress}
-      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${props.sizeClass} ${props.active ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${props.sizeClass} ${props.active ? "bg-accent-tint border border-accent-border" : props.filled ? "bg-chip border border-line hover:bg-line-subtle" : "hover:bg-line-subtle"}`}
     >
       <Icon
         name={props.loading ? "spinner" : "sparkles"}
-        size={16}
-        class={`${props.loading ? "animate-spin " : ""}${props.active || props.loading ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"}`}
+        size={props.filled ? 20 : 16}
+        class={`${props.loading ? "animate-spin " : ""}${props.active || props.loading ? "tint-brand" : "tint-ink-secondary group-hover:tint-ink"}`}
       />
     </View>
   );

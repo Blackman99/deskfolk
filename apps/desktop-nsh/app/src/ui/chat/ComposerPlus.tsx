@@ -23,6 +23,8 @@ import { Icon, type IconName } from "../Icon";
 export function ComposerPlus(props: {
   testID: string;
   disabled: boolean;
+  /** Subtle circular button fill when sitting beside an inline input pill on a phone. */
+  filled?: boolean;
   /** The sheet's rows; `close` puts the sheet away. */
   children: (close: () => void) => JSX.Element;
 }) {
@@ -38,9 +40,9 @@ export function ComposerPlus(props: {
         accessibilityState={{ expanded: open(), disabled: props.disabled }}
         disabled={props.disabled}
         onPress={() => open.set(true)}
-        class="cursor-pointer select-none disabled:cursor-default shrink-0 w-[40px] h-[40px] items-center justify-center rounded-full active:scale-[0.96] active:bg-line-subtle disabled:opacity-[0.4]"
+        class={`cursor-pointer select-none disabled:cursor-default shrink-0 w-[40px] h-[40px] items-center justify-center rounded-full active:scale-[0.96] active:bg-line-subtle disabled:opacity-[0.4] ${props.filled ? "bg-chip border border-line hover:bg-line-subtle" : ""}`}
       >
-        <Icon name="plus" size={24} class="tint-ink-muted" />
+        <Icon name="plus" size={20} class="tint-ink-secondary" />
       </View>
       <If when={open()}>
         <BottomSheet title={t().composer.more} closeLabel={t().common.close} onClose={close} testID={`${props.testID}-sheet`}>

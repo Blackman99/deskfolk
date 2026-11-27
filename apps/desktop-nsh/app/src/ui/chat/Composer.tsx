@@ -53,7 +53,6 @@ import { WaitingJump } from "./WaitingJump";
 import { deriveComposer, composerHintOf, lockedNoticeOf, mentionBotsOf, placeholderOf, suggestTitleOf } from "./composer-state";
 import type { HiddenWaiting } from "./waiting-jump";
 import { settled } from "../workbench/drag-settle";
-import { COMPOSER_CARD_BASE_X } from "../../m/chat/phone-corner";
 import { dockedComposerInsets, floatingComposerSafeEdges } from "../../platform/phone-device";
 
 /**
@@ -318,24 +317,22 @@ export function Composer(props: {
     if (!docked()) return { boxShadow: shadow("raised") };
     if (platform.desktop) return undefined;
     const ins = dockedInsets();
+    const sideLeft = ins.cardLeft + ins.rowExtraLeft;
+    const sideRight = ins.cardRight + ins.rowExtraRight;
     if (d().locked) {
       return {
-        paddingLeft: 14 + (ins.cardLeft - COMPOSER_CARD_BASE_X),
-        paddingRight: 14 + (ins.cardRight - COMPOSER_CARD_BASE_X),
+        paddingLeft: Math.max(14, sideLeft),
+        paddingRight: Math.max(14, sideRight),
+        paddingTop: 10,
         paddingBottom: Math.max(10, ins.cardBottom),
       };
     }
-    return { paddingLeft: ins.cardLeft, paddingRight: ins.cardRight, paddingBottom: ins.cardBottom };
-  };
-  const rowStyle = () => {
-    if (!docked() || platform.desktop) return undefined;
-    const ins = dockedInsets();
-    return ins.rowExtraLeft > 0 || ins.rowExtraRight > 0 ? { paddingLeft: ins.rowExtraLeft, paddingRight: ins.rowExtraRight } : undefined;
+    return { paddingLeft: sideLeft, paddingRight: sideRight, paddingTop: 8, paddingBottom: ins.cardBottom };
   };
   const toolRow = () => !d().locked;
 
   /** A round tool button, as the Svelte's `.attach-btn` / `.suggest-btn`. */
-  const ToolButton = (p: { testID: string; icon: "paperclip" | "sparkles" | "spinner"; label: string; disabled?: boolean; active?: boolean; busy?: boolean; onPress: () => void }) => (
+  const ToolButton = (p: { testID: string; icon: "paperclip" | "sparkles" | "spinner"; label: string; disabled?: boolean; active?: boolean; busy?: boolean; filled?: boolean; onPress: () => void }) => (
     <View
       role="button"
       testID={p.testID}
@@ -344,23 +341,35 @@ export function Composer(props: {
       accessibilityState={{ disabled: p.disabled, selected: p.active, busy: p.busy }}
       disabled={p.disabled}
       onPress={p.onPress}
-      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${tool()} ${p.active ? "bg-accent-tint" : "hover:bg-line-subtle"}`}
+      class={`cursor-pointer select-none disabled:cursor-default group shrink-0 items-center justify-center rounded-full active:scale-[0.96] disabled:opacity-[0.4] ${tool()} ${p.active ? "bg-accent-tint" : p.filled ? "bg-chip border border-line hover:bg-line-subtle" : "hover:bg-line-subtle"}`}
     >
-      <Icon name={p.icon} size={p.icon === "paperclip" ? 20 : 16} class={`${p.icon === "spinner" ? "animate-spin " : ""}${p.active || p.busy ? "tint-brand" : "tint-ink-muted group-hover:tint-ink"}`} />
+      <Icon name={p.icon} size={p.icon === "paperclip" ? 20 : 16} class={`${p.icon === "spinner" ? "animate-spin " : ""}${p.active || p.busy ? "tint-brand" : "tint-ink-secondary group-hover:tint-ink"}`} />
     </View>
   );
 
   /**
-   * The text on a line of its own above the tool row: always where the composer is wide, and where
-   * it is docked (a phone) too once the row carries the Bot's model, as the Svelte's `.has-tune`
-   * row wraps the editor to the top, and on a phone, whose + holds the model, it stays there, as in a
-   * project session's composer; a docked row without one keeps the text between its buttons.
+   * The text on a line of its own above the tool row: wide composers, or a narrow desktop pane
+   * whose row still carries the Bot's model pill. On a phone (`phonePlus()`), the clip and model
+   * live inside `+`, so keeping the editor inline beside `+` and Send avoids an almost-empty bar.
    */
-  const editorAbove = () => wide() || Boolean(tuneBot());
+  const editorAbove = () => wide() || (Boolean(tuneBot()) && !phonePlus());
+  /** Compact single-row docked bar with a clearly framed rounded input well. */
+  const inlineDocked = () => docked() && !editorAbove() && !d().locked;
+  /** Circular button surfaces beside the inline pill on touch/phone screens. */
+  const phonePillButtons = () => inlineDocked() && !platform.desktop;
   // One editor per conversation: the box stays across a switch of conversations (the stage turns to
   // the next one), but its undo history, its input method state and its lists are the conversation's.
   const editorBox = () => (
-    <View class={editorAbove() ? "w-full min-w-0" : "flex-1 min-w-0"}>
+    <View
+      testID={inlineDocked() ? "composer-input-well" : undefined}
+      class={
+        inlineDocked()
+          ? "flex-1 min-w-0 rounded-[20px] bg-chip border border-line px-[10px] focus-within:border-field-focus-border"
+          : editorAbove()
+            ? "w-full min-w-0"
+            : "flex-1 min-w-0"
+      }
+    >
       <Each of={[props.selected?.id ?? ""]} key={(id: string) => id}>
         {() => {
           // The editor going and the next one coming may be told in either order: each clears only its own handle.
@@ -401,7 +410,7 @@ export function Composer(props: {
         props.onHeight?.(Math.ceil(e.bounds.size.height));
       }}
     >
-      <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[760px]"}`}>
+      <View class={`w-full min-w-0 ${docked() ? "bg-pane border-t border-line" : "max-w-[760px]"}`}>
         <WaitingJump hidden={props.hiddenWaiting ?? NO_WAITING} onJump={(id) => props.onJumpWaiting?.(id)} />
         <If when={d().canSuggest && view() && d().suggestionsShown}>
           <ComposerSuggestions suggestions={view()!.composerSuggestions.slice()} docked={docked()} onPickPrompt={props.onPickPrompt} onLayout={props.onSuggestionsLayout} />
@@ -415,7 +424,7 @@ export function Composer(props: {
             onFileDragEnter={() => fileOver.set(true)}
             onFileDragLeave={() => fileOver.set(false)}
             onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
-            class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-(--radius-xl) border-line" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
+            class={`w-full min-w-0 border ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "bg-transparent px-2 py-[6px]" : "bg-input-bg px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-(--radius-xl) border-line" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
             style={cardStyle()}
           >
             <If when={quoteTarget()}>{(message) => <ComposerQuote message={message()} botsById={botsById()} onCancel={() => { const current = view(); if (current) current.replyingToId = null; }} />}</If>
@@ -454,7 +463,7 @@ export function Composer(props: {
 
             <If when={toolRow() && editorAbove()}>{editorBox()}</If>
             <If when={toolRow()}>
-              <View testID="composer-tool-row" class="flex-row items-center w-full gap-2" style={rowStyle()}>
+              <View testID="composer-tool-row" class={`flex-row w-full ${inlineDocked() ? "items-end gap-[8px]" : "items-center gap-2"}`}>
                 <If
                   when={phonePlus()}
                   else={
@@ -464,6 +473,7 @@ export function Composer(props: {
                         icon="paperclip"
                         label={copy().composer.attach}
                         disabled={!connected() || !props.selected || d().locked || Boolean(view()?.sending)}
+                        filled={phonePillButtons()}
                         onPress={() => void pickFiles()}
                       />
                       <If when={tuneBot()}>
@@ -474,7 +484,7 @@ export function Composer(props: {
                     </>
                   }
                 >
-                  <ComposerPlus testID="composer-plus" disabled={!connected() || !props.selected}>
+                  <ComposerPlus testID="composer-plus" filled={phonePillButtons()} disabled={!connected() || !props.selected}>
                     {(close) => (
                       <>
                         {/* The model's sheet, held here so it goes over this one. */}
@@ -509,7 +519,7 @@ export function Composer(props: {
                   <View class="flex-1" />
                 </If>
                 <If when={voiceOffered() || voice.busy}>
-                  <VoiceButton voice={voice} disabled={!connected()} />
+                  <VoiceButton voice={voice} disabled={!connected()} filled={phonePillButtons()} />
                 </If>
                 <If when={d().canSuggest && !(docked() && (d().hasContent || d().suggestBlocked))}>
                   <SuggestButton
@@ -518,6 +528,7 @@ export function Composer(props: {
                     disabled={d().suggestBlocked}
                     active={d().suggestionsShown}
                     loading={Boolean(view()?.suggestionsLoading)}
+                    filled={phonePillButtons()}
                     onPress={toggleSuggestions}
                   />
                 </If>

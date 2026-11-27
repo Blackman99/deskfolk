@@ -200,22 +200,45 @@ export function ProjectComposer(props: {
   const docked = settled(() => width() > 0 && width() <= 480);
   const compact = settled(() => width() > 0 && width() <= 440);
   const edge = () => (width() <= 680 ? 12 : 24);
+  const phone = () => narrowWindow();
+  /** Active mode chips shown on the phone row (`plan` / `consult`): when on, the editor sits above the chips inside one unified rounded card. */
+  const phoneHasChips = () => Boolean((s().caps().plan && s().planning()) || s().consulting());
+  /** On a docked phone with no active chips, keep the editor inline beside `+` and Send inside a rounded pill. */
+  const inlinePhone = () => docked() && phone() && !phoneHasChips();
+  /** On a docked phone with active chips, wrap editor + chip row inside a clearly bounded rounded card. */
+  const framedPhoneCard = () => docked() && phone() && phoneHasChips();
+  const phonePillButtons = () => inlinePhone() && !platform.desktop;
   const dockedInsets = dockedComposerInsets(width);
   const footerStyle = () => {
     if (docked()) return undefined;
     const safe = floatingComposerSafeEdges();
     return { paddingLeft: edge() + safe.left, paddingRight: edge() + safe.right, paddingTop: 8, paddingBottom: 12 + safe.bottom };
   };
+  /** Outer dock padding around a framed 2-row phone card (so the card's internal 6 pt padding lands `+` and Send at the exact corner-safe inset). */
+  const framedDockStyle = () => {
+    if (!framedPhoneCard()) return undefined;
+    if (platform.desktop) return { paddingLeft: 8, paddingRight: 8, paddingTop: 6, paddingBottom: 6 };
+    const ins = dockedInsets();
+    const sideLeft = ins.cardLeft + ins.rowExtraLeft;
+    const sideRight = ins.cardRight + ins.rowExtraRight;
+    return {
+      paddingLeft: Math.max(6, sideLeft - 6),
+      paddingRight: Math.max(6, sideRight - 6),
+      paddingTop: 8,
+      paddingBottom: ins.cardBottom,
+    };
+  };
   const cardStyle = () => {
     if (!docked()) return { boxShadow: shadow("raised") };
+    if (framedPhoneCard()) return undefined;
     if (platform.desktop) return undefined;
     const ins = dockedInsets();
-    return { paddingLeft: ins.cardLeft, paddingRight: ins.cardRight, paddingBottom: ins.cardBottom };
-  };
-  const rowStyle = () => {
-    if (!docked() || platform.desktop) return undefined;
-    const ins = dockedInsets();
-    return ins.rowExtraLeft > 0 || ins.rowExtraRight > 0 ? { paddingLeft: ins.rowExtraLeft, paddingRight: ins.rowExtraRight } : undefined;
+    return {
+      paddingLeft: ins.cardLeft + ins.rowExtraLeft,
+      paddingRight: ins.cardRight + ins.rowExtraRight,
+      paddingTop: 8,
+      paddingBottom: ins.cardBottom,
+    };
   };
 
   // --- ✨ suggestions ---
@@ -258,7 +281,6 @@ export function ProjectComposer(props: {
    * holds them (in the phone e2e a dialog opened from under another one did not show on the web), the consultants'
    * chip's from outside the row.
    */
-  const phone = () => narrowWindow();
   const tuneSheet = signal<ShownTuneHandle | null>(null);
   const plusConsult = signal<ConsultHandle | null>(null);
   let chipConsult: ConsultHandle | null = null;
@@ -271,14 +293,12 @@ export function ProjectComposer(props: {
   /** The phone row's width and what stands right of its chips, measured: the chips take what is left (`phone-chips.ts`). */
   const rowWidth = signal(0);
   const rightWidth = signal(0);
-  const chips = () => {
-    const extra = docked() && !platform.desktop ? dockedInsets().rowExtraLeft + dockedInsets().rowExtraRight : 0;
-    return phoneChips(
-      rowWidth() - extra - rightWidth() - 40 - 3 * 6,
+  const chips = () =>
+    phoneChips(
+      rowWidth() - rightWidth() - 40 - 3 * 6,
       s().caps().plan && s().planning(),
       s().consulting() ? (props.selected.project_consult?.members.length ?? 0) : 0,
     );
-  };
   const refused = () => {
     if (view().sendRefused === "too_many_files") return t().composer.tooManyFiles;
     if (sendFailed() || s().tuneFailed()) return t().project.actionFailed;
@@ -341,6 +361,34 @@ export function ProjectComposer(props: {
     />
   );
 
+  /** One editor per conversation, as in `Composer`: undo history, IME state and any late revision stay with the session. */
+  const editorNode = () => (
+    <Each of={[props.selected.id]} key={(id: string) => id}>
+      {() => {
+        let mine: ComposerEditorHandle | null = null;
+        return (
+          <ComposerEditor
+            testID="project-input"
+            value={view().draft}
+            onChange={(text) => {
+              view().draft = text;
+              sendFailed.set(false);
+            }}
+            placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : s().consulting() ? t().project.composerPlaceholderConsult(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
+            editable
+            commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
+            onSend={() => void send()}
+            onPaste={onPaste}
+            onHandle={(handle) => {
+              if (handle) editor = mine = handle;
+              else if (editor === mine) editor = null;
+            }}
+          />
+        );
+      }}
+    </Each>
+  );
+
   return (
     <View
       testID="project-composer"
@@ -348,19 +396,25 @@ export function ProjectComposer(props: {
       style={footerStyle()}
       onLayout={(e) => width.set(e.bounds.size.width)}
     >
-      <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[800px]"}`}>
+      <View class={`w-full min-w-0 ${docked() ? "bg-pane border-t border-line" : "max-w-[800px]"}`}>
         <WaitingJump hidden={props.hiddenWaiting ?? NO_WAITING} onJump={(id) => props.onJumpWaiting?.(id)} />
         <If when={suggestionsShown()}>
           <ComposerSuggestions suggestions={view().composerSuggestions.slice()} docked={docked()} onPickPrompt={pickSuggestion} />
         </If>
-        <View class="w-full relative">
+        <View class="w-full relative" style={framedDockStyle()}>
         {/* Focused, it keeps its focus border under the pointer, as a Bot's composer does (`Composer`). */}
         <View
           testID="project-composer-card"
           onFileDragEnter={() => fileOver.set(true)}
           onFileDragLeave={() => fileOver.set(false)}
           onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
-          class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
+          class={`w-full min-w-0 border ${
+            framedPhoneCard()
+              ? "rounded-[20px] bg-chip border-line px-[6px] pt-[4px] pb-[6px] focus-within:border-field-focus-border"
+              : docked()
+                ? "border-0 bg-transparent px-2 py-[6px]"
+                : "bg-input-bg px-2 py-[6px] rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"
+          }`}
           style={cardStyle()}
         >
           <If when={refused()}>
@@ -382,33 +436,14 @@ export function ProjectComposer(props: {
               onRemovePath={files.removePendingPath}
             />
           </If>
-          {/* One editor per conversation, as in `Composer`: undo history, IME state and any late
-              revision stay with the session they belonged to and never leak into the next one's draft. */}
-          <Each of={[props.selected.id]} key={(id: string) => id}>
-            {() => {
-              let mine: ComposerEditorHandle | null = null;
-              return (
-                <ComposerEditor
-                  testID="project-input"
-                  value={view().draft}
-                  onChange={(text) => {
-                    view().draft = text;
-                    sendFailed.set(false);
-                  }}
-                  placeholder={s().planning() ? t().project.composerPlaceholderPlan(s().agentName()) : s().consulting() ? t().project.composerPlaceholderConsult(s().agentName()) : t().project.composerPlaceholder(s().agentName())}
-                  editable
-                  commands={s().caps().commands ? { agentName: s().agentName(), sessionId: props.selected.id } : null}
-                  onSend={() => void send()}
-                  onPaste={onPaste}
-                  onHandle={(handle) => {
-                    if (handle) editor = mine = handle;
-                    else if (editor === mine) editor = null;
-                  }}
-                />
-              );
-            }}
-          </Each>
-          <View testID="project-composer-tool-row" class="flex-row items-center w-full gap-[6px]" style={rowStyle()} onLayout={(e) => rowWidth.set(e.bounds.size.width)}>
+          <If when={!inlinePhone()}>
+            <View class={framedPhoneCard() ? "w-full min-w-0 px-[6px]" : "w-full min-w-0"}>{editorNode()}</View>
+          </If>
+          <View
+            testID="project-composer-tool-row"
+            class={`flex-row w-full gap-[6px] ${inlinePhone() ? "items-end" : "items-center"}`}
+            onLayout={(e) => rowWidth.set(e.bounds.size.width)}
+          >
             <If
               when={phone()}
               else={
@@ -441,7 +476,7 @@ export function ProjectComposer(props: {
                 </>
               }
             >
-              <ComposerPlus testID="project-plus" disabled={!connected()}>
+              <ComposerPlus testID="project-plus" filled={phonePillButtons()} disabled={!connected()}>
                 {(close) => (
                   <>
                     {/* The sheets the rows open, held here so they go over this one. */}
@@ -499,14 +534,23 @@ export function ProjectComposer(props: {
                   word to its icon, so at 360 pt with both on, the microphone and a run's stop menu the row still fits; on a narrower phone
                   the chips give way (clipped) before Send or Stop would leave it. The context ring is in the header on a phone
                   (`ProjectContextTop`). */}
-              <View class="shrink min-w-0 flex-row items-center gap-[6px] overflow-hidden">
-                <If when={s().caps().plan && s().planning()}>{planPill(chips().planWords)}</If>
-                <If when={s().consulting()}>
-                  <ConsultChip look={chips().consultLogos ? "logos" : "count"} setting={props.selected.project_consult} agentName={s().agentName()} disabled={!connected()} onPress={() => chipConsult?.open()} />
-                </If>
+              <If when={phoneHasChips()}>
+                <View class="shrink min-w-0 flex-row items-center gap-[6px] overflow-hidden">
+                  <If when={s().caps().plan && s().planning()}>{planPill(chips().planWords)}</If>
+                  <If when={s().consulting()}>
+                    <ConsultChip look={chips().consultLogos ? "logos" : "count"} setting={props.selected.project_consult} agentName={s().agentName()} disabled={!connected()} onPress={() => chipConsult?.open()} />
+                  </If>
+                </View>
+              </If>
+            </If>
+            <If
+              when={inlinePhone()}
+              else={<View class="flex-1" />}
+            >
+              <View testID="project-input-well" class="flex-1 min-w-0 rounded-[20px] bg-chip border border-line px-[10px] focus-within:border-field-focus-border">
+                {editorNode()}
               </View>
             </If>
-            <View class="flex-1" />
             {/* Right of the spring, measured as one: what the phone's chips leave room for. */}
             <View class="shrink-0 flex-row items-center gap-[6px]" onLayout={(e) => rightWidth.set(e.bounds.size.width)}>
               {/* On a phone the header shows it, where a press opens its figures (`ProjectContextTop`). */}
@@ -514,7 +558,7 @@ export function ProjectComposer(props: {
                 <ProjectContextPill context={props.selected.project_context} compact={compact()} />
               </If>
               <If when={voiceOffered() || voice.busy}>
-                <VoiceButton voice={voice} disabled={!connected()} />
+                <VoiceButton voice={voice} disabled={!connected()} filled={phonePillButtons()} />
               </If>
               <If when={!(docked() && (sendable() || suggestBlocked()))}>
                 <SuggestButton
@@ -523,6 +567,7 @@ export function ProjectComposer(props: {
                   disabled={suggestBlocked()}
                   active={suggestionsShown()}
                   loading={Boolean(view().suggestionsLoading)}
+                  filled={phonePillButtons()}
                   onPress={toggleSuggestions}
                 />
               </If>
