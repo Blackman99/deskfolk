@@ -6,7 +6,7 @@ import type { ApiFormat } from "./providers.ts";
  * is one of the connector's plans, so an endpoint typed in by hand at the same address is one too.
  * Display names and plan labels live in the messenger's copy, not here.
  */
-export const CONNECTOR_IDS = ["anthropic", "xiaomi", "qwen", "deepseek"] as const;
+export const CONNECTOR_IDS = ["anthropic", "xiaomi", "qwen", "deepseek", "gemini"] as const;
 export type ConnectorId = (typeof CONNECTOR_IDS)[number];
 
 /** One address a vendor serves, with the keys sold for it: a subscription plan or pay-as-you-go, per region. */
@@ -63,6 +63,13 @@ export const CONNECTORS: readonly Connector[] = [
     id: "deepseek",
     apiFormat: "openai",
     plans: [{ id: "api", baseUrl: "https://api.deepseek.com" }],
+    workspace: false,
+  },
+  {
+    // Google Gemini's OpenAI-compatible API (Google AI Studio).
+    id: "gemini",
+    apiFormat: "openai",
+    plans: [{ id: "api", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai" }],
     workspace: false,
   },
 ];

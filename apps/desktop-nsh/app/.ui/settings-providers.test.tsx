@@ -69,7 +69,7 @@ test("adding starts on the connector tiles; the custom form creates the endpoint
   try {
     await app.press("id:provider-add");
     await app.waitFor("id:connector-pick-custom");
-    for (const id of ["anthropic", "xiaomi", "qwen", "deepseek"]) expect(app.shows(`id:connector-pick-${id}`)).toBe(true);
+    for (const id of ["anthropic", "xiaomi", "qwen", "deepseek", "gemini"]) expect(app.shows(`id:connector-pick-${id}`)).toBe(true);
     await app.press("id:connector-pick-custom");
     await app.waitFor("id:provider-add-name");
     expect(app.shows("id:provider-add-format-openai")).toBe(true);

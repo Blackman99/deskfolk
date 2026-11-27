@@ -13,6 +13,10 @@ describe("connectorFor", () => {
       plan: { id: "payg-intl" },
     });
     expect(connectorFor("https://api.deepseek.com/", "openai")).toMatchObject({ connector: { id: "deepseek" }, plan: { id: "api" } });
+    expect(connectorFor("https://generativelanguage.googleapis.com/v1beta/openai/", "openai")).toMatchObject({
+      connector: { id: "gemini" },
+      plan: { id: "api" },
+    });
   });
 
   test("ignores case and trailing slashes, and a trailing /v1 in Anthropic's format", () => {
@@ -25,6 +29,7 @@ describe("connectorFor", () => {
   test("the format has to match", () => {
     expect(connectorFor("https://api.anthropic.com", "openai")).toBeNull();
     expect(connectorFor("https://api.xiaomimimo.com/v1", "anthropic")).toBeNull();
+    expect(connectorFor("https://generativelanguage.googleapis.com/v1beta/openai", "anthropic")).toBeNull();
   });
 
   test("any other address, or none, is no connector", () => {

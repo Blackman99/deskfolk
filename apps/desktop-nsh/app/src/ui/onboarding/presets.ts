@@ -31,6 +31,7 @@ export const PRESETS: readonly Preset[] = [
   { id: "xiaomi", name: "Xiaomi MiMo", url: first("xiaomi"), format: "openai", models: [], defaultModel: "" },
   { id: "qwen", name: "Qwen", url: first("qwen"), format: "openai", models: [], defaultModel: "" },
   { id: "deepseek", name: "DeepSeek", url: first("deepseek"), format: "openai", models: ["deepseek-chat", "deepseek-reasoner"], defaultModel: "deepseek-chat" },
+  { id: "gemini", name: "Gemini", url: first("gemini"), format: "openai", models: [], defaultModel: "" },
   { id: "openrouter", name: "OpenRouter", url: "https://openrouter.ai/api/v1", format: "openai", models: [], defaultModel: "" },
   { id: "ollama", name: "Ollama", url: "http://localhost:11434/v1", format: "openai", models: [], defaultModel: "" },
   { id: "lmstudio", name: "LM Studio", url: "http://localhost:1234/v1", format: "openai", models: [], defaultModel: "" },

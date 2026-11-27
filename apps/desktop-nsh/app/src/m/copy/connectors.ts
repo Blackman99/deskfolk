@@ -3,12 +3,13 @@ import type { CopyShape } from "./shape.ts";
 /** Built-in connectors (ADR 0072): the picker shown when adding an endpoint, and the key-only form. */
 export const zh = {
   pickHint: "内置的服务只要填 key；别的服务选「自定义」，自己填地址和格式。",
-  name: { anthropic: "Anthropic", xiaomi: "小米 MiMo", qwen: "千问", deepseek: "DeepSeek" },
+  name: { anthropic: "Anthropic", xiaomi: "小米 MiMo", qwen: "千问", deepseek: "DeepSeek", gemini: "Gemini" },
   blurb: {
     anthropic: "Claude 系列模型，Anthropic 官方 API",
     xiaomi: "MiMo 系列模型，Token Plan 或按量付费",
     qwen: "阿里云百炼：千问，以及百炼上的 GLM、DeepSeek 等",
     deepseek: "DeepSeek 官方 API，模型列表按 key 拉取",
+    gemini: "Gemini 系列模型，Google AI Studio 官方 API",
   },
   custom: "自定义",
   /** On a model in a picker whose endpoint is not a built-in one. */
@@ -24,10 +25,11 @@ export const zh = {
     "qwen:payg-cn": "按量付费 · 北京",
     "qwen:payg-intl": "按量付费 · 国际",
     "deepseek:api": "官方 API",
+    "gemini:api": "官方 API",
   },
   planLabel: "套餐",
   planHint: "填好 key 会自动识别，也可以手动选。",
-  keyPlaceholder: { anthropic: "sk-ant-…", xiaomi: "tp-… 或 sk-…", qwen: "sk-… 或 sk-sp-…", deepseek: "sk-…" },
+  keyPlaceholder: { anthropic: "sk-ant-…", xiaomi: "tp-… 或 sk-…", qwen: "sk-… 或 sk-sp-…", deepseek: "sk-…", gemini: "AIza…" },
   waitingKey: "填上 key，就会识别它属于哪个套餐，并拉取模型。",
   waitingKeySingle: "填上 key，就会验证它并拉取模型。",
   detecting: "正在识别这把 key 属于哪个套餐…",
@@ -49,12 +51,13 @@ export const zh = {
 
 export const en: CopyShape<typeof zh> = {
   pickHint: "A built-in service takes only a key; for any other, pick Custom and enter its address and format.",
-  name: { anthropic: "Anthropic", xiaomi: "Xiaomi MiMo", qwen: "Qwen", deepseek: "DeepSeek" },
+  name: { anthropic: "Anthropic", xiaomi: "Xiaomi MiMo", qwen: "Qwen", deepseek: "DeepSeek", gemini: "Gemini" },
   blurb: {
     anthropic: "Claude models, from Anthropic's own API",
     xiaomi: "MiMo models, on a Token Plan or pay-as-you-go",
     qwen: "Alibaba Cloud Model Studio: Qwen, and GLM, DeepSeek and more there",
     deepseek: "DeepSeek's own API; its models are fetched with the key",
+    gemini: "Gemini models, from Google AI Studio's OpenAI-compatible API",
   },
   custom: "Custom",
   customMark: "Custom",
@@ -69,10 +72,11 @@ export const en: CopyShape<typeof zh> = {
     "qwen:payg-cn": "Pay-as-you-go · Beijing",
     "qwen:payg-intl": "Pay-as-you-go · International",
     "deepseek:api": "DeepSeek API",
+    "gemini:api": "Gemini API",
   },
   planLabel: "Plan",
   planHint: "Found from the key once it is entered; you can also pick it.",
-  keyPlaceholder: { anthropic: "sk-ant-…", xiaomi: "tp-… or sk-…", qwen: "sk-… or sk-sp-…", deepseek: "sk-…" },
+  keyPlaceholder: { anthropic: "sk-ant-…", xiaomi: "tp-… or sk-…", qwen: "sk-… or sk-sp-…", deepseek: "sk-…", gemini: "AIza…" },
   waitingKey: "Enter the key to find which plan it belongs to and fetch the models.",
   waitingKeySingle: "Enter the key to check it and fetch the models.",
   detecting: "Finding which plan this key belongs to…",

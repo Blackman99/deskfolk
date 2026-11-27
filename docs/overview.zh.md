@@ -50,7 +50,7 @@ macOS 13（Ventura）或更新版本，支持 Apple 芯片与 Intel。Windows x6
 
 - **要准备什么**：下面三样有一样就能开始。
   - **本机 Agent，不用 API key**：这台电脑上装好并登录的 Claude Code、Codex、Grok、OpenCode、Antigravity、ZCode（经社区的 `zcode-acp` 桥），或你在设置里加的任何讲 ACP 的程序。向导第 2 步列出找到且已登录的那些，选一个，Bot 就用你自己的登录和订阅跑（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。
-  - **模型端点**：内置 Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek，贴上 key 应用自己认出套餐；另有 OpenAI、OpenRouter 预设，或任意 OpenAI 兼容、Anthropic 兼容的地址。
+  - **模型端点**：内置 Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek、Gemini，贴上 key 应用自己认出套餐；另有 OpenAI、OpenRouter 预设，或任意 OpenAI 兼容、Anthropic 兼容的地址。
   - **本机模型服务**：Ollama、LM Studio、llama.cpp 的 `llama-server`，不用 key（见[用本地模型](#用本地模型)）。
 - **下载**：[Releases](https://github.com/Blackman99/deskfolk/releases/latest) 提供 `.dmg`，不用另装别的。从 0.1.0-rc.16 起用 Developer ID 签名并经 Apple 公证，双击即可打开（旧版本见 [Gatekeeper FAQ](gatekeeper.zh.md)）。从 0.5.0 起 Mac 上是原生版（[ADR 0107](adr/0107-spike-native-desktop-on-nsh.md)），需要 macOS 14 或更新；macOS 13 请留在 [0.4.0](https://github.com/Blackman99/deskfolk/releases/tag/v0.4.0)。Windows 上运行同一个 Release 里的 `Deskfolk_<版本>_x64-setup.exe`（从 0.5.0 起也是原生版）：按当前用户安装，不要管理员权限；安装包没签名，SmartScreen 会提示未知发布者，点「更多信息」→「仍要运行」。
 - **更新**：有新版本时，桌面侧栏底部带文字的「设置」上出现小红点，在 设置 → 关于 里下载并安装（Windows 和 Linux 上暂时是「关于」跳到浏览器下载）。外观在 设置 → 通用 → 外观。
@@ -71,7 +71,7 @@ pnpm dev
 
 拿源码版干要跑几个小时的活（比如多镜头视频）时：开发运行时没有 watch 模式，改代码或 `git pull` 都不会重启守护进程，进行中的轮次不会被打断；要换上新代码，等没有活轮时自己重启它。想让源码版用你自己的对话、设置和已配对的手机（17890 端口、你的数据目录）时，先退出装好的应用，再跑 `bun apps/desktop-nsh/scripts/dev.ts --stable-instance`（见[原生应用说明](../apps/desktop-nsh/README.md)）。
 
-首次使用：启动向导跟着这台电脑的系统语言用中文或英文（右上角能切换，设置里也能改），会带你选一个工作区目录、连接模型，再选一种工作方式（通用、视频或代码），从为它备好的 Bot 模板里勾几个一起建好，两个以上还建一个群；之后再让它们把其他队友建出来。已经在终端里用 Claude Code、Codex、Antigravity 或 Grok 的话，最后一步也可以改成挑一个它的会话，在项目会话里接着聊。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的本机 Agent（Claude Code、Codex、Grok……）：这样不用端点，建的 Bot 都由这个 Agent 跑，应用自己的调用也走它的模型（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek 是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](adr/0072-built-in-connectors.md)。
+首次使用：启动向导跟着这台电脑的系统语言用中文或英文（右上角能切换，设置里也能改），会带你选一个工作区目录、连接模型，再选一种工作方式（通用、视频或代码），从为它备好的 Bot 模板里勾几个一起建好，两个以上还建一个群；之后再让它们把其他队友建出来。已经在终端里用 Claude Code、Codex、Antigravity 或 Grok 的话，最后一步也可以改成挑一个它的会话，在项目会话里接着聊。模型可以是端点加密钥（预设或自定义地址），也可以直接用这台电脑上装好并登录的本机 Agent（Claude Code、Codex、Grok……）：这样不用端点，建的 Bot 都由这个 Agent 跑，应用自己的调用也走它的模型（[ADR 0078](adr/0078-setup-on-claude-code.md)、[ADR 0079](adr/0079-local-agents.md)）。Anthropic、小米 MiMo、千问（阿里云百炼）、DeepSeek、Gemini 是内置的：选它、贴上 key，应用会找出这把 key 属于那家的哪个套餐。没限定工作区的 Anthropic 个人 key 还要填 Anthropic 工作区 ID（`wrkspc_…`，在 Console → Settings → Workspaces 里），见 [ADR 0072](adr/0072-built-in-connectors.md)。
 
 建好之后打开和 Bot 的私聊，第一条起手提示是「🌙 交出去，明早看结果」：点一下就把一句话填进输入框，让 Bot 现在把工作区看一遍、写一页简报放进 `briefs/`，再建一个每天早上 9 点的日程照样写新的。看过再发；明早回来，简报已经在那了。
 

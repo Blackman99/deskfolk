@@ -17,6 +17,7 @@ const CONNECTOR_TILE: Record<VendorId, Tile> = {
   xiaomi: { background: "#ff6900", color: "#ffffff", padding: 0.1 },
   qwen: { background: "#ffffff" },
   deepseek: { background: "#ffffff", padding: 0.12 },
+  gemini: { background: "#ffffff", padding: 0.14 },
   openai: { background: "#ffffff", color: "#000000" },
   groq: { background: "#f55036", color: "#ffffff" },
   siliconflow: { background: "#ffffff", color: "#6e29f6" },
