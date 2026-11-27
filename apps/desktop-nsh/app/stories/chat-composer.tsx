@@ -37,6 +37,7 @@ const QUOTED = { id: "m1", author: USER_MEMBER, body: "把周报第二段再收�
 
 export default function ChatComposer() {
   const draft = signal("");
+  const boxH = signal(0);
   const sent = signal(0);
   const lastSent = signal("—");
   const chips = signal("—");
@@ -67,21 +68,23 @@ export default function ChatComposer() {
           />
           <VoiceStatus voice={voice} />
           <View class="flex-row items-end gap-2">
-            <ComposerEditor
-              value={draft()}
-              onChange={(text) => draft.set(text)}
-              placeholder="写点什么…"
-              editable={editable()}
-              isGroup
-              mentionBots={BOTS}
-              onHandle={(h) => (handle = h)}
-              onSend={() => {
-                if (!draft().trim()) return;
-                lastSent.set(draft());
-                sent.set(sent() + 1);
-                draft.set("");
-              }}
-            />
+            <View class="flex-1 min-w-0" onLayout={(e) => boxH.set(Math.round(e.bounds.size.height))}>
+              <ComposerEditor
+                value={draft()}
+                onChange={(text) => draft.set(text)}
+                placeholder="写点什么…"
+                editable={editable()}
+                isGroup
+                mentionBots={BOTS}
+                onHandle={(h) => (handle = h)}
+                onSend={() => {
+                  if (!draft().trim()) return;
+                  lastSent.set(draft());
+                  sent.set(sent() + 1);
+                  draft.set("");
+                }}
+              />
+            </View>
             <VoiceButton voice={voice} disabled={!editable()} />
             <SendButton
               connected
@@ -96,6 +99,7 @@ export default function ChatComposer() {
           </View>
         </View>
         <Text testID="draft" class="text-[12px] text-ink-muted">{`draft:${draft()}`}</Text>
+        <Text testID="box-height" class="text-[12px] text-ink-muted">{`box-h:${boxH()}`}</Text>
         <Text testID="last-sent" class="text-[12px] text-ink-muted">{`last:${lastSent()}`}</Text>
         <Text testID="chips" class="text-[12px] text-ink-muted">{`chips:${chips()}`}</Text>
         <Button testID="read-chips" variant="secondary" onPress={() => chips.set(handle ? handle.chips().map((c) => `${c.id}=${c.label}`).join(",") || "none" : "no-handle")}>read chips</Button>

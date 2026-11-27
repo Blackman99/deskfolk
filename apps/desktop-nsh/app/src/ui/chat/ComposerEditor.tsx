@@ -152,18 +152,7 @@ export function ComposerEditor(props: {
     const doc = docOf();
     return { selection, caret: selection.end, doc, text: textOfDoc(doc) };
   });
-  const contentHeight = computed(() => {
-    tick();
-    const doc = docOf();
-    const end = offsetToPos(doc, Number.MAX_SAFE_INTEGER);
-    try {
-      const at = session.coordsAtPos(end) as { y: number; height: number } | null;
-      if (at) return Math.max(0, at.y + at.height - 6);
-    } catch {
-      // Not laid out yet: the lines count stands in.
-    }
-    return textOfDoc(doc).split("\n").length * 22;
-  });
+  const contentHeight = signal(0);
   const box = (): number => boxHeight(contentHeight(), phone(), viewportSize().height);
   const at = () => view().caret;
   const editable = () => props.editable;
@@ -466,6 +455,7 @@ export function ComposerEditor(props: {
         placeholder={props.placeholder}
         accessibilityLabel={props.placeholder}
         editable={editable()}
+        onContentSizeChange={(e) => contentHeight.set(e.contentSize.height)}
         onPasteFiles={pasted}
         classes={{
           content: phone() ? "text-[15px] px-1 py-[9px]" : "text-[14px] pl-1 pr-[6px] py-[6px]",

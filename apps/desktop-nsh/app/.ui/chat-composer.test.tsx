@@ -21,6 +21,27 @@ test("Enter sends the draft and clears the box; an empty one sends nothing", asy
   await app.waitUntil(() => draft(app) === "");
 });
 
+test("a newline grows the box to its settled height at once; typing on the new line does not change it", async () => {
+  const app = await open();
+  const height = () => Number((app.texts().find((t) => t.startsWith("box-h:")) ?? "box-h:0").slice("box-h:".length));
+  await app.type("id:composer-input", "hello");
+  await app.waitUntil(() => draft(app) === "hello");
+  const oneLine = height();
+  expect(oneLine).toBeGreaterThanOrEqual(34);
+  await app.keyboard.press("shift+enter");
+  await app.waitUntil(() => draft(app) === "hello\n" && height() > oneLine);
+  const twoLines = height();
+  await app.type("id:composer-input", "world");
+  await app.waitUntil(() => draft(app) === "hello\nworld");
+  expect(height()).toBe(twoLines);
+  await app.keyboard.press("shift+enter");
+  await app.waitUntil(() => draft(app) === "hello\nworld\n" && height() > twoLines);
+  const threeLines = height();
+  await app.type("id:composer-input", "你好");
+  await app.waitUntil(() => draft(app) === "hello\nworld\n你好");
+  expect(height()).toBe(threeLines);
+});
+
 test("a locked box takes nothing", async () => {
   const app = await open();
   await app.press("id:toggle-editable");
