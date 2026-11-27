@@ -55,4 +55,5 @@ export const stories: Record<string, Story> = {
   "phone-web": () => import("./phone-web"),
   interface: () => import("./interface"),
   tip: () => import("./tip"),
+  "git-changes": () => import("./git-changes"),
 };

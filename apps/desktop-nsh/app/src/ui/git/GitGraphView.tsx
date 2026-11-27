@@ -15,7 +15,6 @@ import {
   List,
   Path2D,
   safeArea,
-  Scroll,
   signal,
   Text,
   token,
@@ -24,17 +23,31 @@ import {
   type CanvasRenderingContext2D,
 } from "nsh";
 import { Input } from "nsh/base";
+import { buildGitChangeTree, flattenGitChangeTreeFiles } from "../../m/git/change-tree.ts";
+import {
+  clampGitCommitFilesHeight,
+  clampGitCommitFilesWidth,
+  clampGitGraphListWidth,
+  isCommitFilesSideBySide,
+  loadGitCommitFilesHeight,
+  loadGitCommitFilesWidth,
+  loadGitGraphListWidth,
+  saveGitCommitFilesHeight,
+  saveGitCommitFilesWidth,
+  saveGitGraphListWidth,
+} from "../../m/git/graph-layout.ts";
 import { buildCommitGraph, type GraphRowLayout } from "../../m/git/graph-lanes.ts";
-import { fileIconFor } from "../../m/overlays/file-icon.ts";
 import { showToast } from "../../m/toast.svelte.ts";
 import { copy, runtime } from "../../runtime";
 import { Button } from "../Button";
 import { EmptyState } from "../EmptyState";
 import { Icon } from "../Icon";
-import { FileIcon } from "../overlays/FileIcon";
+import { settled } from "../workbench/drag-settle";
+import { GitChangesTree } from "./GitChangesTree";
 import { GitDiffPager } from "./GitDiffPager";
+import { GitSplitHandle } from "./GitSplitHandle";
 import { drillIn, registerGitLevels, type GitHost } from "./git-levels";
-import { formatRelativeIso, laneStrokeColor, splitRepoPath, statusBadgeClass } from "./git-ui-helpers";
+import { formatRelativeIso, laneStrokeColor } from "./git-ui-helpers";
 
 const COL_W = 14;
 const PAD_X = 10;
@@ -142,6 +155,25 @@ export function GitGraphView(props: {
   const fullDiffKey = signal<string | null>(null);
   const narrowStep = signal<"list" | "detail" | "diff">("list");
 
+  const viewWidth = signal(Number.POSITIVE_INFINITY);
+  const inspectorWidth = signal(0);
+  const commitBodyHeight = signal(Number.POSITIVE_INFINITY);
+  const graphListPreferred = signal(loadGitGraphListWidth());
+  const commitFilesWidthPreferred = signal(loadGitCommitFilesWidth());
+  const commitFilesHeightPreferred = signal(loadGitCommitFilesHeight());
+
+  const graphListWidth = computed(() => clampGitGraphListWidth(graphListPreferred(), viewWidth()));
+  const effectiveInspectorWidth = computed(() =>
+    inspectorWidth() > 0 ? inspectorWidth() : Number.isFinite(viewWidth()) ? Math.max(0, viewWidth() - graphListWidth()) : 640,
+  );
+  const filesSideBySide = settled(() => isCommitFilesSideBySide(effectiveInspectorWidth(), props.narrow));
+  const commitFilesWidth = computed(() => clampGitCommitFilesWidth(commitFilesWidthPreferred(), effectiveInspectorWidth()));
+  const commitFilesHeight = computed(() => clampGitCommitFilesHeight(commitFilesHeightPreferred(), commitBodyHeight()));
+
+  let graphDragOrigin = 0;
+  let filesWidthDragOrigin = 0;
+  let filesHeightDragOrigin = 0;
+
   const stepDepth = () => (narrowStep() === "diff" ? 2 : narrowStep() === "detail" ? 1 : 0);
 
   effect(() => {
@@ -231,7 +263,8 @@ export function GitGraphView(props: {
         .then((res) => {
           if (req !== detailSeq || ac.signal.aborted) return;
           detail.set(res);
-          selectedFile.set(res.files[0]?.path ?? null);
+          const first = flattenGitChangeTreeFiles(buildGitChangeTree(res.files))[0];
+          selectedFile.set(first?.path ?? res.files[0]?.path ?? null);
         })
         .catch(() => {
           if (req === detailSeq && !ac.signal.aborted) detail.set(null);
@@ -292,12 +325,20 @@ export function GitGraphView(props: {
     );
   });
 
-  const detailFiles = () => detail()?.files ?? [];
+  const detailTree = computed(() => buildGitChangeTree(detail()?.files ?? []));
+  const detailFiles = computed(() => flattenGitChangeTreeFiles(detailTree()));
   const selectedFileIndex = computed(() => {
     const p = selectedFile();
     if (!p) return -1;
     return detailFiles().findIndex((f) => f.path === p);
   });
+  const selectCommitFile = (path: string) => {
+    fullDiffKey.set(null);
+    selectedFile.set(path);
+    if (props.narrow) {
+      drillIn(isPage(), () => narrowStep.set("diff"));
+    }
+  };
   const stepCommitFile = (delta: number) => {
     const next = detailFiles()[selectedFileIndex() + delta];
     if (next) {
@@ -322,7 +363,8 @@ export function GitGraphView(props: {
   const graphListPane = () => (
     <View
       testID="git-graph-list-pane"
-      class={`${props.narrow ? "flex-1" : "w-[360px] shrink-0 border-r border-line"} min-h-0 bg-sidebar-bg`}
+      class={`${props.narrow ? "flex-1" : "shrink-0"} min-h-0 bg-sidebar-bg`}
+      style={props.narrow ? undefined : { width: graphListWidth() }}
     >
       <View class="px-[8px] py-[8px] gap-[6px] border-b border-line-subtle shrink-0">
         <View class="flex-row items-center gap-[6px]">
@@ -463,7 +505,11 @@ export function GitGraphView(props: {
   );
 
   const commitInspector = () => (
-    <View testID="git-commit-detail" class="flex-1 min-h-0 min-w-0 bg-pane">
+    <View
+      testID="git-commit-detail"
+      class="flex-1 min-h-0 min-w-0 bg-pane"
+      onLayout={(e) => inspectorWidth.set(e.bounds.size.width)}
+    >
       <If when={detailLoading() && !detail()}>
         <View class="flex-1 items-center justify-center p-6">
           <Text class="text-[12px] text-ink-muted">{t().git.loading}</Text>
@@ -517,76 +563,89 @@ export function GitGraphView(props: {
                   <Text class="text-[11px] text-ink-muted">{t().git.graph.changedFiles(d().files.length)}</Text>
                 </View>
               </View>
+            </If>
 
-              <Scroll
-                class={props.narrow ? "flex-1 min-h-0" : "max-h-[170px] border-b border-line-subtle shrink-0"}
-                contentClass="p-[6px] gap-[2px]"
-                contentStyle={isPage() && props.narrow ? { paddingBottom: 10 + safeArea().bottom } : undefined}
-              >
-                <Each of={d().files.slice()} key={(f) => f.path}>
-                  {(f) => {
-                    const active = () => !props.narrow && selectedFile() === f().path;
-                    const split = () => splitRepoPath(f().path);
-                    const badge = () => statusBadgeClass(f().status);
-                    return (
-                      <View
-                        role="button"
-                        testID={`git-commit-file-${f().path}`}
-                        onPress={() => {
-                          fullDiffKey.set(null);
-                          selectedFile.set(f().path);
-                          if (props.narrow) {
-                            drillIn(isPage(), () => narrowStep.set("diff"));
-                          }
-                        }}
-                        class={`cursor-pointer select-none flex-row items-center gap-[8px] rounded-(--radius-sm) ${
-                          props.narrow ? "px-[10px] min-h-[48px] py-[8px] active:bg-row-hover" : "px-[8px] py-[4px]"
-                        } ${active() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
-                      >
-                        <FileIcon icon={fileIconFor(f().path)} size={16} />
-                        <View class="flex-1 min-w-0">
-                          <Text class={`${props.narrow ? "text-[13px]" : "text-[12px]"} shrink min-w-0 line-clamp-1 ${active() ? "font-semibold text-brand" : "text-ink"}`}>
-                            {props.narrow ? split().name : split().dir ? `${split().dir}/${split().name}` : split().name}
-                          </Text>
-                          <If when={props.narrow && split().dir}>
-                            <Text class="text-[11px] text-ink-muted line-clamp-1">{split().dir}</Text>
-                          </If>
-                        </View>
-                        <View class="flex-row items-center gap-[4px] ml-auto shrink-0">
-                          <If when={f().additions !== null && f().additions! > 0}>
-                            <Text class="font-mono text-[10.5px] text-ok-text">{`+${f().additions}`}</Text>
-                          </If>
-                          <If when={f().deletions !== null && f().deletions! > 0}>
-                            <Text class="font-mono text-[10.5px] text-danger-text">{`-${f().deletions}`}</Text>
-                          </If>
-                          <View class={`w-[20px] h-[20px] rounded-(--radius-xs) items-center justify-center ${badge().bg}`}>
-                            <Text class={`font-mono text-[10px] font-bold ${badge().text}`}>{f().status}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    );
+            <View
+              testID="git-commit-body"
+              class={`flex-1 min-h-0 min-w-0 ${filesSideBySide() ? "flex-row" : "flex-col"}`}
+              onLayout={(e) => commitBodyHeight.set(e.bounds.size.height || Number.POSITIVE_INFINITY)}
+            >
+              <If when={!props.narrow || narrowStep() === "detail"}>
+                <View
+                  testID="git-commit-files-pane"
+                  class={`${
+                    props.narrow ? "flex-1 min-h-0" : filesSideBySide() ? "shrink-0 min-h-0" : "shrink-0 min-w-0"
+                  } bg-sidebar-bg`}
+                  style={
+                    props.narrow
+                      ? undefined
+                      : filesSideBySide()
+                        ? { width: commitFilesWidth() }
+                        : { height: commitFilesHeight() }
+                  }
+                >
+                  <GitChangesTree
+                    nodes={detailTree()}
+                    selectedPath={selectedFile()}
+                    narrow={props.narrow}
+                    resetKey={d().oid}
+                    testID="git-commit-files-tree"
+                    dirTestIdPrefix="git-commit-dir-"
+                    fileTestIdPrefix="git-commit-file-"
+                    bottomInset={isPage() && props.narrow ? safeArea().bottom : 0}
+                    onSelectFile={selectCommitFile}
+                  />
+                </View>
+              </If>
+
+              <If when={!props.narrow && filesSideBySide()}>
+                <GitSplitHandle
+                  axis="vertical"
+                  testID="git-commit-files-split"
+                  label={t().git.graph.resizeFilesWidth}
+                  onDragStart={() => {
+                    filesWidthDragOrigin = commitFilesWidth();
                   }}
-                </Each>
-              </Scroll>
-            </If>
+                  onDragDelta={(dx) => {
+                    commitFilesWidthPreferred.set(clampGitCommitFilesWidth(filesWidthDragOrigin + dx, effectiveInspectorWidth()));
+                  }}
+                  onDragEnd={() => saveGitCommitFilesWidth(commitFilesWidthPreferred())}
+                />
+              </If>
 
-            <If when={!props.narrow || narrowStep() === "diff"}>
-              <GitDiffPager
-                diff={fileDiff()}
-                loading={fileDiffLoading()}
-                error={null}
-                host={props.host}
-                narrow={props.narrow}
-                index={selectedFileIndex()}
-                total={detailFiles().length}
-                onPrev={() => stepCommitFile(-1)}
-                onNext={() => stepCommitFile(1)}
-                onLoadFull={
-                  canLoadFull() ? () => fullDiffKey.set(`${selectedOid() ?? ""}\0${selectedFile() ?? ""}`) : undefined
-                }
-                onBack={props.narrow ? () => narrowStep.set("detail") : undefined}
-              />
-            </If>
+              <If when={!props.narrow && !filesSideBySide()}>
+                <GitSplitHandle
+                  axis="horizontal"
+                  testID="git-commit-files-split-v"
+                  label={t().git.graph.resizeFilesHeight}
+                  onDragStart={() => {
+                    filesHeightDragOrigin = commitFilesHeight();
+                  }}
+                  onDragDelta={(dy) => {
+                    commitFilesHeightPreferred.set(clampGitCommitFilesHeight(filesHeightDragOrigin + dy, commitBodyHeight()));
+                  }}
+                  onDragEnd={() => saveGitCommitFilesHeight(commitFilesHeightPreferred())}
+                />
+              </If>
+
+              <If when={!props.narrow || narrowStep() === "diff"}>
+                <GitDiffPager
+                  diff={fileDiff()}
+                  loading={fileDiffLoading()}
+                  error={null}
+                  host={props.host}
+                  narrow={props.narrow}
+                  index={selectedFileIndex()}
+                  total={detailFiles().length}
+                  onPrev={() => stepCommitFile(-1)}
+                  onNext={() => stepCommitFile(1)}
+                  onLoadFull={
+                    canLoadFull() ? () => fullDiffKey.set(`${selectedOid() ?? ""}\0${selectedFile() ?? ""}`) : undefined
+                  }
+                  onBack={props.narrow ? () => narrowStep.set("detail") : undefined}
+                />
+              </If>
+            </View>
           </View>
         )}
       </If>
@@ -594,8 +653,26 @@ export function GitGraphView(props: {
   );
 
   return (
-    <View testID="git-graph-view" class="flex-1 min-h-0 flex-row">
+    <View
+      testID="git-graph-view"
+      class="flex-1 min-h-0 flex-row"
+      onLayout={(e) => viewWidth.set(e.bounds.size.width || Number.POSITIVE_INFINITY)}
+    >
       <If when={!props.narrow || narrowStep() === "list"}>{graphListPane()}</If>
+      <If when={!props.narrow}>
+        <GitSplitHandle
+          axis="vertical"
+          testID="git-graph-split"
+          label={t().git.graph.resizeCommits}
+          onDragStart={() => {
+            graphDragOrigin = graphListWidth();
+          }}
+          onDragDelta={(dx) => {
+            graphListPreferred.set(clampGitGraphListWidth(graphDragOrigin + dx, viewWidth()));
+          }}
+          onDragEnd={() => saveGitGraphListWidth(graphListPreferred())}
+        />
+      </If>
       <If when={!props.narrow || narrowStep() !== "list"}>{commitInspector()}</If>
     </View>
   );

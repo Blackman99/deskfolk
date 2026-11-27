@@ -1,19 +1,24 @@
 /**
  * Working tree & branch-vs-mainline changes view (ADR 0118).
- * Wide panes show file list + `GitDiffViewer` side by side; narrow panes drill into `GitDiffPager`
- * wired into `PageRoute`'s level stack (`stepIn` / `holdLevels`) with real `AbortSignal` cancellation
- * and remote 200 KiB preview caps.
+ * Wide panes show a resizable file tree + `GitDiffViewer` side by side; narrow panes drill into
+ * `GitDiffPager` wired into `PageRoute`'s level stack (`stepIn` / `holdLevels`) with real
+ * `AbortSignal` cancellation and remote 200 KiB preview caps.
  */
 import type { GitChangeFile, GitChangesResponse, GitDiffBase, GitDiffResponse, GitRepoSummary } from "@real-bot/protocol";
-import { cleanup, computed, effect, List, safeArea, Scroll, signal, Text, untracked, View } from "nsh";
+import { cleanup, computed, effect, safeArea, Scroll, signal, Text, untracked, View } from "nsh";
 import { Input } from "nsh/base";
-import { fileIconFor } from "../../m/overlays/file-icon.ts";
+import { buildGitChangeTree, flattenGitChangeTreeFiles } from "../../m/git/change-tree.ts";
+import {
+  clampGitChangesTreeWidth,
+  loadGitChangesTreeWidth,
+  saveGitChangesTreeWidth,
+} from "../../m/git/changes-tree-width.ts";
 import { copy, runtime } from "../../runtime";
 import { EmptyState } from "../EmptyState";
-import { FileIcon } from "../overlays/FileIcon";
+import { GitChangesTree } from "./GitChangesTree";
 import { GitDiffPager } from "./GitDiffPager";
+import { GitSplitHandle } from "./GitSplitHandle";
 import { drillIn, registerGitLevels, type GitHost } from "./git-levels";
-import { splitRepoPath, statusBadgeClass } from "./git-ui-helpers";
 
 const BASES: readonly GitDiffBase[] = ["working", "staged", "unstaged", "merge-base"];
 const REMOTE_DIFF_PREVIEW_BYTES = 200 * 1024;
@@ -61,6 +66,11 @@ export function GitChangesView(props: {
   const narrowDetail = signal(false);
   const fullDiffRequestedFor = signal<string | null>(null);
 
+  const viewWidth = signal(Number.POSITIVE_INFINITY);
+  const treePreferred = signal(loadGitChangesTreeWidth());
+  const treeWidth = computed(() => clampGitChangesTreeWidth(treePreferred(), viewWidth()));
+  let dragOriginWidth = 0;
+
   effect(() => {
     props.onDrillDepthChange?.(props.narrow && narrowDetail() ? 1 : 0);
   });
@@ -98,7 +108,8 @@ export function GitChangesView(props: {
           data.set(res);
           const cur = selectedPath();
           if (!cur || !res.files.some((f) => f.path === cur)) {
-            selectedPath.set(res.files[0]?.path ?? null);
+            const first = flattenGitChangeTreeFiles(buildGitChangeTree(res.files))[0];
+            selectedPath.set(first?.path ?? res.files[0]?.path ?? null);
           }
         })
         .catch((err) => {
@@ -162,14 +173,25 @@ export function GitChangesView(props: {
     return files.filter((f) => f.path.toLowerCase().includes(q) || (f.old_path?.toLowerCase().includes(q) ?? false));
   });
 
+  const treeNodes = computed(() => buildGitChangeTree(filtered()));
+  const orderedFiles = computed(() => flattenGitChangeTreeFiles(treeNodes()));
+
   const selectedIndex = computed(() => {
     const p = selectedPath();
     if (!p) return -1;
-    return filtered().findIndex((f) => f.path === p);
+    return orderedFiles().findIndex((f) => f.path === p);
   });
 
+  const selectFile = (path: string) => {
+    fullDiffRequestedFor.set(null);
+    selectedPath.set(path);
+    if (props.narrow) {
+      drillIn(isPage(), () => narrowDetail.set(true));
+    }
+  };
+
   const stepFile = (delta: number) => {
-    const list = filtered();
+    const list = orderedFiles();
     const nextIdx = selectedIndex() + delta;
     const next = list[nextIdx];
     if (next) {
@@ -200,7 +222,8 @@ export function GitChangesView(props: {
   const listPane = () => (
     <View
       testID="git-changes-list-pane"
-      class={`${props.narrow ? "flex-1" : "w-[250px] shrink-0 border-r border-line"} min-h-0 bg-sidebar-bg`}
+      class={`${props.narrow ? "flex-1" : "shrink-0"} min-h-0 bg-sidebar-bg`}
+      style={props.narrow ? undefined : { width: treeWidth() }}
     >
       <View class="px-[8px] pt-[8px] pb-[6px] gap-[6px] border-b border-line-subtle shrink-0">
         <If
@@ -315,64 +338,14 @@ export function GitChangesView(props: {
       </If>
 
       <If when={filtered().length > 0}>
-        <List
-          testID="git-changes-list"
-          each={filtered()}
-          keyExtractor={(item) => item.path}
-          estimatedItemSize={props.narrow ? 52 : 42}
-          class="flex-1 min-h-0"
-          contentStyle={{
-            paddingTop: 4,
-            paddingBottom: 8 + (isPage() && props.narrow ? safeArea().bottom : 0),
-            paddingLeft: 4,
-            paddingRight: 4,
-            gap: 2,
-          }}
-        >
-          {(item) => {
-            const active = () => !props.narrow && selectedPath() === item().path;
-            const split = () => splitRepoPath(item().path);
-            const badge = () => statusBadgeClass(item().status);
-            return (
-              <View
-                role="button"
-                testID={`git-file-${item().path}`}
-                accessibilityState={{ selected: active() }}
-                onPress={() => {
-                  fullDiffRequestedFor.set(null);
-                  selectedPath.set(item().path);
-                  if (props.narrow) {
-                    drillIn(isPage(), () => narrowDetail.set(true));
-                  }
-                }}
-                class={`cursor-pointer select-none flex-row items-center gap-[8px] rounded-(--radius-sm) ${
-                  props.narrow ? "px-[10px] min-h-[52px] py-[8px] active:bg-row-hover" : "px-[8px] py-[6px]"
-                } ${active() ? "bg-accent-tint" : "hover:bg-row-hover"}`}
-              >
-                <FileIcon icon={fileIconFor(item().path)} size={16} />
-                <View class="flex-1 min-w-0 gap-[1px]">
-                  <Text class={`${props.narrow ? "text-[13.5px]" : "text-[12px]"} line-clamp-1 ${active() ? "font-semibold text-brand" : "text-ink"}`}>
-                    {split().name}
-                  </Text>
-                  <If when={split().dir}>
-                    <Text class={`${props.narrow ? "text-[11px]" : "text-[10px]"} text-ink-muted line-clamp-1`}>{split().dir}</Text>
-                  </If>
-                </View>
-                <View class="flex-row items-center gap-[4px] shrink-0">
-                  <If when={item().additions !== null && item().additions! > 0}>
-                    <Text class="font-mono text-[10.5px] text-ok-text">{`+${item().additions}`}</Text>
-                  </If>
-                  <If when={item().deletions !== null && item().deletions! > 0}>
-                    <Text class="font-mono text-[10.5px] text-danger-text">{`-${item().deletions}`}</Text>
-                  </If>
-                  <View class={`w-[20px] h-[20px] rounded-(--radius-xs) items-center justify-center ${badge().bg}`}>
-                    <Text class={`font-mono text-[10px] font-bold ${badge().text}`}>{item().status}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          }}
-        </List>
+        <GitChangesTree
+          nodes={treeNodes()}
+          selectedPath={selectedPath()}
+          narrow={props.narrow}
+          filterQuery={query()}
+          bottomInset={isPage() && props.narrow ? safeArea().bottom : 0}
+          onSelectFile={selectFile}
+        />
       </If>
 
       <If when={!props.narrow}>
@@ -384,8 +357,26 @@ export function GitChangesView(props: {
   );
 
   return (
-    <View testID="git-changes-view" class="flex-1 min-h-0 flex-row">
+    <View
+      testID="git-changes-view"
+      class="flex-1 min-h-0 flex-row"
+      onLayout={(e) => viewWidth.set(e.bounds.size.width || Number.POSITIVE_INFINITY)}
+    >
       <If when={!props.narrow || !narrowDetail()}>{listPane()}</If>
+      <If when={!props.narrow}>
+        <GitSplitHandle
+          axis="vertical"
+          testID="git-changes-split"
+          label={t().git.changes.resizeTree}
+          onDragStart={() => {
+            dragOriginWidth = treeWidth();
+          }}
+          onDragDelta={(dx) => {
+            treePreferred.set(clampGitChangesTreeWidth(dragOriginWidth + dx, viewWidth()));
+          }}
+          onDragEnd={() => saveGitChangesTreeWidth(treePreferred())}
+        />
+      </If>
       <If when={!props.narrow || narrowDetail()}>
         <GitDiffPager
           diff={diff()}
@@ -394,7 +385,7 @@ export function GitChangesView(props: {
           host={props.host}
           narrow={props.narrow}
           index={selectedIndex()}
-          total={filtered().length}
+          total={orderedFiles().length}
           onPrev={() => stepFile(-1)}
           onNext={() => stepFile(1)}
           onOpenPreview={openAbsPreview}

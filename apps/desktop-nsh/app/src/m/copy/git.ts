@@ -75,6 +75,8 @@ export const zh = {
     stagedBadge: "暂存",
     conflictBadge: "冲突",
     filesTruncated: (shown: number, total: number) => `仅显示前 ${shown} 个文件（共 ${total} 个）`,
+    fileTreeLabel: "改动文件树",
+    resizeTree: "拖动调整文件树宽度",
     readOnlyHint: "只读视图 · 暂存、提交或丢弃可交给 Agent 或终端处理",
   },
   worktrees: {
@@ -104,6 +106,9 @@ export const zh = {
     copiedSha: "已复制提交 SHA",
     changedFiles: (n: number) => `改动了 ${n} 个文件`,
     backToList: "返回列表",
+    resizeCommits: "拖动调整提交列表宽度",
+    resizeFilesWidth: "拖动调整文件树宽度",
+    resizeFilesHeight: "拖动调整文件树高度",
   },
   github: {
     relatedHead: "与当前会话关联",
@@ -230,6 +235,8 @@ export const en: CopyShape<typeof zh> = {
     stagedBadge: "Staged",
     conflictBadge: "Conflict",
     filesTruncated: (shown: number, total: number) => `Showing first ${shown} of ${total} files`,
+    fileTreeLabel: "Changed files",
+    resizeTree: "Drag to resize file tree",
     readOnlyHint: "Read-only · ask the agent or use a terminal to stage, commit, or discard",
   },
   worktrees: {
@@ -259,6 +266,9 @@ export const en: CopyShape<typeof zh> = {
     copiedSha: "Commit SHA copied",
     changedFiles: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
     backToList: "Back to list",
+    resizeCommits: "Drag to resize commit list",
+    resizeFilesWidth: "Drag to resize file tree",
+    resizeFilesHeight: "Drag to resize file tree height",
   },
   github: {
     relatedHead: "Related to this session",
