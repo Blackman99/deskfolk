@@ -13,6 +13,10 @@
 - 拆文件、抽重复和改行为分开提交；副本之间的差别不要顺手统一，那份文档列了已知的、有意没动的差别。
 - `pnpm dev` 跑着时，改 daemon 在 worktree 里改，合入前确认没有活轮。
 
+## 改完之后
+
+先自己验证，再说做完了；验证时不借用户的屏幕、窗口、运行时和数据。做法见 [`docs/agents/verification.md`](docs/agents/verification.md)，包括 worktree 准备、无头界面测试、后台窗口截图（`--snapshots` 拍不出窗口服务器合成的效果）和手机网页。下结论前，以文件和进程的实际状态为准，不以任务通知为准。
+
 ## Agent skills
 
 - Issue tracker: [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)
