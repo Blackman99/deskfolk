@@ -11,6 +11,7 @@ import {
   Clipboard,
   effect,
   openUrl,
+  platform,
   safeArea,
   signal,
   Text,
@@ -21,7 +22,7 @@ import {
   type WebViewRef,
 } from "nsh";
 import { Input } from "nsh/base";
-import { resolveWebAddressInput, webUrlLabel } from "../../m/workbench/external-link-open.ts";
+import { resolveWebAddressInput, webUrlLabel, webViewUserAgent } from "../../m/workbench/external-link-open.ts";
 import { copy } from "../../runtime";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
@@ -45,7 +46,7 @@ export function WebPane(props: {
   /** The current URL shown in the address bar and used by Copy / Open in browser. */
   const currentUrl = signal(props.url);
   const addressDraft = signal(props.url);
-  const loading = signal(true);
+  const loading = signal(Boolean(props.url));
   const canGoBack = signal(false);
   const canGoForward = signal(false);
   const errorMessage = signal<string | null>(null);
@@ -69,6 +70,7 @@ export function WebPane(props: {
         loadedSrc.set(incoming);
         currentUrl.set(incoming);
         addressDraft.set(incoming);
+        loading.set(true);
         errorMessage.set(null);
       });
     }
@@ -103,6 +105,7 @@ export function WebPane(props: {
     lastReportedUrl = target;
     currentUrl.set(target);
     addressDraft.set(target);
+    loading.set(true);
     if (target === loadedSrc() && web) web.reload();
     else loadedSrc.set(target);
     props.onNavigate?.({ url: target, title: null });
@@ -158,6 +161,7 @@ export function WebPane(props: {
           icon={loading() ? "x" : "refresh"}
           size="sm"
           label={loading() ? t().webStop : t().webReload}
+          disabled={!loadedSrc()}
           onPress={() => {
             if (loading()) web?.stopLoading();
             else {
@@ -173,6 +177,9 @@ export function WebPane(props: {
             onChange={(e) => addressDraft.set(e.value)}
             onSubmit={submitAddress}
             submitBehavior="submit"
+            autoFocus={!props.url}
+            autoCapitalize="none"
+            autoCorrect={false}
             placeholder={t().webAddressPlaceholder}
             accessibilityLabel={t().webAddressLabel}
             class="h-[28px] px-[10px] rounded-(--radius-control-sm) bg-chip border border-chip-line text-[12px] text-ink"
@@ -183,6 +190,7 @@ export function WebPane(props: {
           icon={copied() ? "check" : "copy"}
           size="sm"
           label={copied() ? t().webUrlCopied : t().webCopyUrl}
+          disabled={!currentUrl()}
           onPress={copyLink}
         />
         <IconButton
@@ -190,11 +198,12 @@ export function WebPane(props: {
           icon="external"
           size="sm"
           label={t().webOpenBrowser}
+          disabled={!currentUrl()}
           onPress={openInBrowser}
         />
       </View>
 
-      <If when={loading() && webviewAvailable() !== false && !errorMessage()}>
+      <If when={loading() && Boolean(loadedSrc()) && webviewAvailable() !== false && !errorMessage()}>
         <View testID="web-pane-loading" class="h-[2px] bg-brand/70 shrink-0" />
       </If>
 
@@ -206,70 +215,92 @@ export function WebPane(props: {
               <Icon name="globe" size={20} class="tint-ink-muted" />
             </View>
             <Text class="text-[13px] text-ink-muted text-center max-w-[340px]">{t().webUnavailable}</Text>
-            <Text class="text-[12px] font-mono text-ink-muted line-clamp-1 max-w-[360px]">{webUrlLabel(currentUrl())}</Text>
-            <Button size="sm" variant="primary" icon="external" testID="web-pane-fallback-browser" onPress={openInBrowser}>
-              {t().webOpenBrowser}
-            </Button>
+            <If when={currentUrl()}>
+              {(u) => (
+                <>
+                  <Text class="text-[12px] font-mono text-ink-muted line-clamp-1 max-w-[360px]">{webUrlLabel(u())}</Text>
+                  <Button size="sm" variant="primary" icon="external" testID="web-pane-fallback-browser" onPress={openInBrowser}>
+                    {t().webOpenBrowser}
+                  </Button>
+                </>
+              )}
+            </If>
           </View>
         }
       >
-        <View class="relative flex-1 min-h-0 min-w-0">
-          <WebView
-            testID="web-pane-webview"
-            src={loadedSrc()}
-            accessibilityLabel={props.title || webUrlLabel(currentUrl())}
-            desktop={{ allowsBackForwardNavigationGestures: true }}
-            onLoadStart={(e) => {
-              errorMessage.set(null);
-              applyNavigation(e);
-            }}
-            onLoad={(e) => {
-              errorMessage.set(null);
-              applyNavigation(e);
-            }}
-            onNavigationStateChange={(e) => applyNavigation(e)}
-            onError={(e) => {
-              loading.set(false);
-              if (e.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM") {
-                webviewAvailable.set(false);
-                return;
-              }
-              errorMessage.set(e.message || t().webLoadError);
-            }}
-            ref={(node) => {
-              web = node;
-            }}
-            class="flex-1 w-full h-full"
-          />
-          <If when={errorMessage()}>
-            {(msg) => (
-              <View testID="web-pane-error" class="absolute inset-0 bg-pane items-center justify-center p-6 gap-3">
-                <View class="w-[40px] h-[40px] rounded-full bg-chip items-center justify-center">
-                  <Icon name="alert-circle" size={20} class="tint-ink-muted" />
-                </View>
-                <Text class="text-[14px] font-semibold text-ink">{t().webLoadError}</Text>
-                <Text class="text-[12px] text-ink-muted text-center max-w-[360px]">{msg()}</Text>
-                <View class="flex-row items-center gap-2 mt-1">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon="refresh"
-                    testID="web-pane-retry"
-                    onPress={() => {
-                      errorMessage.set(null);
-                      web?.reload();
-                    }}
-                  >
-                    {t().webReload}
-                  </Button>
-                  <Button size="sm" variant="primary" icon="external" testID="web-pane-error-browser" onPress={openInBrowser}>
-                    {t().webOpenBrowser}
-                  </Button>
-                </View>
+        <If
+          when={loadedSrc()}
+          else={
+            <View testID="web-pane-empty" class="flex-1 min-h-0 items-center justify-center p-6 gap-3">
+              <View class="w-[44px] h-[44px] rounded-full bg-chip items-center justify-center">
+                <Icon name="globe" size={20} class="tint-ink-muted" />
               </View>
-            )}
-          </If>
-        </View>
+              <Text class="text-[14px] font-semibold text-ink">{t().newWeb}</Text>
+              <Text class="text-[12px] text-ink-muted text-center max-w-[320px]">{t().webEmptyHint}</Text>
+            </View>
+          }
+        >
+          {(src) => (
+            <View class="relative flex-1 min-h-0 min-w-0">
+              <WebView
+                testID="web-pane-webview"
+                src={src()}
+                userAgent={webViewUserAgent(platform.os)}
+                accessibilityLabel={props.title || webUrlLabel(currentUrl())}
+                desktop={{ allowsBackForwardNavigationGestures: true }}
+                onLoadStart={(e) => {
+                  errorMessage.set(null);
+                  applyNavigation(e);
+                }}
+                onLoad={(e) => {
+                  errorMessage.set(null);
+                  applyNavigation(e);
+                }}
+                onNavigationStateChange={(e) => applyNavigation(e)}
+                onError={(e) => {
+                  loading.set(false);
+                  if (e.code === "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM") {
+                    webviewAvailable.set(false);
+                    return;
+                  }
+                  errorMessage.set(e.message || t().webLoadError);
+                }}
+                ref={(node) => {
+                  web = node;
+                }}
+                class="flex-1 w-full h-full"
+              />
+              <If when={errorMessage()}>
+                {(msg) => (
+                  <View testID="web-pane-error" class="absolute inset-0 bg-pane items-center justify-center p-6 gap-3">
+                    <View class="w-[40px] h-[40px] rounded-full bg-chip items-center justify-center">
+                      <Icon name="alert-circle" size={20} class="tint-ink-muted" />
+                    </View>
+                    <Text class="text-[14px] font-semibold text-ink">{t().webLoadError}</Text>
+                    <Text class="text-[12px] text-ink-muted text-center max-w-[360px]">{msg()}</Text>
+                    <View class="flex-row items-center gap-2 mt-1">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon="refresh"
+                        testID="web-pane-retry"
+                        onPress={() => {
+                          errorMessage.set(null);
+                          web?.reload();
+                        }}
+                      >
+                        {t().webReload}
+                      </Button>
+                      <Button size="sm" variant="primary" icon="external" testID="web-pane-error-browser" onPress={openInBrowser}>
+                        {t().webOpenBrowser}
+                      </Button>
+                    </View>
+                  </View>
+                )}
+              </If>
+            </View>
+          )}
+        </If>
       </If>
     </View>
   );

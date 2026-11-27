@@ -18,7 +18,7 @@
  * `session-drag.ts`; the interface profile is applied from `shell-state.ts` (ADR 0108).
  */
 import type { SessionSummary } from "@real-bot/protocol";
-import { cleanup, computed, effect, PanResponder, safeArea, Text, untracked, View } from "nsh";
+import { cleanup, computed, effect, PanResponder, platform, safeArea, Text, untracked, View } from "nsh";
 import { snapshot } from "../../lib/reactive";
 import { isSessionPinned } from "../../m/sidebar/pinned-sessions.ts";
 import { updateChecker } from "../../m/update-checker.svelte.ts";
@@ -199,6 +199,7 @@ function ShellBody(props: { s: ShellState }) {
                     onOpenSpend={artifact.openSpendFromUi}
                     workbench={s.wide()}
                     onNewTerminal={() => void workbench.openNewTerminal(null)}
+                    onNewWeb={platform.desktop && !runtime.hosted ? () => runtime.openWeb("") : null}
                     reattachTerminals={reattachTerminals()}
                     onReattachTerminal={workbench.reattachTerminal}
                     onOpenSettings={() => runtime.openSettings()}
@@ -231,6 +232,7 @@ function ShellBody(props: { s: ShellState }) {
                   onOpenSpend={artifact.openSpendFromUi}
                   workbench={s.wide()}
                   onNewTerminal={() => void workbench.openNewTerminal(null)}
+                  onNewWeb={platform.desktop && !runtime.hosted ? () => runtime.openWeb("") : null}
                   reattachTerminals={reattachTerminals()}
                   onReattachTerminal={workbench.reattachTerminal}
                   onOpenArchived={s.openArchivedFromRail}
@@ -410,8 +412,8 @@ function MainPages(props: { s: ShellState }) {
           )}
         </If>
       </If>
-      <If when={page() === "web" ? runtime.webUrl : null}>
-        {(url) => <WebPane host="page" url={url()} onClose={() => runtime.closeWeb()} />}
+      <If when={page() === "web"}>
+        <WebPane host="page" url={runtime.webUrl ?? ""} onClose={() => runtime.closeWeb()} />
       </If>
       <If when={page() === "chat" ? s.selected() : null}>
         {(selected) => (

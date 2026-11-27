@@ -332,7 +332,7 @@ export class ShellWorkbench {
         if (content.projectDir) return t.pane.projectFolderOf(projectDirLabel(content.projectDir));
         return content.sessionId ? t.pane.artifactsOf(this.sessionName(content.sessionId)) : t.pane.title;
       case "web":
-        return content.title?.trim() || webUrlLabel(content.url) || t.pane.web;
+        return content.title?.trim() || webUrlLabel(content.url) || t.pane.newWeb;
     }
   };
 

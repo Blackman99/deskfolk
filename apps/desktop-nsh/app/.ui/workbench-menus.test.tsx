@@ -138,8 +138,9 @@ test("the + opens the new-pane menu under it: a new terminal, the tools, then th
   const app = await open();
   await app.press("id:wb-new-tab >> nth=0");
   await app.waitFor("id:wb-new-menu");
-  for (const key of ["terminal", "workspace", "routines", "spend", "usage", "roles"]) expect(app.shows(`id:wb-new-pane-${key}`)).toBe(true);
+  for (const key of ["terminal", "web", "workspace", "routines", "spend", "usage", "roles"]) expect(app.shows(`id:wb-new-pane-${key}`)).toBe(true);
   expect(app.texts()).toContain("新建终端");
+  expect(app.texts()).toContain("新建网页");
   expect(app.texts()).toContain("可接回");
   expect(app.shows("id:wb-menu-terminal-term-1")).toBe(true);
   // Typing narrows the terminals by name or folder.

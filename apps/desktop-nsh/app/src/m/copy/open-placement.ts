@@ -16,7 +16,7 @@ export const zh = {
     roles: { name: "分工", hint: "工具里的「分工」、流程里一个环节的「改这个调用」" },
     map: { name: "任务地图", hint: "项目会话的右键菜单、窗格顶栏和标签 ⋯ 里的「地图」" },
     git: { name: "Git", hint: "项目目录菜单、会话顶栏分支与右键菜单里的「Git / 改动 / 历史 / 工作树 / GitHub」" },
-    web: { name: "网页", hint: "会话里用应用内 WebView 打开的外部链接" },
+    web: { name: "网页", hint: "会话输出里的外链、标签栏「+」和工具里的「新建网页」" },
   },
   groups: { tabs: "标签页", split: "分屏：新开一块", side: "相邻窗格：有就放进去，没有再分出", float: "浮窗" },
   placements: {
@@ -55,7 +55,7 @@ export const en: CopyShape<typeof zh> = {
     roles: { name: "Roles", hint: "Roles in Tools, and “Change this call” on a step of the flow" },
     map: { name: "Task map", hint: "Map in a project session's context menu, its pane header and its tab's ⋯" },
     git: { name: "Git", hint: "Git, changes, history, worktrees and GitHub from a project's menu or header" },
-    web: { name: "Web page", hint: "External links from conversations opened in the in-app WebView" },
+    web: { name: "Web page", hint: "External links in replies, the tab bar +, and New web page in Tools" },
   },
   groups: { tabs: "Tabs", split: "Split: a new pane", side: "Neighbouring pane: into it, or split one off", float: "Floating" },
   placements: {

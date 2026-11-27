@@ -25,7 +25,7 @@ import { rovingMenu } from "./menu-roving";
 import { ToolsTerminalMenu, type TerminalToReattach } from "./ToolsTerminalMenu";
 
 export type { TerminalToReattach };
-export type ToolsCurrent = { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; screen?: boolean; workspace?: boolean; archived?: boolean };
+export type ToolsCurrent = { routines?: boolean; spend?: boolean; usage?: boolean; roles?: boolean; terminal?: boolean; web?: boolean; screen?: boolean; workspace?: boolean; archived?: boolean };
 /** How long the pointer rests on a row before the 终端 level opens or closes for it. */
 const HOVER_INTENT = 90;
 
@@ -57,6 +57,8 @@ export function ToolsMenu(props: {
   /** Roles (ADR 0083): the app's own calls, their models and prompts, as a page of its own. */
   onOpenRoles?: (() => void) | null;
   onOpenTerminal: () => void;
+  /** Open a new in-app WebView tab/page; null on hosted/phone web where WebView is unavailable. */
+  onOpenWeb?: (() => void) | null;
   /**
    * The sessions no workbench tab shows — one the phone started, one Reset Layout left — listed
    * under 可接回 in the 终端 level; a tab's own shell is never one of them. With
@@ -92,6 +94,7 @@ export function ToolsMenu(props: {
     "spend",
     ...(props.onOpenUsage ? ["usage"] : []),
     "terminal",
+    ...(props.onOpenWeb ? ["web"] : []),
     ...(props.onOpenScreen ? ["screen"] : []),
     ...(props.onOpenRoles ? ["roles"] : []),
     "archived",
@@ -200,6 +203,9 @@ export function ToolsMenu(props: {
           () => <Icon name="chevron-right" size={12} class="tint-ink-muted shrink-0" />,
           true,
         )}
+      </If>
+      <If when={props.onOpenWeb}>
+        {(open) => entry("web", "globe", () => (props.pages ? copy().pane.web : copy().pane.newWeb), () => current().web, () => open()())}
       </If>
       <If when={props.onOpenScreen}>
         {(open) => entry("screen", "monitor", () => screenCopy(copy(), props.screenHost ?? "mac").title, () => current().screen, () => open()())}

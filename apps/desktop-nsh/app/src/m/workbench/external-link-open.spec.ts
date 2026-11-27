@@ -8,6 +8,7 @@ import {
   resolveWebAddressInput,
   saveExternalLinkOpen,
   webUrlLabel,
+  webViewUserAgent,
 } from "./external-link-open.ts";
 
 afterEach(() => {
@@ -51,4 +52,12 @@ test("normalizeWebUrl and resolveWebAddressInput accept http(s) and refuse unsaf
 test("webUrlLabel returns a clean host without www", () => {
   expect(webUrlLabel("https://www.github.com/org/repo")).toBe("github.com");
   expect(webUrlLabel("https://docs.example.com:8443/guide")).toBe("docs.example.com:8443");
+});
+
+test("webViewUserAgent supplies a desktop Safari UA on WebKit desktops and leaves Windows default", () => {
+  expect(webViewUserAgent("macos")).toContain("Macintosh");
+  expect(webViewUserAgent("macos")).toContain("Safari/605.1.15");
+  expect(webViewUserAgent("linux")).toContain("Linux");
+  expect(webViewUserAgent("linux")).toContain("Safari/605.1.15");
+  expect(webViewUserAgent("windows")).toBeUndefined();
 });

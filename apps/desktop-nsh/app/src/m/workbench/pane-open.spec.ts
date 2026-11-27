@@ -683,3 +683,14 @@ test("dragging a conversation in carries the tab it already has, wherever that i
   const fresh = chatDragSource(layout, "s2", () => "n1");
   expect(fresh).toEqual({ tab: tabFor({ kind: "chat", sessionId: "s2", side: null }, "n1") });
 });
+
+test("each blank web view opens a new tab while a concrete URL focuses its existing tab", () => {
+  const start = layoutOf(makeLeaf("a", [tabFor({ kind: "web", url: "" }, "w1")]));
+  const second = openContent(start, { kind: "web", url: "" }, ids);
+  expect(leafById(second, "a")!.tabs.map((tab) => tab.kind)).toEqual(["web", "web"]);
+
+  const concrete = openContent(second, { kind: "web", url: "https://example.com" }, ids);
+  expect(leafById(concrete, "a")!.tabs.length).toBe(3);
+  const again = openContent(concrete, { kind: "web", url: "https://example.com" }, ids);
+  expect(leafById(again, "a")!.tabs.length).toBe(3);
+});

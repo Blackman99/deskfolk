@@ -55,4 +55,22 @@ test("conversation external links carry the icon, open in WebView by default, an
   await app.waitFor("id:external-link-open-webview", { timeout: 10_000 });
   await app.press("id:external-link-open-webview");
   await app.press("id:settings-close");
+  await app.waitFor("id:settings-card-external-link", { state: "gone", timeout: 10_000 });
+
+  // Tab bar `+` can open a fresh blank WebView tab, and submitting a URL in its address bar loads it.
+  await app.press("id:wb-new-tab >> nth=0");
+  await app.waitFor("id:wb-new-pane-web", { timeout: 5_000 });
+  await app.press("id:wb-new-pane-web");
+  await app.waitFor("id:web-pane-empty", { timeout: 10_000 });
+  const blankAddr = app.value("id:web-pane-address >> nth=0") === "" ? "id:web-pane-address >> nth=0" : "id:web-pane-address >> nth=1";
+  await app.type(blankAddr, "example.net/start");
+  await app.submit(blankAddr);
+  await app.waitFor("id:web-pane-empty", { state: "gone", timeout: 10_000 });
+  expect(app.value(blankAddr)).toContain("https://example.net/start");
+
+  // Sidebar Tools also opens a fresh blank WebView tab on desktop.
+  await app.press("工具");
+  await app.waitFor("id:tools-web", { timeout: 5_000 });
+  await app.press("id:tools-web");
+  await app.waitFor("id:web-pane-empty", { timeout: 10_000 });
 });

@@ -70,6 +70,7 @@ export function NewPaneMenu(props: {
   return (
     <View testID="wb-new-pane-menu">
       <NewPaneRow testID="wb-new-pane-terminal" icon="terminal" name={t().terminal.newTab} onPress={picked(() => void props.workbench.openNewTerminal(props.leafId))} />
+      <NewPaneRow testID="wb-new-pane-web" icon="globe" name={t().pane.newWeb} onPress={open({ kind: "web", url: "" })} />
       <NewPaneRow
         testID="wb-new-pane-workspace"
         icon="layers"

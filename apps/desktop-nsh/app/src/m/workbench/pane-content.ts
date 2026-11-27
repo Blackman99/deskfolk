@@ -166,7 +166,9 @@ export function contentToParams(content: PaneContent): Record<string, string> {
       return params;
     }
     case "web": {
-      const params: Record<string, string> = { url: content.url };
+      const params: Record<string, string> = {};
+      const url = content.url ? (normalizeWebUrl(content.url) ?? content.url) : "";
+      if (url) params.url = url;
       if (content.title) params.title = content.title;
       return params;
     }
@@ -220,7 +222,8 @@ export function contentOfTab(tab: WorkbenchTab): PaneContent | null {
           }
         : null;
     case "web": {
-      const url = p.url ? normalizeWebUrl(p.url) : null;
+      if (!p.url) return { kind: "web", url: "", ...(p.title ? { title: p.title } : {}) };
+      const url = normalizeWebUrl(p.url);
       return url ? { kind: "web", url, ...(p.title ? { title: p.title } : {}) } : null;
     }
     default:

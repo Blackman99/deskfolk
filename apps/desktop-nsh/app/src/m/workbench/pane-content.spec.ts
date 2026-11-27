@@ -45,6 +45,7 @@ const samples: PaneContent[] = [
   { kind: "routines" },
   { kind: "spend" },
   { kind: "usage" },
+  { kind: "web", url: "" },
   { kind: "web", url: "https://example.com/docs" },
   { kind: "web", url: "https://example.com/docs", title: "Example Docs" },
 ];
@@ -70,7 +71,7 @@ test("a kind this build does not know reads as nothing rather than a blank pane"
   // And a known kind missing what it needs is equally not drawable.
   expect(contentOfTab({ id: "t1", kind: "chat", params: {} })).toBeNull();
   expect(contentOfTab({ id: "t1", kind: "trace", params: {} })).toBeNull();
-  expect(contentOfTab({ id: "t1", kind: "web", params: {} })).toBeNull();
+  expect(contentOfTab({ id: "t1", kind: "web", params: {} })).toEqual({ kind: "web", url: "" });
   expect(contentOfTab({ id: "t1", kind: "web", params: { url: "javascript:alert(1)" } })).toBeNull();
 });
 

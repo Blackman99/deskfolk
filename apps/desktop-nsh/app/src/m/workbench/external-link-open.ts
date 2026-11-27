@@ -69,3 +69,18 @@ export function webUrlLabel(url: string): string {
     return url;
   }
 }
+
+/**
+ * Standard desktop Safari UA for WebKit-backed web views (macOS WKWebView and Linux WebKitGTK).
+ * Bare WKWebView omits `Version/... Safari/605.1.15`, causing sites like Google Search to serve
+ * downgraded legacy HTML. Windows WebView2 already sends an up-to-date Chromium/Edge UA.
+ */
+export function webViewUserAgent(os: string): string | undefined {
+  if (os === "macos") {
+    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15";
+  }
+  if (os === "linux") {
+    return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15";
+  }
+  return undefined;
+}

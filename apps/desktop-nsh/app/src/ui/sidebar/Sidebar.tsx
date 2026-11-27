@@ -98,6 +98,8 @@ export function Sidebar(props: {
   /** Whether the workbench is on screen, so the tools open as its tabs (a tablet on a remote connection has none). */
   workbench: boolean;
   onNewTerminal: () => void;
+  /** Open a new in-app WebView tab/page on desktop; null/omitted on hosted phone web. */
+  onNewWeb?: (() => void) | null;
   /** The running terminals no tab shows, for the tools' 可接回 rows under 终端 (`ToolsTerminalMenu`). */
   reattachTerminals?: TerminalToReattach[];
   onReattachTerminal?: (id: string) => void;
@@ -682,6 +684,7 @@ export function Sidebar(props: {
             usage: phone() ? viewingUsage() : !props.workbench && usageWidget.open,
             roles: viewingRoles(),
             terminal: !props.workbench && runtime.terminalOpen,
+            web: !props.workbench && runtime.webOpen,
             screen: runtime.screenOpen,
             workspace: phone() && runtime.workspaceOpen,
             archived: viewingArchived(),
@@ -694,6 +697,7 @@ export function Sidebar(props: {
           }}
           onOpenRoles={() => runtime.openRoles()}
           onOpenTerminal={() => (props.workbench ? props.onNewTerminal() : runtime.openTerminal())}
+          onOpenWeb={props.onNewWeb ?? null}
           reattachTerminals={props.reattachTerminals}
           onReattachTerminal={props.onReattachTerminal}
           onOpenScreen={runtime.screenOffered ? () => runtime.openRemoteScreen() : null}

@@ -53,6 +53,8 @@ export function SidebarRail(props: {
   /** Whether the workbench is on screen; a tablet on a remote connection folds its list without one. */
   workbench: boolean;
   onNewTerminal: () => void;
+  /** Open a new in-app WebView tab/page on desktop; null/omitted on hosted phone web. */
+  onNewWeb?: (() => void) | null;
   /** The running terminals no tab shows, for the tools' 可接回 rows under 终端 (`ToolsTerminalMenu`). */
   reattachTerminals?: TerminalToReattach[];
   onReattachTerminal?: (id: string) => void;
@@ -437,12 +439,14 @@ export function SidebarRail(props: {
           spend: !props.workbench && runtime.spendOpen,
           usage: !props.workbench && usageWidget.open,
           terminal: !props.workbench && runtime.terminalOpen,
+          web: !props.workbench && runtime.webOpen,
         }}
         onOpenRoutines={props.onOpenRoutines}
         onOpenSpend={props.onOpenSpend}
         onOpenUsage={() => runtime.openUsage()}
         onOpenRoles={() => runtime.openRoles()}
         onOpenTerminal={() => (props.workbench ? props.onNewTerminal() : runtime.openTerminal())}
+        onOpenWeb={props.onNewWeb ?? null}
         reattachTerminals={props.reattachTerminals}
         onReattachTerminal={props.onReattachTerminal}
         onOpenArchived={props.onOpenArchived}

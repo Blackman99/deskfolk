@@ -213,7 +213,8 @@ export function openContent(
     // request to move, so it is applied.
     return retarget(layout, existing, keepsJob(existing, content) ? null : content);
   }
-  const found = findContent(layout, content);
+  // Each new blank WebView starts a fresh tab; a concrete URL still focuses any tab already showing it.
+  const found = content.kind === "web" && !content.url ? null : findContent(layout, content);
   if (found) {
     const focused = focusLeaf(layout, found.leafId);
     return activateTab(focused, found.leafId, found.tab.id);
