@@ -111,7 +111,7 @@ jobs:
 
       - name: Restore the nsh CLI of that commit
         id: nsh-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -127,7 +127,7 @@ jobs:
 
       - name: Save the nsh CLI of that commit
         if: steps.nsh-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -193,7 +193,7 @@ jobs:
         run: echo "rev=$(grep -m1 '^nsh-core' apps/desktop-nsh/Cargo.toml | sed -E 's/.*rev = "([0-9a-f]+)".*/\1/')" >> "$GITHUB_OUTPUT"
 
       - name: Restore the nsh CLI of that commit
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -256,7 +256,7 @@ jobs:
           [ -n "${APPLE_ID:-}" ] && notarize=(--notarize env)
           bun apps/desktop-nsh/scripts/package.ts --release --target ${{ matrix.triple }} --sign "$sign" "${notarize[@]}" ${{ matrix.smoke }} --out "$RUNNER_TEMP/deskfolk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deskfolk-macos-${{ matrix.arch }}
           path: ${{ runner.temp }}/deskfolk/*.dmg
@@ -306,7 +306,7 @@ jobs:
 
       # The key nsh-desktop.yml saves under on main, where a tag can read it.
       - name: Restore the nsh CLI of that commit
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -393,7 +393,7 @@ jobs:
       - name: Upload unsigned Windows binaries for SignPath
         id: upload-unsigned-binaries
         if: steps.signpath.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: signpath-unsigned-windows-binaries
           path: ${{ runner.temp }}/signpath-binaries-in
@@ -472,7 +472,7 @@ jobs:
       - name: Upload unsigned Windows installer for SignPath
         id: upload-unsigned-installer
         if: steps.signpath.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: signpath-unsigned-windows-installer
           path: ${{ runner.temp }}/deskfolk/*-setup.exe
@@ -548,7 +548,7 @@ jobs:
           done
           bun apps/desktop-nsh/scripts/package.ts --release --smoke-only "${setup[0]}" "${upgrade[@]}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deskfolk-windows-x64
           path: ${{ runner.temp }}/deskfolk/*-setup.exe
@@ -591,7 +591,7 @@ jobs:
 
       # The key nsh-desktop.yml saves under on main (its Linux leg), where a tag can read it.
       - name: Restore the nsh CLI of that commit
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: ${{ env.DESKFOLK_NSH_CACHE }}
           key: nsh-cli-${{ runner.os }}-${{ steps.nsh.outputs.rev }}
@@ -635,7 +635,7 @@ jobs:
           done
           dbus-run-session -- xvfb-run -a bun apps/desktop-nsh/scripts/package.ts --release --smoke "${upgrade[@]}" --out "$RUNNER_TEMP/deskfolk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deskfolk-linux-x64
           path: |
@@ -657,7 +657,7 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: deskfolk-*
           merge-multiple: true
