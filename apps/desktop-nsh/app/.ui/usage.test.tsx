@@ -57,6 +57,19 @@ test("each card loads on its own: placeholders before any answer, then a spinner
   await app.waitUntil(() => app.enabled("id:usage-refresh"));
 });
 
+test("a first ask that fails says so instead of placeholders, and Refresh brings the board", async () => {
+  const app = await open();
+  await app.press("id:fail-first");
+  await app.waitFor("id:usage-board-failed");
+  expect(app.shows("id:usage-board-skeleton")).toBe(false);
+  expect(app.texts()).toContain("没查到用量");
+  await app.waitUntil(() => app.enabled("id:usage-refresh"));
+  await app.press("id:usage-refresh");
+  await app.waitFor("id:usage-board");
+  expect(app.shows("id:usage-board-failed")).toBe(false);
+  expect(app.texts()).toContain("已用38%");
+});
+
 test("the phone's page shows Back, Refresh and placeholder dials before the first answer", async () => {
   const app = await open({ width: 400, height: 800 });
   await app.waitFor("id:usage-page");

@@ -189,7 +189,7 @@ test("the feed shows what is known at once, then asks again until every account 
   expect([feed.busy, feed.failed]).toEqual([false, false]);
 });
 
-test("a phone's daemon that refuses wait=0 is asked for its whole answer from then on", async () => {
+test("a phone's daemon that refuses wait=0 is asked for its whole answer from then on, until a refresh tries again", async () => {
   const asked: Array<boolean | undefined> = [];
   const api = {
     usage: async (_refresh?: boolean, quick?: boolean) => {
@@ -203,6 +203,9 @@ test("a phone's daemon that refuses wait=0 is asked for its whole answer from th
   await feed.load(api);
   expect(asked).toEqual([true, false, false]);
   expect([snapshot(feed.agents)!.length, feed.failed]).toEqual([1, false]);
+  // Refresh asks the quick way again (the daemon may have been restarted on a newer version).
+  await feed.load(api, true);
+  expect(asked).toEqual([true, false, false, true, false]);
 });
 
 test("following stops when the daemon stops answering: an account with no answer says it could not be read", async () => {

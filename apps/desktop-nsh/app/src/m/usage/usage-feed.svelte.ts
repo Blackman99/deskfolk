@@ -23,7 +23,7 @@ const FOLLOW_MISSES = 3;
  * `USAGE_FOLLOW_MS` while some account is still being asked, so each card fills as its own answer
  * comes and none waits for the slowest (2026-11-27 addendum). A daemon from before `wait=0` gives
  * its whole answer, marking nothing pending; a phone's refuses the query, and is asked without it
- * from then on. A daemon from before ADR 0080 answers 404, and is asked the two routes it had.
+ * from then on, until a refresh you ask for tries again. A daemon from before ADR 0080 answers 404, and is asked the two routes it had.
  */
 export class UsageFeed {
   /** Null until the first answer. */
@@ -51,6 +51,8 @@ export class UsageFeed {
   async load(api: UsageApi, refresh = false): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    // A refresh you ask for tries `wait=0` again: the daemon that refused it may have been updated since.
+    if (refresh) this.#whole = false;
     try {
       let answer: UsageResponse;
       try {

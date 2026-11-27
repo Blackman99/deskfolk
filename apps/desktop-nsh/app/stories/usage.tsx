@@ -78,6 +78,8 @@ export default function Usage() {
   const ready = signal(false);
   /** When the staged run started; null for the plain answer. */
   let stagedAt: number | null = null;
+  /** The next ask fails, as a runtime gone away would. */
+  let failNext = false;
   const staged = () => {
     stagedAt = Date.now();
     const feed = usageFeedOf(runtime);
@@ -91,6 +93,10 @@ export default function Usage() {
     const client = runtime.connection === "connected" ? runtime.client : null;
     if (!client) return;
     (client as unknown as { usage: (refresh?: boolean, quick?: boolean) => Promise<{ agents: UsageAgent[] }> }).usage = async (refresh, quick) => {
+      if (failNext) {
+        failNext = false;
+        throw Object.assign(new Error("down"), { status: 502 });
+      }
       if (none()) return { agents: [] };
       if (stagedAt === null || !quick) return { agents: AGENTS };
       if (refresh) await new Promise((done) => setTimeout(done, STAGED_FIRST_MS));
@@ -134,6 +140,18 @@ export default function Usage() {
                   none
                 </Button>
                 <Button testID="staged" onPress={staged}>staged</Button>
+                <Button
+                  testID="fail-first"
+                  onPress={() => {
+                    failNext = true;
+                    const feed = usageFeedOf(runtime);
+                    feed.agents = null;
+                    const client = runtime.client;
+                    if (client) void feed.load(client as never, true);
+                  }}
+                >
+                  fail
+                </Button>
                 {/* A divider in hand, as the workbench's sashes say it: the board is not among what waits for the release. */}
                 <Button testID="resize-begin" onPress={() => paneResize.begin()}>hold</Button>
                 <Button testID="resize-end" onPress={() => paneResize.end()}>release</Button>
