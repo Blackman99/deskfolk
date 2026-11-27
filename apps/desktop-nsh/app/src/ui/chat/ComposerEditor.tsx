@@ -99,7 +99,9 @@ export function ComposerEditor(props: {
   type KeyPlugin = { plugin: RichEditorPlugin; handler: (key: string) => void };
   const keyPlugin = (name: string, keys: string[]): KeyPlugin => {
     const entry: KeyPlugin = { plugin: undefined as unknown as RichEditorPlugin, handler: () => {} };
-    entry.plugin = new RichEditorPlugin(`composer-${name}`).captureKeys(keys, (key) => entry.handler(key));
+    entry.plugin = new RichEditorPlugin(`composer-${name}`).captureKeys(keys, (key) => {
+      if (!disposed) entry.handler(key);
+    });
     return entry;
   };
   const keyPlugins = {
