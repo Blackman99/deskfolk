@@ -53,6 +53,8 @@ import { WaitingJump } from "./WaitingJump";
 import { deriveComposer, composerHintOf, lockedNoticeOf, mentionBotsOf, placeholderOf, suggestTitleOf } from "./composer-state";
 import type { HiddenWaiting } from "./waiting-jump";
 import { settled } from "../workbench/drag-settle";
+import { COMPOSER_CARD_BASE_X } from "../../m/chat/phone-corner";
+import { dockedComposerInsets, floatingComposerSafeEdges } from "../../platform/phone-device";
 
 /**
  * What the owner can do to the composer from outside: a quote reply or a starter chip lands the
@@ -306,6 +308,30 @@ export function Composer(props: {
     });
   const tool = () => (docked() && !platform.desktop ? "w-[40px] h-[40px]" : "w-[34px] h-[34px]");
   const edge = () => (width() <= PHONE ? 12 : 24);
+  const dockedInsets = dockedComposerInsets(width);
+  const footerStyle = () => {
+    if (docked()) return undefined;
+    const safe = floatingComposerSafeEdges();
+    return { paddingLeft: edge() + safe.left, paddingRight: edge() + safe.right, paddingTop: 10, paddingBottom: 12 + safe.bottom };
+  };
+  const cardStyle = () => {
+    if (!docked()) return { boxShadow: shadow("raised") };
+    if (platform.desktop) return undefined;
+    const ins = dockedInsets();
+    if (d().locked) {
+      return {
+        paddingLeft: 14 + (ins.cardLeft - COMPOSER_CARD_BASE_X),
+        paddingRight: 14 + (ins.cardRight - COMPOSER_CARD_BASE_X),
+        paddingBottom: Math.max(10, ins.cardBottom),
+      };
+    }
+    return { paddingLeft: ins.cardLeft, paddingRight: ins.cardRight, paddingBottom: ins.cardBottom };
+  };
+  const rowStyle = () => {
+    if (!docked() || platform.desktop) return undefined;
+    const ins = dockedInsets();
+    return ins.rowExtraLeft > 0 || ins.rowExtraRight > 0 ? { paddingLeft: ins.rowExtraLeft, paddingRight: ins.rowExtraRight } : undefined;
+  };
   const toolRow = () => !d().locked;
 
   /** A round tool button, as the Svelte's `.attach-btn` / `.suggest-btn`. */
@@ -369,7 +395,7 @@ export function Composer(props: {
     <View
       testID="composer-footer"
       class="w-full min-w-0 items-center"
-      style={docked() ? undefined : { paddingLeft: edge(), paddingRight: edge(), paddingTop: 10, paddingBottom: 12 }}
+      style={footerStyle()}
       onLayout={(e) => {
         width.set(e.bounds.size.width);
         props.onHeight?.(Math.ceil(e.bounds.size.height));
@@ -390,7 +416,7 @@ export function Composer(props: {
             onFileDragLeave={() => fileOver.set(false)}
             onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
             class={`w-full min-w-0 border bg-input-bg ${d().locked ? "bg-sidebar-bg border-dashed px-[14px] py-[10px]" : docked() ? "px-2 py-[6px]" : "px-2 py-[6px]"} ${docked() ? "border-0" : d().locked ? "rounded-(--radius-xl) border-line" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
-            style={docked() ? undefined : { boxShadow: shadow("raised") }}
+            style={cardStyle()}
           >
             <If when={quoteTarget()}>{(message) => <ComposerQuote message={message()} botsById={botsById()} onCancel={() => { const current = view(); if (current) current.replyingToId = null; }} />}</If>
             <If when={d().locked}>
@@ -428,7 +454,7 @@ export function Composer(props: {
 
             <If when={toolRow() && editorAbove()}>{editorBox()}</If>
             <If when={toolRow()}>
-              <View class="flex-row items-center w-full gap-2">
+              <View testID="composer-tool-row" class="flex-row items-center w-full gap-2" style={rowStyle()}>
                 <If
                   when={phonePlus()}
                   else={

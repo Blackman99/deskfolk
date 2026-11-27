@@ -57,6 +57,7 @@ import { agentModels, agentsStatus, claudeStatus } from "../../m/chat/project-ag
 import type { ProjectState } from "./project-chat-state";
 import { settled } from "../workbench/drag-settle";
 import { phoneChips } from "../../m/chat/phone-chips";
+import { dockedComposerInsets, floatingComposerSafeEdges } from "../../platform/phone-device";
 
 const NO_WAITING: HiddenWaiting = { items: [], above: false };
 
@@ -199,6 +200,23 @@ export function ProjectComposer(props: {
   const docked = settled(() => width() > 0 && width() <= 480);
   const compact = settled(() => width() > 0 && width() <= 440);
   const edge = () => (width() <= 680 ? 12 : 24);
+  const dockedInsets = dockedComposerInsets(width);
+  const footerStyle = () => {
+    if (docked()) return undefined;
+    const safe = floatingComposerSafeEdges();
+    return { paddingLeft: edge() + safe.left, paddingRight: edge() + safe.right, paddingTop: 8, paddingBottom: 12 + safe.bottom };
+  };
+  const cardStyle = () => {
+    if (!docked()) return { boxShadow: shadow("raised") };
+    if (platform.desktop) return undefined;
+    const ins = dockedInsets();
+    return { paddingLeft: ins.cardLeft, paddingRight: ins.cardRight, paddingBottom: ins.cardBottom };
+  };
+  const rowStyle = () => {
+    if (!docked() || platform.desktop) return undefined;
+    const ins = dockedInsets();
+    return ins.rowExtraLeft > 0 || ins.rowExtraRight > 0 ? { paddingLeft: ins.rowExtraLeft, paddingRight: ins.rowExtraRight } : undefined;
+  };
 
   // --- ✨ suggestions ---
   const suggestionsShown = () => view().composerSuggestions.length > 0 || Boolean(view().suggestionsEmpty);
@@ -253,12 +271,14 @@ export function ProjectComposer(props: {
   /** The phone row's width and what stands right of its chips, measured: the chips take what is left (`phone-chips.ts`). */
   const rowWidth = signal(0);
   const rightWidth = signal(0);
-  const chips = () =>
-    phoneChips(
-      rowWidth() - rightWidth() - 40 - 3 * 6,
+  const chips = () => {
+    const extra = docked() && !platform.desktop ? dockedInsets().rowExtraLeft + dockedInsets().rowExtraRight : 0;
+    return phoneChips(
+      rowWidth() - extra - rightWidth() - 40 - 3 * 6,
       s().caps().plan && s().planning(),
       s().consulting() ? (props.selected.project_consult?.members.length ?? 0) : 0,
     );
+  };
   const refused = () => {
     if (view().sendRefused === "too_many_files") return t().composer.tooManyFiles;
     if (sendFailed() || s().tuneFailed()) return t().project.actionFailed;
@@ -325,7 +345,7 @@ export function ProjectComposer(props: {
     <View
       testID="project-composer"
       class="w-full min-w-0 items-center"
-      style={docked() ? undefined : { paddingLeft: edge(), paddingRight: edge(), paddingTop: 8, paddingBottom: 12 }}
+      style={footerStyle()}
       onLayout={(e) => width.set(e.bounds.size.width)}
     >
       <View class={`w-full min-w-0 ${docked() ? "bg-input-bg border-t border-line" : "max-w-[800px]"}`}>
@@ -341,7 +361,7 @@ export function ProjectComposer(props: {
           onFileDragLeave={() => fileOver.set(false)}
           onFileDrop={(e) => onFileDrop(e.uris, e.mimeTypes)}
           class={`w-full min-w-0 border bg-input-bg px-2 py-[6px] ${docked() ? "border-0" : "rounded-(--radius-xl) border-line hover:border-line-hover focus-within:border-field-focus-border hover:focus-within:border-field-focus-border"}`}
-          style={docked() ? undefined : { boxShadow: shadow("raised") }}
+          style={cardStyle()}
         >
           <If when={refused()}>
             {(text: () => string) => (
@@ -388,7 +408,7 @@ export function ProjectComposer(props: {
               );
             }}
           </Each>
-          <View class="flex-row items-center w-full gap-[6px]" onLayout={(e) => rowWidth.set(e.bounds.size.width)}>
+          <View testID="project-composer-tool-row" class="flex-row items-center w-full gap-[6px]" style={rowStyle()} onLayout={(e) => rowWidth.set(e.bounds.size.width)}>
             <If
               when={phone()}
               else={
