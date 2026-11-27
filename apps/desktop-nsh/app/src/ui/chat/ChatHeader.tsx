@@ -421,7 +421,7 @@ export function ChatHeader(props: {
       </If>
       {/* A row of its own under the name and the actions: beside them a phone has no room. */}
       <If when={hasElsewhere()}>
-        <View testID="top-elsewhere" class={`w-full ${narrow() ? "pl-[54px] pr-[12px] pb-[10px]" : ""}`}>
+        <View testID="top-elsewhere" class={`flex-row items-center w-full min-w-0 ${narrow() ? "pl-[54px] pr-[12px] pb-[10px]" : ""}`}>
           <BotElsewhere botId={peerBot()!.id} here={props.selected!} />
         </View>
       </If>

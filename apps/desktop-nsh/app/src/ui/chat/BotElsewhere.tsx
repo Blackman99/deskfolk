@@ -102,17 +102,17 @@ export function BotElsewhere(props: {
         if (places().length === 1) go(places()[0]!);
         else if (narrowWindow()) open.set(!open());
       }}
-      class={`cursor-pointer select-none flex-row items-center gap-[6px] min-w-0 h-[26px] pl-[10px] pr-[8px] rounded-full active:scale-[0.97] ${PILL[lead()] ?? "bg-accent-tint"}`}
+      class={`cursor-pointer select-none flex-row items-center gap-[6px] min-w-0 max-w-full h-[26px] pl-[10px] pr-[8px] rounded-full active:scale-[0.97] ${PILL[lead()] ?? "bg-accent-tint"}`}
     >
       <View class={`shrink-0 w-[6px] h-[6px] rounded-full ${lead() === "waiting_approval" ? "bg-warn-text" : lead() === "waiting_ask" ? "bg-purple-text" : "bg-brand"}`} style={{ opacity: dot.opacity }} accessible={false} />
       <Text testID="elsewhere-text" class={`min-w-0 shrink text-[12px] font-semibold line-clamp-1 ${PILL_INK[lead()] ?? "text-brand"}`}>{line()}</Text>
-      <Icon name={places().length > 1 ? "chevron-down" : "chevron-right"} size={12} class={PILL_TINT[lead()] ?? "tint-brand"} />
+      <Icon name={places().length > 1 ? "chevron-down" : "chevron-right"} size={12} class={`shrink-0 ${PILL_TINT[lead()] ?? "tint-brand"}`} />
     </View>
   );
 
   return (
     <If when={line()}>
-      <View testID="elsewhere" class="min-w-0">
+      <View testID="elsewhere" class="min-w-0 shrink max-w-full">
         <If
           when={places().length > 1 && !narrowWindow()}
           else={pill()}
