@@ -31,6 +31,48 @@ test("the tab lays out a card per account, each window a bar, today-only agents 
   expect(app.shows("id:usage-checked")).toBe(true);
 });
 
+test("each card loads on its own: placeholders before any answer, then a spinner per account until its own answer", async () => {
+  const app = await open();
+  await app.press("id:staged");
+  // Nothing answered yet: the bar and Refresh are there, the board's placeholders stand in.
+  await app.waitFor("id:usage-board-skeleton");
+  expect(app.shows("id:usage-board")).toBe(false);
+  expect(app.shows("id:usage-refresh")).toBe(true);
+  // The first answer: every card there, each account still being asked.
+  await app.waitFor("id:usage-board");
+  expect(app.shows("id:usage-board-skeleton")).toBe(false);
+  await app.waitUntil(() => app.count("id:usage-account-loading") === 3);
+  expect(app.count("id:usage-account-skeleton")).toBe(2);
+  // Codex's second account keeps the numbers it had while it is asked again.
+  expect(app.texts()).toContain("已用10%");
+  expect(app.texts()).not.toContain("已用38%");
+  // Claude answers first: its card fills, the others still turn.
+  await app.waitUntil(() => app.count("id:usage-account-loading") === 2, { timeout: 5000 });
+  expect(app.texts()).toContain("已用38%");
+  expect(app.count("id:usage-account-skeleton")).toBe(1);
+  await app.waitUntil(() => app.count("id:usage-account-loading") === 1, { timeout: 5000 });
+  expect(app.texts()).toContain("已用92%");
+  expect(app.count("id:usage-account-skeleton")).toBe(0);
+  await app.waitUntil(() => app.count("id:usage-account-loading") === 0, { timeout: 5000 });
+  await app.waitUntil(() => app.enabled("id:usage-refresh"));
+});
+
+test("the phone's page shows Back, Refresh and placeholder dials before the first answer", async () => {
+  const app = await open({ width: 400, height: 800 });
+  await app.waitFor("id:usage-page");
+  await app.press("id:staged-phone");
+  await app.waitFor("id:usage-board-skeleton");
+  expect(app.shows("id:usage-page-back")).toBe(true);
+  expect(app.shows("id:usage-refresh")).toBe(true);
+  // The first answer: the cards, Claude's and Codex's own as placeholder dials, turning.
+  await app.waitFor("id:usage-board");
+  await app.waitUntil(() => app.count("id:usage-account-skeleton") === 2);
+  expect(app.count("id:usage-account-loading")).toBe(3);
+  await app.waitUntil(() => app.count("id:usage-account-loading") === 0, { timeout: 8000 });
+  await app.waitFor("id:usage-gauges");
+  expect(app.texts()).toContain("38%");
+});
+
 test("the cards go to more or fewer columns as the width moves under a divider in hand, not at the release", async () => {
   // The board is the window less the story's side column and the tab's padding (268 points):
   // 1132 holds three columns of cards, 832 two, 632 one.

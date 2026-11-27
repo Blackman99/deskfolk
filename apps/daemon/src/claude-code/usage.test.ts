@@ -164,8 +164,59 @@ test("each account a Bot runs on is asked with its own config directory, the dae
   // The fields of old are the first account's, for a client that knows of one.
   expect(usage).toMatchObject({ available: true, plan: "pro", windows: usage.accounts![0]!.windows });
   expect("config_dir" in usage).toBe(false);
-  // Moving Bots between accounts asks again at once, without waiting out the kept answer.
+  // Moving Bots between accounts answers for the new set at once; an account still kept is not asked again.
   using = [null];
   expect((await probe.current()).accounts).toHaveLength(1);
-  expect(dirs).toEqual([undefined, "/opt/claude-b", undefined]);
+  expect(dirs).toEqual([undefined, "/opt/claude-b"]);
+});
+
+test("known answers at once: an account being asked is pending with its last answer, and is asked once", async () => {
+  let clock = 0;
+  const two: ClaudeCodeStatus = { ...signedIn, accounts: [
+    { config_dir: null, config_directory: "/Users/a/.claude", logged_in: true, auth_method: "claude.ai", subscription_type: "pro", email: "pro@a.c", error: null, login_command: "" },
+    { config_dir: "/opt/claude-b", config_directory: "/opt/claude-b", logged_in: true, auth_method: "claude.ai", subscription_type: "team", email: "team@a.c", error: null, login_command: "" },
+    { config_dir: "/opt/claude-c", config_directory: "/opt/claude-c", logged_in: false, auth_method: "none", subscription_type: null, email: null, error: null, login_command: "" },
+  ] };
+  const answers = new Map<string, (value: UsageAnswer) => void>();
+  const launches: Array<string | undefined> = [];
+  const ask: AskUsage = (launch) => {
+    const dir = launch.env.CLAUDE_CONFIG_DIR;
+    launches.push(dir);
+    return new Promise((done) => answers.set(dir ?? "", done));
+  };
+  const status = { ...probeOf(two), last: () => null };
+  const probe = createClaudeUsageProbe({ claudeCode: status, inUse: () => [null, "/opt/claude-b", "/opt/claude-c"], ask, now: () => clock, env: { PATH: "/usr/bin" } });
+  const first = await probe.known!();
+  // Nothing answered yet: both asks start, each pending with nothing in it; the signed-out one asks nothing.
+  expect(first!.map(({ usage, pending }) => [usage.config_dir, usage.email, pending, usage.checked_at, usage.reason])).toEqual([
+    [null, "pro@a.c", true, null, null],
+    ["/opt/claude-b", "team@a.c", true, null, null],
+    ["/opt/claude-c", null, false, null, "signed_out"],
+  ]);
+  expect(launches).toEqual([undefined, "/opt/claude-b"]);
+  // Asked again while they run: still pending, no second claude; a waiting read joins them too.
+  expect((await probe.known!())!.map((item) => item.pending)).toEqual([true, true, false]);
+  const waiting = probe.current();
+  expect(launches).toEqual([undefined, "/opt/claude-b"]);
+  // One answers: its card fills while the other still waits.
+  answers.get("/opt/claude-b")!({ ...answer, subscription_type: "team" });
+  await Bun.sleep(0);
+  const half = (await probe.known!())!;
+  expect(half.map((item) => [item.pending, item.usage.plan])).toEqual([[true, null], [false, "team"], [false, null]]);
+  answers.get("")!(answer);
+  expect((await waiting).accounts?.map((account) => account.plan)).toEqual(["pro", "team", null]);
+  expect((await probe.known!())!.every((item) => !item.pending)).toBe(true);
+  // A refresh asks again behind the kept answers: pending, with the numbers still there.
+  clock += 60_000;
+  const again = (await probe.known!(30_000))!;
+  expect(again.map((item) => [item.pending, item.usage.plan])).toEqual([[true, "pro"], [true, "team"], [false, null]]);
+  expect(launches).toHaveLength(4);
+  // The next plain read sees them still pending, not the old answers as done.
+  expect((await probe.known!())!.map((item) => item.pending)).toEqual([true, true, false]);
+  expect(launches).toHaveLength(4);
+});
+
+test("known is null while nothing runs on Claude Agent", async () => {
+  const probe = createClaudeUsageProbe({ claudeCode: probeOf(signedIn), inUse: () => [], ask: async () => answer });
+  expect(await probe.known!()).toBeNull();
 });

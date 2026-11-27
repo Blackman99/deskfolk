@@ -2,40 +2,61 @@
  * Every agent's usage in one answer (ADR 0080, `GET /v1/usage`): Claude's accounts as your Claude
  * Code reads them, Codex's as its app-server reads them, and for every agent this app's own records
  * of it today. Nothing new is asked here: the two probes keep their own answers and their own pace.
+ * `known` is the same answer at once (`?wait=0`, 2026-11-27 addendum): each account as last answered,
+ * those still being asked marked `pending`, so a usage page fills card by card.
  */
 import { AGENT_KINDS, type AgentUsage, type BotRunner, type ClaudeAccountUsage, type ClaudeUsage, type ClaudeUsageWindow, type UsageAccount, type UsageAgent, type UsageResponse, type UsageWindow } from "@real-bot/protocol";
-import type { ClaudeUsageProbe } from "../claude-code/usage";
+import type { ClaudeUsageProbe, KnownUsage } from "../claude-code/usage";
 import type { Store } from "../store";
 import { agentToday, type AgentUsageProbe } from "./usage";
 
-export type UsageOverview = { current(maxAgeMs?: number): Promise<UsageResponse> };
+export type UsageOverview = {
+  current(maxAgeMs?: number): Promise<UsageResponse>;
+  /** At once, waiting for no agent: each account as last answered, `pending` while it is asked. */
+  known(maxAgeMs?: number): Promise<UsageResponse>;
+};
 
 /** The order agents are listed in: Claude first, then as `AGENT_KINDS` lists them, your own ACP agents last. */
 const ORDER = Object.keys(AGENT_KINDS) as BotRunner[];
 
 export function createUsageOverview(deps: { store: Store; claudeUsage: ClaudeUsageProbe; agentUsage: AgentUsageProbe }): UsageOverview {
   const { store } = deps;
+  function answer(claude: Array<KnownUsage<ClaudeAccountUsage>> | null, others: Array<KnownUsage<AgentUsage>>, marked: boolean): UsageResponse {
+    const mark = (account: UsageAccount, pending: boolean): UsageAccount => (marked ? { ...account, pending } : account);
+    const agents: UsageAgent[] = [];
+    if (claude) {
+      const label = AGENT_KINDS.claude_code.label;
+      agents.push({ runner: "claude_code", custom_id: null, label, today: agentToday(store, label), accounts: claude.map((item) => mark(fromClaude(item.usage), item.pending)) });
+    }
+    for (const { usage: item, pending } of others) {
+      let agent = agents.find((seen) => seen.runner === item.runner && seen.custom_id === item.custom_id);
+      if (!agent) {
+        agent = { runner: item.runner, custom_id: item.custom_id, label: item.label, today: item.today, accounts: [] };
+        agents.push(agent);
+      }
+      // An agent that reports no plan has no accounts to show: only its day here.
+      if (AGENT_KINDS[item.runner].planUsage) agent.accounts.push(mark(fromAgent(item), pending));
+    }
+    const rank = (agent: UsageAgent) => ORDER.indexOf(agent.runner);
+    agents.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
+    return { agents };
+  }
+  const settled = <T>(usage: T) => ({ usage, pending: false });
   return {
     async current(maxAgeMs) {
       // Claude's probe answers `unused` at once when no account is in use or connected.
       const [claude, others] = await Promise.all([deps.claudeUsage.current(maxAgeMs), deps.agentUsage.current(maxAgeMs)]);
-      const agents: UsageAgent[] = [];
-      if (claude.reason !== "unused") {
-        const label = AGENT_KINDS.claude_code.label;
-        agents.push({ runner: "claude_code", custom_id: null, label, today: agentToday(store, label), accounts: claudeAccounts(claude).map(fromClaude) });
-      }
-      for (const item of others.items) {
-        let agent = agents.find((seen) => seen.runner === item.runner && seen.custom_id === item.custom_id);
-        if (!agent) {
-          agent = { runner: item.runner, custom_id: item.custom_id, label: item.label, today: item.today, accounts: [] };
-          agents.push(agent);
-        }
-        // An agent that reports no plan has no accounts to show: only its day here.
-        if (AGENT_KINDS[item.runner].planUsage) agent.accounts.push(fromAgent(item));
-      }
-      const rank = (agent: UsageAgent) => ORDER.indexOf(agent.runner);
-      agents.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
-      return { agents };
+      return answer(claude.reason === "unused" ? null : claudeAccounts(claude).map(settled), others.items.map(settled), false);
+    },
+    async known(maxAgeMs) {
+      // A probe that cannot answer without waiting (a test's stand-in) is waited for.
+      const [claude, others] = await Promise.all([
+        deps.claudeUsage.known
+          ? deps.claudeUsage.known(maxAgeMs)
+          : deps.claudeUsage.current(maxAgeMs).then((usage) => (usage.reason === "unused" ? null : claudeAccounts(usage).map(settled))),
+        deps.agentUsage.known ? deps.agentUsage.known(maxAgeMs) : deps.agentUsage.current(maxAgeMs).then((usage) => usage.items.map(settled)),
+      ]);
+      return answer(claude, others, true);
     },
   };
 }

@@ -6,10 +6,13 @@ import { copyFor } from "../copy.ts";
 import { UsageFeed } from "./usage-feed.svelte.ts";
 import {
   usageAccountName,
+  usageAccountNote,
+  usageAccountWaiting,
   usageCreditsText,
   usageFromLegacy,
   usageLevel,
   usageMeterEntries,
+  usageQuery,
   usageResetText,
   usageSpan,
   usageSummary,
@@ -139,4 +142,81 @@ test("the feed asks the one route, and a daemon that answers 404 there is asked 
   const failing = new UsageFeed();
   await failing.load({ usage: async () => { throw Object.assign(new Error("down"), { status: 502 }); } });
   expect([failing.agents, failing.failed]).toEqual([null, true]);
+});
+
+test("an account still being asked waits with nothing, or keeps its numbers; its note says it is being checked", () => {
+  const waiting = account({ available: false, pending: true });
+  expect(usageAccountWaiting(waiting)).toBe(true);
+  expect(usageAccountNote(waiting, t)).toBe("正在查用量…");
+  // Refreshed behind numbers it already has: those stay, and no note covers them.
+  const refreshing = account({ pending: true, checked_at: "2026-10-10T08:00:00.000Z", windows: [{ minutes: 300, model: null, percent: 5, resets_at: null }] });
+  expect([usageAccountWaiting(refreshing), usageAccountNote(refreshing, t)]).toEqual([false, null]);
+  // Signed out last time and asked again: not "signed out" until it says so again.
+  expect(usageAccountNote(account({ available: false, reason: "signed_out", pending: true, checked_at: "2026-10-10T08:00:00.000Z" }), t)).toBe("正在查用量…");
+  expect([usageQuery(false, false), usageQuery(true, false), usageQuery(false, true), usageQuery(true, true)]).toEqual(["", "?refresh=1", "?wait=0", "?refresh=1&wait=0"]);
+});
+
+test("the feed shows what is known at once, then asks again until every account has answered, one card at a time", async () => {
+  const windows = [{ minutes: 300, model: null, percent: 20, resets_at: null }];
+  const pending = account({ available: false, pending: true });
+  const answered = (dir: string | null) => account({ config_dir: dir, windows, checked_at: "2026-10-10T08:00:00.000Z", pending: false });
+  const steps = [
+    [{ ...pending }, { ...pending, config_dir: "/b" }],
+    [{ ...pending }, { ...pending, config_dir: "/b" }],
+    [{ ...pending }, answered("/b")],
+    [answered(null), answered("/b")],
+  ];
+  const asked: Array<[boolean | undefined, boolean | undefined]> = [];
+  const seen: Array<unknown> = [];
+  const feed = new UsageFeed();
+  const api = {
+    usage: async (refresh?: boolean, quick?: boolean) => {
+      seen.push(feed.agents);
+      const accounts = steps[Math.min(asked.length, steps.length - 1)]!;
+      asked.push([refresh, quick]);
+      return { agents: [agent({ accounts })] };
+    },
+  };
+  const loading = feed.load(api, true);
+  expect(feed.busy).toBe(true);
+  await loading;
+  // Asked at once with the refresh, then without it while some account was still being asked.
+  expect(asked).toEqual([[true, true], [false, true], [false, true], [false, true]]);
+  // The same answer again changed nothing on screen; the next one did.
+  expect(seen[2]).toBe(seen[1]);
+  expect(seen[3]).not.toBe(seen[2]);
+  expect(snapshot(feed.agents)![0]!.accounts.map((item) => [item.config_dir, item.pending])).toEqual([[null, false], ["/b", false]]);
+  expect([feed.busy, feed.failed]).toEqual([false, false]);
+});
+
+test("a phone's daemon that refuses wait=0 is asked for its whole answer from then on", async () => {
+  const asked: Array<boolean | undefined> = [];
+  const api = {
+    usage: async (_refresh?: boolean, quick?: boolean) => {
+      asked.push(quick);
+      if (quick) throw Object.assign(new Error("invalid remote properties"), { status: 422 });
+      return { agents: [agent({ accounts: [account({ windows: [{ minutes: 300, model: null, percent: 1, resets_at: null }] })] })] };
+    },
+  };
+  const feed = new UsageFeed();
+  await feed.load(api);
+  await feed.load(api);
+  expect(asked).toEqual([true, false, false]);
+  expect([snapshot(feed.agents)!.length, feed.failed]).toEqual([1, false]);
+});
+
+test("following stops when the daemon stops answering: an account with no answer says it could not be read", async () => {
+  let calls = 0;
+  const api = {
+    usage: async () => {
+      calls += 1;
+      if (calls > 1) throw Object.assign(new Error("gone"), { status: 502 });
+      return { agents: [agent({ accounts: [account({ available: false, pending: true }), account({ config_dir: "/b", pending: true, checked_at: "2026-10-10T08:00:00.000Z", windows: [{ minutes: 300, model: null, percent: 1, resets_at: null }] })] })] };
+    },
+  };
+  const feed = new UsageFeed();
+  await feed.load(api);
+  expect(calls).toBe(4);
+  expect(snapshot(feed.agents)![0]!.accounts.map((item) => [item.pending, item.reason, item.windows.length])).toEqual([[false, "failed", 0], [false, null, 1]]);
+  expect([feed.busy, feed.failed]).toEqual([false, true]);
 });

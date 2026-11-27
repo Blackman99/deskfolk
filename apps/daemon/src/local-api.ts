@@ -93,9 +93,10 @@ export function createLocalApi(options: LocalApiOptions): LocalApi {
   options.claudeUsage ??= createClaudeUsageProbe({
     claudeCode,
     // Bots, Claude rungs of the model ladder (ADR 0076) and built-in calls alike, and every account
-    // Claude Code is signed in with even when nothing runs on it yet (ADR 0080).
-    inUse: async () => {
-      const status = await claudeCode.current().catch(() => null);
+    // Claude Code is signed in with even when nothing runs on it yet (ADR 0080). The non-waiting
+    // read takes Claude Code as last seen; the probe looks again behind it.
+    inUse: async (quick) => {
+      const status = (quick ? claudeCode.last() : null) ?? (await claudeCode.current().catch(() => null));
       return accountsShown(accountsInUse(options.store), connectedAccounts([], status)).filter((entry) => entry.runner === "claude_code").map((entry) => entry.configDir);
     },
   });

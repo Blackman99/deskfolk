@@ -3,6 +3,26 @@ import type { Copy } from "../copy.ts";
 
 /** How often the widget and the page ask while the window is in front; the daemon keeps answers as long. */
 export const USAGE_POLL_MS = 5 * 60_000;
+/** While some account is still being asked, the page asks again this often to fill its card. */
+export const USAGE_FOLLOW_MS = 800;
+/** How long the page keeps asking after accounts still pending; the daemon's own asks give up sooner. */
+export const USAGE_FOLLOW_LIMIT_MS = 120_000;
+
+/** `GET /v1/usage`'s query: `refresh=1` for a younger answer, `wait=0` for what is known at once. */
+export function usageQuery(refresh: boolean, quick: boolean): string {
+  const params = [refresh ? "refresh=1" : "", quick ? "wait=0" : ""].filter(Boolean);
+  return params.length > 0 ? `?${params.join("&")}` : "";
+}
+
+/** One account's key across answers: its agent and its directory. */
+export function usageAccountKey(agent: Pick<UsageAgent, "runner" | "custom_id">, account: Pick<UsageAccount, "config_dir">): string {
+  return `${agent.runner}:${agent.custom_id ?? ""}:${account.config_dir ?? ""}`;
+}
+
+/** Still being asked, with nothing to show yet: its card waits with a placeholder. */
+export function usageAccountWaiting(account: UsageAccount): boolean {
+  return account.pending === true && account.windows.length === 0 && account.checked_at === null;
+}
 
 /** A window's length as a name: 300 minutes is 5 hours, 10080 is 7 days; `short` for the pill and a summary. */
 export function usageSpan(minutes: number | null, t: Copy, short = false): string {
@@ -159,6 +179,8 @@ export function usageAccountShortName(
 /** Why an account shows no windows; null when it has some. */
 export function usageAccountNote(account: UsageAccount, t: Copy): string | null {
   if (account.available && account.windows.length > 0) return null;
+  // Being asked: no reason yet, or the last one may no longer hold.
+  if (account.pending) return t.usage.loading;
   if (account.reason === "signed_out") return t.usage.signedOut;
   if (account.reason === "failed") return t.usage.failed;
   if (account.reason === "missing") return t.usage.missing;

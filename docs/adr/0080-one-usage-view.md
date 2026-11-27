@@ -81,3 +81,19 @@ The marks never showed in the menu. Tried on your macOS 27 with a throwaway stat
 你说：「当前额度用量的展示是剩余多少，应该展示使用了多少。」挂件的球和 Agent 圆标的圆环、卡片里的每一行和条、用量标签页的条、手机页的表盘、设置里那一行简要用量和菜单栏都改成已用：文字是「已用 38%」（表盘里数字下面写「已用」，简要用量照旧只有数字，「5h 38% · 7d 19%」），圆环和条按已用画满，满了就是用完了。取整仍向下，没用完不会显示 100%；用了一点不到 1% 写「<1%」，不会显示 0%。颜色本来就按已用算，不变：用到四分之三标黄，九成标红。这推翻了 ADR 0061 里「显示剩多少」那一条（2026-10-08），那条留着作记录。
 
 You said the usage showed what is left and should show what is used. The ball's and each agent's ring, the card's rows and bars, the usage tab's bars, the phone's dials, the one-line summary in Settings and the menu bar now read used: "38% used" (the dial says "used" under the number; the summary keeps bare numbers, "5h 38% · 7d 19%"), rings and bars fill as it is used, so a full one is spent. Still rounded down, so a window not yet spent never reads 100%; a sliver under 1% reads "<1%", never 0%. Colours already went by what is used and stay: amber from three quarters, red from nine tenths. This reverses "What is left, not what is used" in ADR 0061 (2026-10-08), kept there as the record.
+
+## 补充：每张卡片自己加载 / Addendum: each card loads on its own（2026-11-27）
+
+你说：「用量页每次刚打开刷新时整页不可见，应该按照每个卡片单独进行加载，UI 也要先展示可以展示的内容，每个卡片刷新的加载态 UI 也要有。」原来 `GET /v1/usage` 要等所有账号都问完才答（实测一次新的要 7 秒多，慢的 Agent 会拖到 15～30 秒），用量页在第一份答案来之前什么都不画。现在：
+
+- `GET /v1/usage?wait=0` 立刻答：每个 Agent 和它今天的记录、每个账号上次的答案（还没答过就是空的），正在问的账号带 `pending: true`，没问过或答案过期的账号在背后开始问。两个探针改成按账号记答案、按账号去重：同一个账号正在问时，谁再问都等这一次，不会多起一个 `claude`/`codex`/`agy`。不带 `wait=0` 的老问法不变，菜单栏和旧客户端照旧等整份答案（不带 `pending`）。
+- 用量标签页、手机页和挂件先问 `wait=0`，有账号还在问时每 0.8 秒再问一次，哪个账号答了哪张卡片就填上，直到没有 `pending`（最多跟 2 分钟；连着三次问不到就停，没答过的账号写「没查到用量」）。连到不认识 `wait=0` 的守护进程：本机的会直接给整份答案，手机经中继的会被白名单拒（422），之后就改用老问法。
+- 页头（几点查的、刷新、返回）一开始就在；第一份答案来之前，看板位置是一组灰色占位（一个 Agent 的标题和两张卡片，标签页是条、手机页是圆环）。每张卡片在它的账号还在问时，右上角转一个小圈：还没答过的，卡片头照常（套餐、邮箱或目录），下面是灰色占位条或圆环；已经有数的（刷新时），数字留着、淡一些，新的来了换上。挂件卡片里还在问的账号同样有小圈，没答过的写「正在查用量…」。
+- 账号的答案按账号留 5 分钟：换了 Bot 用哪个账号，留着的账号不重问，新用上的立刻问。
+
+You said the usage page shows nothing while it first loads, and should load card by card, showing what it can at once, each card with its own loading state. `GET /v1/usage` waited for every account (over 7 s measured for a fresh answer, 15–30 s with a slow agent), and the page drew nothing before it. Now:
+
+- `GET /v1/usage?wait=0` answers at once: every agent and its day, each account's last answer (empty before its first), `pending: true` on each account still being asked, asks started behind it for those never asked or out of date. Both probes keep answers per account and join an ask already going, so no second `claude`, `codex` or `agy` starts for the same account. Without `wait=0` nothing changes: the menu bar and older clients still wait for the whole answer, which carries no `pending`.
+- The usage tab, the phone's page and the widget ask with `wait=0`, then again every 0.8 s while some account is pending, filling each card as its own answer comes (for two minutes at most; three misses in a row stop it, and an account never answered says it could not be read). A daemon from before `wait=0` gives its whole answer locally; over the relay its whitelist refuses the query (422), and the plain one is used from then on.
+- The head (when it was checked, Refresh, Back) is there from the start; before the first answer the board is grey placeholders (an agent's head and two cards, bars on the tab, dials on the phone). A card whose account is being asked turns a small spinner at its top right: with no answer yet its head shows as usual over placeholder bars or dials; with numbers already (a refresh) they stay, faded, until the new ones come. In the widget's card such an account has the spinner too, and one never answered reads "Checking usage…".
+- Answers are kept five minutes per account: moving Bots between accounts asks only the newly used one.

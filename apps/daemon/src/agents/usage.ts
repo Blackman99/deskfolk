@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { AGENT_KINDS, type AgentStatus, type AgentUsage, type AgentUsageResponse, type AgentUsageWindow, type BotRunner, type ClaudeCodeStatus, type CustomAgent } from "@real-bot/protocol";
 import { claudeLaunch } from "../claude-code/spawn";
+import type { KnownUsage } from "../claude-code/usage";
 import { rpcPeer } from "../engine/agent/jsonrpc";
 import type { Store } from "../store";
 import daemonPackage from "../../package.json";
@@ -25,7 +26,11 @@ export const AGENT_USAGE_MAX_AGE_MS = 5 * 60_000;
 export const AGENT_USAGE_REFRESH_MIN_MS = 30_000;
 const ASK_TIMEOUT_MS = 15_000;
 
-export type AgentUsageProbe = { current(maxAgeMs?: number): Promise<AgentUsageResponse> };
+export type AgentUsageProbe = {
+  current(maxAgeMs?: number): Promise<AgentUsageResponse>;
+  /** Each account at once, waiting for no agent (`GET /v1/usage?wait=0`), as `ClaudeUsageProbe.known` does it. */
+  known?(maxAgeMs?: number): Promise<Array<KnownUsage<AgentUsage>>>;
+};
 
 type InUse = { runner: OtherRunner; customId: string | null; configDir: string | null };
 
@@ -112,6 +117,8 @@ export function createAgentUsageProbe(deps: {
 }): AgentUsageProbe {
   const { store } = deps;
   const cache = new Map<string, { usage: AgentUsage; at: number }>();
+  /** Each account's ask still going: whoever asks meanwhile joins it. */
+  const asking = new Map<string, Promise<AgentUsage>>();
 
   /** Every agent account other than Claude's that something runs on or that is connected. */
   async function inUse(): Promise<InUse[]> {
@@ -120,19 +127,45 @@ export function createAgentUsageProbe(deps: {
   }
 
   const today = (label: string) => agentToday(store, label);
-
-  async function usageOf(entry: InUse, maxAgeMs: number): Promise<AgentUsage> {
-    const key = `${entry.runner}\u0000${entry.customId ?? ""}\u0000${entry.configDir ?? ""}`;
+  const keyOf = (entry: InUse) => `${entry.runner}\u0000${entry.customId ?? ""}\u0000${entry.configDir ?? ""}`;
+  const customOf = (entry: InUse): CustomAgent | null => (entry.runner === "custom" ? store.customAgent(entry.customId) : null);
+  const labelOf = (entry: InUse, custom: CustomAgent | null) => (entry.runner === "custom" && custom ? custom.name : AGENT_KINDS[entry.runner].label);
+  /** Codex, Grok and Antigravity are asked for their plan; the others answer at once with their day here. */
+  const asks = (runner: OtherRunner) => runner === "codex" || runner === "grok" || runner === "antigravity";
+  const base = (entry: InUse, label: string): AgentUsage => ({
+    runner: entry.runner, custom_id: entry.customId, label, config_dir: entry.configDir, available: false, reason: "no_plan",
+    plan: null, windows: [], credits: null, today: today(label), checked_at: new Date().toISOString(), error: null,
+  });
+  /** The kept answer while younger than `maxAgeMs` and not being asked again. */
+  const young = (key: string, maxAgeMs: number) => {
     const cached = cache.get(key);
-    const custom: CustomAgent | null = entry.runner === "custom" ? store.customAgent(entry.customId) : null;
-    const label = entry.runner === "custom" && custom ? custom.name : AGENT_KINDS[entry.runner].label;
-    if (cached && Date.now() - cached.at < maxAgeMs) return { ...cached.usage, today: today(label) };
-    const usage: AgentUsage = {
-      runner: entry.runner, custom_id: entry.customId, label, config_dir: entry.configDir, available: false, reason: "no_plan",
-      plan: null, windows: [], credits: null, today: today(label), checked_at: new Date().toISOString(), error: null,
-    };
+    return cached && !asking.has(key) && Date.now() - cached.at < maxAgeMs ? cached.usage : null;
+  };
+
+  function usageOf(entry: InUse, maxAgeMs: number): Promise<AgentUsage> {
+    const key = keyOf(entry);
+    const custom = customOf(entry);
+    const label = labelOf(entry, custom);
+    const kept = young(key, maxAgeMs);
+    if (kept) return Promise.resolve({ ...kept, today: today(label) });
+    const going = asking.get(key);
+    if (going) return going.then((usage) => ({ ...usage, today: today(label) }));
+    const promise = ask(entry, custom, label, cache.get(key))
+      .then((usage) => {
+        cache.set(key, { usage, at: Date.now() });
+        return usage;
+      })
+      .finally(() => {
+        if (asking.get(key) === promise) asking.delete(key);
+      });
+    asking.set(key, promise);
+    return promise;
+  }
+
+  async function ask(entry: InUse, custom: CustomAgent | null, label: string, cached: { usage: AgentUsage } | undefined): Promise<AgentUsage> {
+    const usage = base(entry, label);
     const runner = entry.runner;
-    if (runner === "codex" || runner === "grok" || runner === "antigravity") {
+    if (asks(runner)) {
       const resolved = await resolveAgent({ runner: entry.runner, custom, setting: store.agentPath(entry.runner), configDir: entry.configDir });
       if (!resolved.ok) Object.assign(usage, { reason: "missing", error: resolved.error });
       else {
@@ -145,11 +178,10 @@ export function createAgentUsageProbe(deps: {
           Object.assign(usage, asked, { available: asked.windows.length > 0, reason: asked.windows.length > 0 ? null : "no_plan" });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          Object.assign(usage, cached?.usage ?? {}, { reason: /signed out|not (logged|signed) in|log ?in|auth/i.test(message) ? "signed_out" : "failed", error: message, checked_at: cached?.usage.checked_at ?? usage.checked_at });
+          Object.assign(usage, cached?.usage ?? {}, { reason: /signed out|not (logged|signed) in|log ?in|auth/i.test(message) ? "signed_out" : "failed", error: message, checked_at: cached?.usage.checked_at ?? usage.checked_at, today: usage.today });
         }
       }
     }
-    cache.set(key, { usage, at: Date.now() });
     return usage;
   }
 
@@ -157,6 +189,18 @@ export function createAgentUsageProbe(deps: {
     async current(maxAgeMs = AGENT_USAGE_MAX_AGE_MS) {
       // Each account its own ask, all at once: a slow Codex holds up none of the others.
       return { items: await Promise.all((await inUse()).map((entry) => usageOf(entry, maxAgeMs))) };
+    },
+    async known(maxAgeMs = AGENT_USAGE_MAX_AGE_MS) {
+      return (await inUse()).map((entry) => {
+        const key = keyOf(entry);
+        const label = labelOf(entry, customOf(entry));
+        if (!asks(entry.runner)) return { usage: base(entry, label), pending: false };
+        const kept = young(key, maxAgeMs);
+        if (kept) return { usage: { ...kept, today: today(label) }, pending: false };
+        void usageOf(entry, maxAgeMs).catch(() => undefined);
+        const last = cache.get(key)?.usage;
+        return { usage: last ? { ...last, today: today(label) } : { ...base(entry, label), reason: null, checked_at: null }, pending: true };
+      });
     },
   };
 }

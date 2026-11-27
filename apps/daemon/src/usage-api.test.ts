@@ -76,6 +76,62 @@ test("one answer for every agent: Claude first, accounts grouped under their age
   expect((await fetch(`${h.origin}/v1/usage`)).status).toBe(401);
 });
 
+test("wait=0 answers at once, each account still asked pending, and fills one account at a time", async () => {
+  const { chmodSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "codex-usage-"));
+  const codex = join(root, "codex");
+  writeFileSync(codex, "#!/bin/sh\nexit 0\n");
+  chmodSync(codex, 0o755);
+  const store = new Store({ endpointKey: memoryKeyStore() });
+  const answers = new Map<string, () => void>();
+  let asked = 0;
+  const agentUsage = createAgentUsageProbe({
+    store,
+    connected: async () => [{ runner: "codex", customId: null, configDir: null }, { runner: "codex", customId: null, configDir: "/opt/codex-b" }, { runner: "opencode", customId: null, configDir: null }],
+    askCodex: (env) => {
+      asked += 1;
+      return new Promise((done) => answers.set(env.CODEX_HOME ?? "", () => done({ plan: env.CODEX_HOME ? "pro" : "plus", windows: [{ minutes: 300, percent: 10, resets_at: null }], credits: null })));
+    },
+  });
+  const unused: ClaudeUsage = { available: false, reason: "unused", plan: null, windows: [], checked_at: null, error: null, accounts: [] };
+  const api = createLocalApi({ store, token: "usage-test", schedule: false, claudeUsage: { current: async () => unused }, agentUsage });
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: api.fetch, websocket: api.websocket });
+  closes.push(async () => { await api.engine.close(); store.close(); await server.stop(true); rmSync(root, { recursive: true, force: true }); });
+  store.setAgentPath("codex", codex);
+  const get = async (query: string) => (await (await fetch(`http://${server.hostname}:${server.port}/v1/usage${query}`, { headers: { Authorization: "Bearer usage-test" } })).json()) as UsageResponse;
+  const codexOf = (body: UsageResponse) => body.agents.find((agent) => agent.runner === "codex")!.accounts.map((account) => [account.config_dir, account.pending, account.plan, account.checked_at === null]);
+
+  // Nothing answered yet: every account there at once, pending and empty; OpenCode's day needs no ask.
+  const first = await get("?wait=0");
+  expect(first.agents.map((agent) => agent.runner)).toEqual(["codex", "opencode"]);
+  expect(codexOf(first)).toEqual([[null, true, null, true], ["/opt/codex-b", true, null, true]]);
+  await Bun.sleep(5);
+  expect(asked).toBe(2);
+  // Asked again while they run: still pending, nothing asked twice.
+  expect(codexOf(await get("?wait=0"))).toEqual([[null, true, null, true], ["/opt/codex-b", true, null, true]]);
+  expect(asked).toBe(2);
+  // The second account answers first: its card fills, the first still waits.
+  answers.get("/opt/codex-b")!();
+  await Bun.sleep(5);
+  expect(codexOf(await get("?wait=0"))).toEqual([[null, true, null, true], ["/opt/codex-b", false, "pro", false]]);
+  answers.get("")!();
+  await Bun.sleep(5);
+  expect(codexOf(await get("?wait=0"))).toEqual([[null, false, "plus", false], ["/opt/codex-b", false, "pro", false]]);
+  // The waiting answer stays as it was: no `pending` in it.
+  const plain = await get("");
+  expect(plain.agents[0]!.accounts.every((account) => !("pending" in account))).toBe(true);
+  expect(asked).toBe(2);
+});
+
+test("wait=0 waits for a probe that cannot answer at once, and marks nothing pending", async () => {
+  const h = start({ claudeUsage: { current: async () => claude }, agentUsage: { current: async () => others } });
+  const body = await (await h.get("?wait=0")).json() as UsageResponse;
+  expect(body.agents.map((agent) => agent.runner)).toEqual(["claude_code", "codex", "opencode"]);
+  expect(body.agents.flatMap((agent) => agent.accounts.map((account) => account.pending))).toEqual([false, false, false]);
+});
+
 test("Claude is left out when nothing runs on it and no account of it is connected", async () => {
   const h = start({
     claudeUsage: { current: async () => ({ available: false, reason: "unused", plan: null, windows: [], checked_at: null, error: null, accounts: [] }) },
@@ -122,6 +178,9 @@ test("a phone reads it too: the bare GET and a refresh are whitelisted, nothing 
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage" })).not.toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage", query: { refresh: "1" } })).not.toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage", query: { refresh: "yes" } })).toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage", query: { wait: "0" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage", query: { wait: "0", refresh: "1" } })).not.toThrow();
+  expect(() => validateBusiness({ v: 1, id, method: "GET", path: "/v1/usage", query: { wait: "1" } })).toThrow();
   expect(() => validateBusiness({ v: 1, id, method: "POST", path: "/v1/usage" })).toThrow();
   const remote = await h.api.dispatchBusiness(new Request("http://remote.invalid/v1/usage"), { deviceId: "paired-device", requestId: ulid() });
   expect(remote.status).toBe(200);

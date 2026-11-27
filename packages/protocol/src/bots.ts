@@ -368,6 +368,11 @@ export type UsageAccount = {
   checked_at: string | null;
   /** Why the latest ask failed, in English; the windows are then the last answer that came. */
   error: string | null;
+  /**
+   * Its ask is still going (`GET /v1/usage?wait=0`): what is here is the last answer, or nothing
+   * yet when `checked_at` is null. Absent from a daemon from before it, and from the waiting answer.
+   */
+  pending?: boolean;
 };
 
 /**
@@ -383,7 +388,10 @@ export type UsageAgent = {
   accounts: UsageAccount[];
 };
 
-/** `GET /v1/usage` (ADR 0080): every agent's usage in one answer, Claude first. */
+/**
+ * `GET /v1/usage` (ADR 0080): every agent's usage in one answer, Claude first. With `wait=0` it
+ * answers at once, each account still being asked marked `pending` (2026-11-27 addendum).
+ */
 export type UsageResponse = { agents: UsageAgent[] };
 
 export type ProfileRevision = {

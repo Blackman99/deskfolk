@@ -1,7 +1,8 @@
 /**
  * One agent's usage (ADR 0080): its name with its day here, then each account with every window,
  * what is used and when it starts over. The phone's page lists one per agent; the widget shows
- * the one you point at (`UsageAgentSection.svelte`).
+ * the one you point at (`UsageAgentSection.svelte`). An account still being asked turns a spinner
+ * beside its name.
  */
 import { Text, View } from "nsh";
 import type { UsageAgent } from "@real-bot/protocol";
@@ -18,6 +19,7 @@ import {
   usageWindowLabel,
   usageWindowsSorted,
 } from "../../m/usage/usage.ts";
+import { Icon } from "../Icon";
 import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 
@@ -75,13 +77,20 @@ export function UsageAgentSection(props: {
                     )}
                   </If>
                 </View>
-                <If when={account.credits}>
-                  {(credits) => (
-                    <Text testID="usage-credits" class={`ml-auto ${small()} text-ink-muted`}>
-                      {copy().usage.credits(usageCreditsText(credits(), props.locale))}
-                    </Text>
-                  )}
-                </If>
+                <View class="ml-auto flex-row items-center gap-[6px] shrink-0">
+                  <If when={account.credits}>
+                    {(credits) => (
+                      <Text testID="usage-credits" class={`${small()} text-ink-muted`}>
+                        {copy().usage.credits(usageCreditsText(credits(), props.locale))}
+                      </Text>
+                    )}
+                  </If>
+                  <If when={account.pending}>
+                    <View testID="usage-account-loading" accessibilityLabel={copy().usage.loading} class="self-center">
+                      <Icon name="spinner" size={12} class="animate-spin tint-ink-muted" />
+                    </View>
+                  </If>
+                </View>
               </View>
               <If
                 when={note()}

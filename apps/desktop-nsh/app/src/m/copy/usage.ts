@@ -34,6 +34,8 @@ export const zh = {
   stale: (time: string) => `这次没查到，显示的是 ${time} 的数据`,
   refresh: "刷新",
   refreshing: "刷新中…",
+  /** An account still being asked: its card's spinner and what it says before the first answer. */
+  loading: "正在查用量…",
   signedOut: "未登录",
   failed: "没查到用量",
   noPlan: "按 token 计费，没有套餐额度",
@@ -74,6 +76,7 @@ export const en: CopyShape<typeof zh> = {
   stale: (time: string) => `Could not check this time; showing what it said at ${time}`,
   refresh: "Refresh",
   refreshing: "Refreshing…",
+  loading: "Checking usage…",
   signedOut: "Not signed in",
   failed: "Could not read the usage",
   noPlan: "Billed per token: no plan limits",

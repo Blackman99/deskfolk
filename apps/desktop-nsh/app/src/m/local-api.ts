@@ -76,6 +76,7 @@ import { ApiError, rememberBlobEtag, rememberBlobOriginalSize } from "./api.ts";
 import { readResponseBlob, type FileLoadOptions, type FileProgressHandler } from "./file-progress.ts";
 import type { DesktopClickResponse } from "./notifications/types.ts";
 import type { NotificationTestResult } from "./notifications/client.ts";
+import { usageQuery } from "./usage/usage.ts";
 
 type PendingRequest = {
   id: string; method: string; path: string; payload?: BodyInit; fingerprint: string; pending: boolean;
@@ -402,9 +403,13 @@ export class LocalApi extends ApiBase<PendingRequest> {
     return this.get<AgentUsageResponse>(`/v1/agent-usage${refresh ? "?refresh=1" : ""}`);
   }
 
-  /** Every agent's usage in one answer (ADR 0080); a daemon from before it answers 404. */
-  async usage(refresh = false): Promise<UsageResponse> {
-    return this.get<UsageResponse>(`/v1/usage${refresh ? "?refresh=1" : ""}`);
+  /**
+   * Every agent's usage in one answer (ADR 0080); a daemon from before it answers 404. `quick`
+   * answers at once, each account still being asked marked `pending` (a daemon from before that
+   * waits and marks none).
+   */
+  async usage(refresh = false, quick = false): Promise<UsageResponse> {
+    return this.get<UsageResponse>(`/v1/usage${usageQuery(refresh, quick)}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

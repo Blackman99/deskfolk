@@ -1,14 +1,16 @@
 /**
  * The workbench's usage tab (ADR 0080), opened from Tools and the menu bar where the settings
  * say: a bar with when it was checked and Refresh, then the board. A hidden ball is brought
- * back from the bar, since Tools no longer opens it (`UsageTab.svelte`).
+ * back from the bar, since Tools no longer opens it (`UsageTab.svelte`). The bar is there from
+ * the start; the board's placeholders stand in until the first answer, then each card fills as
+ * its own account answers.
  */
 import { Scroll, Text, View } from "nsh";
 import { copy } from "../../runtime";
 import { usageCheckedTime, usageLatestCheck } from "../../m/usage/usage.ts";
 import { usageWidget } from "../../m/usage/usage-widget.svelte.ts";
 import { Button } from "../Button";
-import { UsageBoard } from "./UsageBoard";
+import { UsageBoard, UsageBoardSkeleton } from "./UsageBoard";
 import { persistUsageWidget, useUsageFeed } from "./usage-session";
 
 export function UsageTab() {
@@ -43,7 +45,12 @@ export function UsageTab() {
         </View>
       </View>
       <Scroll class="flex-1 min-h-0" contentClass="pt-[20px] px-[24px] pb-[32px]">
-        <If when={feed.agents}>
+        <If
+          when={feed.agents}
+          else={
+            feed.failed ? <Text testID="usage-board-failed" class="text-[13px] text-ink-muted">{copy().usage.failed}</Text> : <UsageBoardSkeleton meter="bar" />
+          }
+        >
           {(agents) => <UsageBoard agents={agents()} locale={locale()} now={feed.now} meter="bar" />}
         </If>
       </Scroll>

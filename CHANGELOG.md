@@ -6,6 +6,11 @@ All notable changes to Deskfolk are documented in this file. 0.1.0 is the first 
 
 ## Unreleased
 
+### The usage page loads card by card
+
+- The usage tab, the phone's usage page and the usage widget no longer stay blank until every agent has answered. The header and Refresh are there at once, grey placeholders stand in for the board until the first answer, and each account's card fills as soon as its own answer comes. A card still being checked shows a small spinner; before its first answer it shows placeholder bars or dials, and on a refresh it keeps its numbers, faded, until the new ones arrive.
+- `GET /v1/usage?wait=0` answers at once with each account's last known usage, marking those still being asked `pending: true` (also allowed over the relay). Usage is now kept and asked per account, so an account already being asked is never asked twice at the same time. The plain `GET /v1/usage` and the menu bar are unchanged.
+
 ### A dialog's scrim blurs what it covers
 
 - The dimmed scrim behind dialogs, sheets, drawers and the search now also blurs what it covers a little (4 px), on the desktop and on the phone's page. On macOS the blur is a plain one at that radius, not the system's frosted material. Linux draws the dimming only.

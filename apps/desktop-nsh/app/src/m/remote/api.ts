@@ -87,6 +87,7 @@ import { TunnelChannel, type ScreenChannel } from "./rfb-channel.ts";
 import type { ScreenApi } from "./screen-connect.ts";
 import { createRemoteMediaSource, type MediaSourceHandle } from "./media-source.ts";
 import { createAssertion, createRegistration, type WebAuthnBridge } from "./webauthn.ts";
+import { usageQuery } from "../usage/usage.ts";
 import type {
   PushStateV2,
   PushSubscribeV2Request,
@@ -579,9 +580,13 @@ export class RemoteApi extends ApiBase<PendingRemote> {
     return this.get<AgentUsageResponse>(`/v1/agent-usage${refresh ? "?refresh=1" : ""}`);
   }
 
-  /** Every agent's usage in one answer (ADR 0080); a daemon from before it answers 404. */
-  async usage(refresh = false): Promise<UsageResponse> {
-    return this.get<UsageResponse>(`/v1/usage${refresh ? "?refresh=1" : ""}`);
+  /**
+   * Every agent's usage in one answer (ADR 0080); a daemon from before it answers 404. `quick`
+   * answers at once, each account still being asked marked `pending` (a daemon from before that
+   * refuses it with 422).
+   */
+  async usage(refresh = false, quick = false): Promise<UsageResponse> {
+    return this.get<UsageResponse>(`/v1/usage${usageQuery(refresh, quick)}`);
   }
 
   /** One plan whole: the switcher row plus its spec, revision and tickets with their artifacts. */

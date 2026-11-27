@@ -4,6 +4,10 @@
  * phone's page); the agents with only this app's records of today in one row of chips at the end
  * (`UsageBoard.svelte`). The messenger's grid is rows of flex here: agents fill a row by the
  * columns they span, an agent's cards fill rows of its span.
+ *
+ * Each card loads on its own (2026-11-27 addendum): an account still being asked turns a spinner in
+ * its head, over the numbers it last had, or over grey placeholders before its first answer;
+ * before any answer at all, `UsageBoardSkeleton` stands in for the board.
  */
 import { computed, signal, Text, View } from "nsh";
 import type { UsageAgent, UsageWindow } from "@real-bot/protocol";
@@ -11,11 +15,13 @@ import { copy } from "../../runtime";
 import {
   usageAccountNote,
   usageAccountShortName,
+  usageAccountWaiting,
   usageCreditsText,
   usageSplit,
   usageTokenText,
   usageWindowsSorted,
 } from "../../m/usage/usage.ts";
+import { Icon } from "../Icon";
 import { AgentLogo } from "../settings/AgentLogo";
 import { tip } from "../tip";
 import { UsageBar } from "./UsageBar";
@@ -62,6 +68,78 @@ export function agentRows(agents: UsageAgent[], columns: number): UsageAgent[][]
 export const dialColumns = (count: number) => (count > 3 ? 2 : Math.max(1, count));
 
 const key = (agent: UsageAgent) => `${agent.runner}:${agent.custom_id ?? ""}`;
+
+/** A grey block where text or a meter will be. */
+const Bone = (props: { class: string }) => <View accessible={false} class={`rounded-full bg-ink/10 ${props.class}`} />;
+
+/** A card's windows before its first answer: two bars, or two dials. */
+function WindowsSkeleton(props: { meter: "bar" | "dial"; testID?: string }) {
+  return props.meter === "bar" ? (
+    <View testID={props.testID ?? "usage-account-skeleton"} class="gap-[14px] animate-pulse" accessible={false}>
+      {[0, 1].map(() => (
+        <View class="gap-[8px]">
+          <View class="flex-row items-center justify-between gap-[12px]">
+            <Bone class="w-[72px] h-[12px]" />
+            <Bone class="w-[54px] h-[12px]" />
+          </View>
+          <Bone class="h-[6px]" />
+        </View>
+      ))}
+    </View>
+  ) : (
+    <View testID={props.testID ?? "usage-account-skeleton"} class="flex-row justify-center gap-[6px] animate-pulse" accessible={false}>
+      {[0, 1].map(() => (
+        <View class="flex-1 min-w-[76px] max-w-[160px] items-center gap-[8px]">
+          <View class="w-[76px] h-[76px] rounded-full border-[6px] border-ink/10" />
+          <Bone class="w-[56px] h-[12px]" />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** The spinner in the head of a card whose account is being asked. */
+function CardSpinner() {
+  return (
+    <View testID="usage-account-loading" accessibilityLabel={copy().usage.loading} tooltip={tip(copy().usage.loading)} class="shrink-0">
+      <Icon name="spinner" size={12} class="animate-spin tint-ink-muted" />
+    </View>
+  );
+}
+
+/** The board before its first answer: one agent's band with two cards, all placeholders. */
+export function UsageBoardSkeleton(props: { meter?: "bar" | "dial" }) {
+  const width = signal(0);
+  const span = () => Math.min(2, boardColumns(width()));
+  const card = () => (
+    <View class="flex-1 basis-0 min-w-0 gap-[16px] pt-[14px] px-[16px] pb-[18px] border border-line rounded-(--radius-lg) bg-pane">
+      <View class="flex-row items-center gap-[8px] animate-pulse">
+        <Bone class="w-[44px] h-[18px]" />
+        <Bone class="w-[120px] h-[12px]" />
+      </View>
+      <WindowsSkeleton meter={props.meter ?? "dial"} testID="usage-board-skeleton-windows" />
+    </View>
+  );
+  return (
+    <View
+      testID="usage-board-skeleton"
+      accessibilityLabel={copy().usage.loading}
+      class="gap-[12px] min-w-0"
+      onLayout={(e) => width.set(e.bounds.size.width)}
+    >
+      <View class="flex-row items-center gap-[10px] animate-pulse">
+        <View accessible={false} class="w-[22px] h-[22px] rounded-full bg-ink/10" />
+        <Bone class="w-[80px] h-[14px]" />
+        <Bone class="w-[140px] h-[12px]" />
+      </View>
+      {() => (
+        <View class="flex-row gap-[12px]">
+          {Array.from({ length: span() }, () => card())}
+        </View>
+      )}
+    </View>
+  );
+}
 const windowKey = (window: UsageWindow) => `${window.minutes ?? ""}:${window.model ?? ""}`;
 
 export function UsageBoard(props: {
@@ -86,6 +164,9 @@ export function UsageBoard(props: {
     const note = usageAccountNote(account, copy());
     const who = usageAccountShortName(agent, account, copy());
     const windows = usageWindowsSorted(account.windows);
+    const waiting = usageAccountWaiting(account);
+    // Asked again behind numbers it already has: they stay, a little faded, until the new ones come.
+    const refreshing = account.pending === true && !waiting;
     return (
       <View
         testID={`usage-account-${account.config_dir ?? ""}`}
@@ -100,22 +181,27 @@ export function UsageBoard(props: {
             ) : null}
             {who.who ? <Text testID="usage-account-who" class="min-w-0 shrink text-[13px] text-ink-muted line-clamp-1">{who.who}</Text> : null}
           </View>
-          {account.credits ? (
-            <Text testID="usage-credits" class="ml-auto text-[12px] text-ink-muted">
-              {copy().usage.credits(usageCreditsText(account.credits, props.locale))}
-            </Text>
-          ) : null}
+          <View class="ml-auto flex-row items-center gap-[8px] shrink-0">
+            {account.credits ? (
+              <Text testID="usage-credits" class="text-[12px] text-ink-muted">
+                {copy().usage.credits(usageCreditsText(account.credits, props.locale))}
+              </Text>
+            ) : null}
+            {account.pending ? <CardSpinner /> : null}
+          </View>
         </View>
-        {note ? (
+        {waiting ? (
+          <WindowsSkeleton meter={meter()} />
+        ) : note ? (
           <Text testID="usage-note" class="text-[13px] text-ink-muted">{note}</Text>
         ) : meter() === "bar" ? (
-          <View class="gap-[14px]">
+          <View class="gap-[14px]" style={{ opacity: refreshing ? 0.55 : 1 }}>
             {windows.map((window) => (
               <UsageBar window={window} locale={props.locale} now={props.now} />
             ))}
           </View>
         ) : (
-          <View testID="usage-gauges" class="gap-[18px]">
+          <View testID="usage-gauges" class="gap-[18px]" style={{ opacity: refreshing ? 0.55 : 1 }}>
             {chunk(windows, dialColumns(account.windows.length)).map((row) => (
               <View class="flex-row justify-center gap-[6px]">
                 {row.map((window) => (

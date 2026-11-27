@@ -130,10 +130,13 @@ export function systemRoutes(ctx: RouteCtx): Response | Promise<Response> | null
     }
   }
   // Every agent's usage in one answer (ADR 0080): what the usage widget, the phone's page and the
-  // menu bar read. The two routes around it stay for clients from before it.
+  // menu bar read. The two routes around it stay for clients from before it. `wait=0` answers at
+  // once with what is known, each account still being asked marked `pending`: the usage pages ask
+  // again until none is, and fill card by card.
   if (method === "GET" && path === "/v1/usage" && options.usage) {
-    const refresh = url.searchParams.get("refresh") === "1";
-    return options.usage.current(refresh ? AGENT_USAGE_REFRESH_MIN_MS : undefined).then((usage) => jsonResponse(usage, 200, null));
+    const maxAgeMs = url.searchParams.get("refresh") === "1" ? AGENT_USAGE_REFRESH_MIN_MS : undefined;
+    const usage = url.searchParams.get("wait") === "0" ? options.usage.known(maxAgeMs) : options.usage.current(maxAgeMs);
+    return usage.then((answer) => jsonResponse(answer, 200, null));
   }
   if (method === "GET" && path === "/v1/agent-usage" && options.agentUsage) {
     const refresh = url.searchParams.get("refresh") === "1";

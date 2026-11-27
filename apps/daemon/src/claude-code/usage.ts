@@ -3,8 +3,9 @@
  * started without a prompt answers the Agent SDK's `get_usage` — the data behind Claude Code's
  * `/usage`, which Claude Code fetches from claude.ai itself — and is closed again: nothing goes to a
  * model and Deskfolk reads no credential. Asked only for the accounts some Bot on Claude Agent runs
- * on, one session each, and the answer is kept for a while, so the sidebar and the menu bar asking
- * every minute or so start at most one round of `claude` per `CLAUDE_USAGE_MAX_AGE_MS`.
+ * on, one session each, and each account's answer is kept for a while, so the sidebar and the menu
+ * bar asking every minute or so start at most one `claude` per account per `CLAUDE_USAGE_MAX_AGE_MS`,
+ * and an account already being asked is not asked a second time.
  *
  * The SDK marks the method experimental. Only the fields it types are read; a `claude` that does
  * not know the request, or answers in another shape, makes the meter say it could not ask.
@@ -42,34 +43,48 @@ export type UsageAnswer = {
 /** Starts `executable` without a prompt, asks it for its usage, and closes it. */
 export type AskUsage = (launch: { executable: string; env: Record<string, string>; cwd: string }) => Promise<UsageAnswer>;
 
+/** An account's answer as the non-waiting read gives it: the last one, and whether it is still being asked. */
+export type KnownUsage<T> = { usage: T; pending: boolean };
+
 export type ClaudeUsageProbe = {
   /** The answer kept when younger than `maxAgeMs`, otherwise a fresh one. */
   current(maxAgeMs?: number): Promise<ClaudeUsage>;
+  /**
+   * Each account at once, waiting for no `claude` (`GET /v1/usage?wait=0`): its answer when younger
+   * than `maxAgeMs` and not being asked again, otherwise its last answer (or none yet) marked
+   * pending, its ask started behind it. Null while nothing runs on Claude Agent.
+   */
+  known?(maxAgeMs?: number): Promise<Array<KnownUsage<ClaudeAccountUsage>> | null>;
 };
+
+/** One account to answer for: the directory it was named by, and the account Claude Code reads there. */
+type Target = { dir: string | null; id: string; account: ClaudeCodeAccount | undefined };
 
 export function createClaudeUsageProbe(deps: {
   claudeCode: ClaudeCodeProbe;
   /**
    * The accounts Bots on Claude Agent run on: their `agent_config_dir`, null for the daemon's own
-   * environment. Nothing is asked while there are none.
+   * environment. Nothing is asked while there are none. `quick`: the non-waiting read is asking,
+   * so Claude Code's last known status will do.
    */
-  inUse: () => Array<string | null> | Promise<Array<string | null>>;
+  inUse: (quick?: boolean) => Array<string | null> | Promise<Array<string | null>>;
   ask?: AskUsage;
   env?: Record<string, string | undefined>;
   now?: () => number;
 }): ClaudeUsageProbe {
   const now = deps.now ?? Date.now;
   const ask = deps.ask ?? askWithSdk;
-  /** The last answer, for the accounts it was asked for. */
-  let kept: { usage: ClaudeUsage; at: number; key: string } | null = null;
+  /** Each account's last answer and when it came. */
+  const kept = new Map<string, { usage: ClaudeAccountUsage; at: number }>();
+  /** Each account's ask still going: whoever asks meanwhile joins it. */
+  const asking = new Map<string, Promise<ClaudeAccountUsage>>();
   /** Each account's last answer with windows in it: a failed ask shows these, with its error. */
   const lastGood = new Map<string, ClaudeUsage>();
-  let inFlight: { promise: Promise<ClaudeUsage>; key: string } | null = null;
+  /** The last whole answer, given again while its accounts say the same. */
+  let whole: { key: string; usage: ClaudeUsage } | null = null;
 
   async function askAccount(dir: string | null, id: string, account: ClaudeCodeAccount | undefined, status: ClaudeCodeStatus): Promise<ClaudeAccountUsage> {
     const which = { config_dir: dir, email: account?.email ?? null };
-    const blocked = blockedBy(status, account);
-    if (blocked) return { ...unavailable(blocked), ...which };
     try {
       const env = withSystemProxy(claudeChildEnv(deps.env ?? process.env, dir), status);
       const answer = await ask({ executable: status.path!, env, cwd: tmpdir() });
@@ -83,8 +98,41 @@ export function createClaudeUsageProbe(deps: {
     }
   }
 
-  async function fresh(dirs: Array<string | null>): Promise<ClaudeUsage> {
-    const status = await deps.claudeCode.current();
+  /** The account's ask: the one going, or a new one, kept when it answers. */
+  function askOnce(target: Target, status: ClaudeCodeStatus): Promise<ClaudeAccountUsage> {
+    const going = asking.get(target.id);
+    if (going) return going;
+    const promise = askAccount(target.dir, target.id, target.account, status)
+      .then((usage) => {
+        kept.set(target.id, { usage, at: now() });
+        return usage;
+      })
+      .finally(() => {
+        if (asking.get(target.id) === promise) asking.delete(target.id);
+      });
+    asking.set(target.id, promise);
+    return promise;
+  }
+
+  /** What stops the asking before `claude` starts, as the account's answer; null when it can be asked. */
+  function blockedAnswer(target: Target, status: ClaudeCodeStatus): ClaudeAccountUsage | null {
+    const blocked = blockedBy(status, target.account);
+    return blocked ? { ...unavailable(blocked), config_dir: target.dir, email: target.account?.email ?? null } : null;
+  }
+
+  /** The kept answer while younger than `maxAgeMs` and not being asked again. */
+  function young(target: Target, maxAgeMs: number): ClaudeAccountUsage | null {
+    const last = kept.get(target.id);
+    return last && !asking.has(target.id) && now() - last.at < maxAgeMs ? last.usage : null;
+  }
+
+  async function targets(quick: boolean): Promise<{ status: ClaudeCodeStatus; targets: Target[] } | null> {
+    const dirs = [...new Set(await deps.inUse(quick))];
+    // Turning Claude Agent off for the last Bot stops the asking at once.
+    if (dirs.length === 0) return null;
+    const last = quick ? deps.claudeCode.last() : null;
+    if (last) void deps.claudeCode.current().catch(() => undefined);
+    const status = last ?? (await deps.claudeCode.current());
     // In the order Settings lists them, the daemon's own environment first. Two that Claude Code
     // reads from the same directory are one account, asked and shown once.
     const order = (dir: string | null) => {
@@ -92,37 +140,42 @@ export function createClaudeUsageProbe(deps: {
       return dir === null ? -1 : at < 0 ? Number.MAX_SAFE_INTEGER : at;
     };
     const seen = new Set<string>();
-    const asks: Array<Promise<ClaudeAccountUsage>> = [];
+    const out: Target[] = [];
     for (const dir of [...dirs].sort((a, b) => order(a) - order(b))) {
       const account = accountOf(status, dir);
       const id = account?.config_directory ?? `dir:${dir ?? ""}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      asks.push(askAccount(dir, id, account, status));
+      out.push({ dir, id, account });
     }
-    const accounts = await Promise.all(asks);
-    const { config_dir: _dir, email: _email, ...first } = accounts[0]!;
-    return { ...first, accounts };
+    return { status, targets: out };
   }
 
   return {
     async current(maxAgeMs = CLAUDE_USAGE_MAX_AGE_MS) {
-      const dirs = [...new Set(await deps.inUse())];
-      // Turning Claude Agent off for the last Bot stops the asking at once; nothing is kept for it.
-      if (dirs.length === 0) return Promise.resolve({ ...unavailable("unused"), accounts: [] });
-      const key = dirs.map((dir) => dir ?? "").sort().join("\n");
-      if (kept && kept.key === key && now() - kept.at < maxAgeMs) return Promise.resolve(kept.usage);
-      if (inFlight && inFlight.key === key) return inFlight.promise;
-      const promise = fresh(dirs)
-        .then((usage) => {
-          kept = { usage, at: now(), key };
-          return usage;
-        })
-        .finally(() => {
-          if (inFlight?.promise === promise) inFlight = null;
-        });
-      inFlight = { promise, key };
-      return promise;
+      const found = await targets(false);
+      if (!found) return { ...unavailable("unused"), accounts: [] };
+      const accounts = await Promise.all(found.targets.map((target) =>
+        blockedAnswer(target, found.status) ?? young(target, maxAgeMs) ?? askOnce(target, found.status)));
+      const key = JSON.stringify(accounts);
+      if (whole?.key !== key) {
+        const { config_dir: _dir, email: _email, ...first } = accounts[0]!;
+        whole = { key, usage: { ...first, accounts } };
+      }
+      return whole.usage;
+    },
+    async known(maxAgeMs = CLAUDE_USAGE_MAX_AGE_MS) {
+      const found = await targets(true);
+      if (!found) return null;
+      return found.targets.map((target) => {
+        const blocked = blockedAnswer(target, found.status);
+        if (blocked) return { usage: blocked, pending: false };
+        const answer = young(target, maxAgeMs);
+        if (answer) return { usage: answer, pending: false };
+        void askOnce(target, found.status);
+        const last = kept.get(target.id)?.usage;
+        return { usage: last ?? { ...unavailable(null), config_dir: target.dir, email: target.account?.email ?? null }, pending: true };
+      });
     },
   };
 }
@@ -138,7 +191,7 @@ function blockedBy(status: ClaudeCodeStatus, account: ClaudeCodeAccount | undefi
   return null;
 }
 
-function unavailable(reason: NonNullable<ClaudeUsage["reason"]>): ClaudeUsage {
+function unavailable(reason: ClaudeUsage["reason"]): ClaudeUsage {
   return { available: false, reason, plan: null, windows: [], checked_at: null, error: null };
 }
 
